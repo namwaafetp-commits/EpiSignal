@@ -17,7 +17,7 @@ class SignalEvidenceResponse(BaseModel):
     id: UUID
     source_name: str
     title: str
-    raw_text: str | None
+    raw_text: str
     url: str
     published_at: datetime | None
     retrieved_at: datetime

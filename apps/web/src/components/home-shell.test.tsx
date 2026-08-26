@@ -32,6 +32,7 @@ test("renders traceable evidence and warns that coverage is limited", () => {
     }),
   ).toBeInTheDocument();
   expect(screen.getByText("4665 confirmed cases.")).toBeInTheDocument();
+  expect(screen.getByText("Collected 26 Aug 2026")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: /view original/i })).toHaveAttribute(
     "href",
     "https://www.who.int/report",

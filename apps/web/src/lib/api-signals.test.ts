@@ -40,3 +40,18 @@ test("returns unavailable instead of inventing evidence", async () => {
     data: null,
   });
 });
+
+test("rejects malformed successful responses", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: "not evidence", total: 12 }),
+    }),
+  );
+
+  await expect(getEvidenceFeed()).resolves.toEqual({
+    status: "unavailable",
+    data: null,
+  });
+});

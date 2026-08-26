@@ -13,7 +13,7 @@ function countLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function publicationLabel(value: string | null) {
+function dateLabel(value: string | null) {
   if (!value) return "Publication date unavailable";
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -162,9 +162,14 @@ export function HomeShell({
                   <article className="evidence-card" key={item.id}>
                     <div className="evidence-meta">
                       <span>{item.source_name}</span>
-                      <time dateTime={item.published_at ?? undefined}>
-                        {publicationLabel(item.published_at)}
-                      </time>
+                      <div className="evidence-dates">
+                        <time dateTime={item.published_at ?? undefined}>
+                          Published {dateLabel(item.published_at)}
+                        </time>
+                        <time dateTime={item.retrieved_at}>
+                          Collected {dateLabel(item.retrieved_at)}
+                        </time>
+                      </div>
                     </div>
                     <h3>{item.title}</h3>
                     {item.raw_text ? (

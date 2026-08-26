@@ -135,7 +135,7 @@ export interface components {
             /** Published At */
             published_at: string | null;
             /** Raw Text */
-            raw_text: string | null;
+            raw_text: string;
             /**
              * Retrieved At
              * Format: date-time

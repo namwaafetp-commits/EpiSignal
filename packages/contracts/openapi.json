@@ -118,15 +118,8 @@
             "title": "Published At"
           },
           "raw_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Text"
+            "title": "Raw Text",
+            "type": "string"
           },
           "retrieved_at": {
             "format": "date-time",
