@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import BeforeValidator, Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
@@ -46,7 +46,9 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65535)
     database_url: SecretStr
-    cors_origins: Annotated[tuple[str, ...], BeforeValidator(parse_origins)] = (
+    # NoDecode stops pydantic-settings from JSON-decoding this sequence field
+    # before the validator runs, so a plain comma-separated .env value works.
+    cors_origins: Annotated[tuple[str, ...], NoDecode, BeforeValidator(parse_origins)] = (
         "http://localhost:3000",
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
