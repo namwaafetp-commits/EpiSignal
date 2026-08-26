@@ -112,7 +112,16 @@ class WhoDonConnector:
         while True:
             items = self._page(since, skip, inclusive=inclusive)
             documents.extend(
-                RawDocument(payload=entry, retrieved_at=retrieved_at) for entry in items
+                RawDocument(
+                    payload=entry,
+                    retrieved_at=retrieved_at,
+                    source_url=(
+                        ITEM_URL_TEMPLATE.format(url_name=entry["UrlName"].strip())
+                        if isinstance(entry.get("UrlName"), str) and entry["UrlName"].strip()
+                        else None
+                    ),
+                )
+                for entry in items
             )
             if len(items) < PAGE_SIZE:
                 return documents
@@ -122,8 +131,10 @@ class WhoDonConnector:
         moment = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         operator = "ge" if inclusive else "gt"
         parameters = {
-            "$filter": f"PublicationDateAndTime {operator} {moment}",
-            "$orderby": "PublicationDateAndTime asc",
+            "$filter": (
+                f"PublicationDateAndTime {operator} {moment} or LastModified {operator} {moment}"
+            ),
+            "$orderby": "LastModified asc",
             "$top": str(PAGE_SIZE),
             "$skip": str(skip),
         }

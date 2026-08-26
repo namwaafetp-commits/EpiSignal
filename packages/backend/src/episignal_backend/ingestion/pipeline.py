@@ -40,11 +40,7 @@ def run_ingestion(
     if source_id is None:
         raise MissingSourceError(connector.source_name)
 
-    window_start = (
-        since
-        or repository.latest_published_at(source_id)
-        or (moment - timedelta(days=DEFAULT_WINDOW_DAYS))
-    )
+    window_start = since or (moment - timedelta(days=DEFAULT_WINDOW_DAYS))
 
     inserted = 0
     skipped = 0
@@ -59,10 +55,15 @@ def run_ingestion(
             repository.add(signal, source_id)
             repository.commit()
             inserted += 1
-        except Exception:
+        except Exception as error:
             repository.rollback()
             failed += 1
-            logger.exception("Could not ingest a document from %s", connector.source_name)
+            logger.error(
+                "Could not ingest document %s from %s (%s)",
+                document.source_url or "<unknown URL>",
+                connector.source_name,
+                type(error).__name__,
+            )
 
     repository.activate(source_id)
     repository.commit()

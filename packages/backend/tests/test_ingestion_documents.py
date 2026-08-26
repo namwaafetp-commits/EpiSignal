@@ -52,9 +52,14 @@ def test_normalized_signal_is_frozen() -> None:
 
 
 def test_raw_document_keeps_the_untouched_source_payload() -> None:
-    document = RawDocument(payload={"Title": "x", "UrlName": "y"}, retrieved_at=MOMENT)
+    document = RawDocument(
+        payload={"Title": "x", "UrlName": "y"},
+        retrieved_at=MOMENT,
+        source_url="https://www.who.int/item/y",
+    )
     assert document.payload["UrlName"] == "y"
     assert document.retrieved_at == MOMENT
+    assert document.source_url == "https://www.who.int/item/y"
 
 
 def test_normalized_signal_rejects_an_overlong_language_tag() -> None:

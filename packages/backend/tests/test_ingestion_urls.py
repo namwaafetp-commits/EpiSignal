@@ -11,6 +11,7 @@ ITEM = "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON615"
         (f"{ITEM}#summary", ITEM),
         (f"{ITEM}/", ITEM),
         (f"{ITEM}?utm_source=newsletter&utm_campaign=x", ITEM),
+        (f"{ITEM}?UTM_creative_format=card&utm_id=42", ITEM),
         (f"{ITEM}?gclid=abc&fbclid=def", ITEM),
         ("HTTPS://WWW.WHO.INT/emergencies", "https://www.who.int/emergencies"),
         (f"{ITEM}?b=2&a=1", f"{ITEM}?a=1&b=2"),

@@ -35,15 +35,20 @@ def test_fetch_returns_one_raw_document_per_item() -> None:
     assert len(documents) == 2
     assert documents[0].payload["DonId"] == "2026-DON1"
     assert documents[0].retrieved_at.tzinfo is not None
+    assert documents[0].source_url == (
+        "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON1"
+    )
 
 
-def test_fetch_filters_and_orders_by_publication_time() -> None:
+def test_fetch_filters_on_recent_publication_or_modification() -> None:
     requests: list[httpx.Request] = []
     connector = connector_for(lambda request: httpx.Response(200, json={"value": []}), requests)
     connector.fetch(SINCE)
     query = requests[0].url.params
-    assert query["$filter"] == "PublicationDateAndTime gt 2026-05-28T00:00:00Z"
-    assert query["$orderby"] == "PublicationDateAndTime asc"
+    assert query["$filter"] == (
+        "PublicationDateAndTime gt 2026-05-28T00:00:00Z or LastModified gt 2026-05-28T00:00:00Z"
+    )
+    assert query["$orderby"] == "LastModified asc"
     assert query["$top"] == str(PAGE_SIZE)
 
 
@@ -51,7 +56,9 @@ def test_fetch_uses_an_inclusive_filter_when_requested() -> None:
     requests: list[httpx.Request] = []
     connector = connector_for(lambda request: httpx.Response(200, json={"value": []}), requests)
     connector.fetch(SINCE, inclusive=True)
-    assert requests[0].url.params["$filter"] == "PublicationDateAndTime ge 2026-05-28T00:00:00Z"
+    assert requests[0].url.params["$filter"] == (
+        "PublicationDateAndTime ge 2026-05-28T00:00:00Z or LastModified ge 2026-05-28T00:00:00Z"
+    )
 
 
 def test_fetch_rejects_a_response_without_value() -> None:

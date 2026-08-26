@@ -9,11 +9,6 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 TRACKING_PARAMETERS = frozenset(
     {
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
         "gclid",
         "fbclid",
     }
@@ -25,7 +20,7 @@ def canonicalize_url(url: str) -> str:
     parameters = sorted(
         (name, value)
         for name, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if name.lower() not in TRACKING_PARAMETERS
+        if not name.lower().startswith("utm_") and name.lower() not in TRACKING_PARAMETERS
     )
     path = parsed.path if parsed.path == "/" else parsed.path.rstrip("/")
     return urlunsplit(

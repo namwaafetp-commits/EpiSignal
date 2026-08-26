@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -49,6 +50,8 @@ class FakeRepository:
     def source_id(self, name: str) -> UUID | None:
         return None if self.missing else self._source
 
+    # Regression guard: the pipeline must ignore a cursor exposed by an older
+    # adapter because partially stored rows cannot safely advance the window.
     def latest_published_at(self, source_id: UUID) -> datetime | None:
         return self.latest
 
@@ -82,7 +85,7 @@ class FakeConnector:
         self.since = since
         self.inclusive = inclusive
         return [
-            RawDocument(payload={"index": index}, retrieved_at=NOW)
+            RawDocument(payload={"index": index}, retrieved_at=NOW, source_url=URL)
             for index in range(len(self._signals))
         ]
 
@@ -163,20 +166,29 @@ def test_the_first_run_uses_the_default_window() -> None:
     assert connector.inclusive is False
 
 
-def test_a_later_run_resumes_from_the_newest_stored_document() -> None:
+def test_each_default_run_rechecks_the_activity_window() -> None:
     repository = FakeRepository()
     repository.latest = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
     connector = FakeConnector([])
     run_ingestion(repository, connector, now=NOW)
-    assert connector.since == repository.latest
+    assert connector.since == NOW - timedelta(days=DEFAULT_WINDOW_DAYS)
     assert connector.inclusive is False
 
 
-def test_an_explicit_since_overrides_the_stored_watermark() -> None:
-    repository = FakeRepository()
-    repository.latest = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
+def test_an_explicit_since_overrides_the_default_window() -> None:
     connector = FakeConnector([])
     requested = datetime(2026, 1, 1, tzinfo=UTC)
-    run_ingestion(repository, connector, since=requested, now=NOW)
+    run_ingestion(FakeRepository(), connector, since=requested, now=NOW)
     assert connector.since == requested
     assert connector.inclusive is True
+
+
+def test_a_document_failure_logs_its_url_without_evidence_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.ERROR, logger="episignal_backend.ingestion"):
+        run_ingestion(FakeRepository(), FakeConnector([signal("explode")]), now=NOW)
+    assert URL in caplog.text
+    assert SOURCE in caplog.text
+    assert "explode" not in caplog.text
+    assert "cannot store this document" not in caplog.text

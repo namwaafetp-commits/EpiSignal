@@ -3,16 +3,18 @@
 **Date:** 2026-08-26
 **Branch:** `feat/who-don-ingestion`
 **Worktree:** `D:\Projects\Side Project\EpiSignal\.worktrees\ingestion`
-**State:** Tasks 1–5 of 10 complete, both review gates passed on each. Worktree clean, 90 tests passing.
+**State:** Tasks 1–10 complete. Live Supabase verification passed. Worktree clean, 123 tests passing.
 
-You are picking up a slice that ingests WHO Disease Outbreak News documents into the `signals` table. Read this file, then read the plan at `docs/superpowers/plans/2026-08-26-who-don-ingestion.md` and the design at `docs/superpowers/specs/2026-08-26-who-don-ingestion-design.md`. Steps for Tasks 1–5 are ticked; Tasks 6–10 are not.
+This slice ingests WHO Disease Outbreak News documents into the `signals` table.
+All plan steps are complete and ticked. The branch is ready for its finishing
+workflow; read the plan and approved design before integrating it.
 
 ## Start here
 
 ```powershell
 cd "D:\Projects\Side Project\EpiSignal\.worktrees\ingestion"
 uv sync
-uv run pytest -q          # expect 90 passed
+uv run pytest -q          # expect 123 passed
 ```
 
 Windows machine. Python tooling is `uv` — prefix every Python command with `uv run`. `pnpm` is NOT on PATH; use `corepack pnpm`. PowerShell 7 (`pwsh`) is not installed either; scripts run under Windows PowerShell 5.1.
@@ -21,7 +23,7 @@ Windows machine. Python tooling is `uv` — prefix every Python command with `uv
 
 EpiSignal turns public health reporting into traceable events. Its core principle: **never show a number without the evidence behind it.** That principle is not decoration — it decided several design points below, and it should decide yours.
 
-The foundation slice (already merged to `main`) built the schema, a FastAPI service, a Next.js shell, and canonical seeds. There is still **no live ingestion and no fabricated outbreak data** anywhere in the repo. This slice puts the first real documents in the database.
+The foundation slice (already merged to `main`) built the schema, a FastAPI service, a Next.js shell, and canonical seeds. This slice put the first real, traceable WHO documents in the configured Supabase database without fabricating outbreak data.
 
 ## What is done
 
@@ -32,19 +34,21 @@ The foundation slice (already merged to `main`) built the schema, a FastAPI serv
 | 3 | `3e48e99`, `af68354` | `ingestion/fingerprint.py` — `content_hash`, SHA-256 hex, NFC-normalised |
 | 4 | `5fe1426`, `7bc969b` | `ingestion/documents.py` and `ingestion/protocol.py` — the contracts and both Protocols |
 | 5 | `ac61f40`, `09c008a` | `ingestion/who_don.py` — `WhoDonConnector.normalize` plus `strip_html` and `parse_utc` |
+| 6 | `a743721`, `901ab5a` | Credential-free WHO HTTP fetching, strict response validation, paging, retry, and inclusive backfill semantics |
+| 7 | `21a8add` | Thin SQLAlchemy `SignalRepository` adapter |
+| 8 | `5934207` | Protocol-only ingestion pipeline with per-document isolation and in-memory tests |
+| 9 | `d43e9d4` | CLI, `ingest:who`, corrected WHO seed URL, and per-source signal counts |
+| 10 | — | Live migration, seed, first ingestion, idempotency proof, evidence audit, and full backend/frontend verification |
 | — | `3fc5df0` | Corrections to the plan text itself (see "Plan corrections" below) |
 
-The migration has **not** been applied to the live Supabase database yet. That happens in Task 10.
+The live database has migration `20260826_0002`, 29 diseases, two sources, and
+12 WHO signals. A first run inserted 12; immediate reruns inserted 0 and skipped
+12. All later-slice extraction fields remain null.
 
 ## What remains
 
-- **Task 6** — `fetch` over HTTP: OData paging, 20s timeout, 3 retries with backoff, tested with `httpx.MockTransport`. Adds `httpx` to `packages/backend/pyproject.toml`.
-- **Task 7** — `ingestion/repository.py`: the SQLAlchemy `SignalRepository`.
-- **Task 8** — `ingestion/pipeline.py`: `run_ingestion`, tested entirely with in-memory fakes.
-- **Task 9** — `ingest_runner.py` CLI, the `ingest:who` pnpm script, correcting the dead WHO URL in `database/seeds/sources.json`, and signal counts in `schema_check.py`.
-- **Task 10** — live verification against the configured Supabase project.
-
-Tasks 6–9 need no credentials. Task 10 does; `apps/api/.env` is already present in this worktree and working.
+Choose the finishing workflow: merge locally into local `main`, open a PR, or
+keep the branch/worktree. Do not use `origin/main` as the base.
 
 ## Architecture, and why it is shaped this way
 
@@ -55,8 +59,8 @@ packages/backend/src/episignal_backend/ingestion/
   documents.py     RawDocument, NormalizedSignal
   protocol.py      SourceConnector, SignalRepository
   who_don.py       WhoDonConnector             the only module that will open a socket
-  repository.py    (Task 7)
-  pipeline.py      (Task 8)
+  repository.py    SQLAlchemy storage adapter
+  pipeline.py      ingestion decisions
 ```
 
 `pipeline.py` must import the two Protocols and **nothing else** — no SQLAlchemy, no httpx. That is what keeps every ingestion decision testable with in-memory fakes. Every test in this repository runs without credentials and without network access. Keep it that way.
@@ -65,7 +69,7 @@ packages/backend/src/episignal_backend/ingestion/
 
 ## Things that will bite you
 
-These were all found the hard way during Tasks 1–5. Each cost a review cycle.
+These were found during implementation and review.
 
 1. **`hash(RawDocument(...))` raises `TypeError`** despite `frozen=True`, because `payload` is a dict. The model *looks* set-safe and is not. Do not put documents in a set in Task 8.
 
@@ -112,9 +116,11 @@ Genuine defects caught, as calibration for how carefully this code needs reading
 
 ## Workflow
 
-Executed with `superpowers:subagent-driven-development`: one implementer subagent per task, then a spec-compliance reviewer, then a code-quality reviewer, each verifying independently rather than trusting the previous report. Reviewers were told explicitly not to trust the implementer's claims.
-
-To continue that way, use `superpowers:subagent-driven-development`. To execute inline instead, use `superpowers:executing-plans`. Either is fine. Do not start implementation on `main`.
+Executed with test-first implementation, per-task gates, lean task reviews, a
+final two-axis review, and live verification. Final review found and corrected
+publication-watermark evidence loss: normal runs now recheck a rolling 90-day
+publication-or-modification window, so recent revisions and failed documents
+are retried without cursor gaps.
 
 ## Finishing
 

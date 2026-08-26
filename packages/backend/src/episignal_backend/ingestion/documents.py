@@ -29,6 +29,7 @@ class RawDocument(BaseModel):
 
     payload: dict[str, Any]
     retrieved_at: datetime
+    source_url: str | None = None
 
     @field_validator("retrieved_at")
     @classmethod

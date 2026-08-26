@@ -119,8 +119,6 @@ class SignalRepository(Protocol):
 
     def add(self, signal: NormalizedSignal, source_id: UUID) -> None: ...
 
-    def latest_published_at(self, source_id: UUID) -> datetime | None: ...
-
     def activate(self, source_id: UUID) -> None: ...
 ```
 
@@ -137,14 +135,17 @@ function of its input document, so it is tested against a committed JSON fixture
 
 1. Resolve the `Source` row by name `WHO Disease Outbreak News`. If it is
    missing, print `Run pnpm db:seed first.` and exit 1.
-2. Resolve the window start: the `--since` argument if given; otherwise the
-   newest `published_at` already stored for that source; otherwise 90 days before
-   the run start.
-3. Fetch, ascending by `PublicationDateAndTime`, paging until exhausted. An
-   explicit `--since` is passed with `inclusive=True` and uses OData `ge`, so a
-   stated date ingests that day. A window start derived from stored rows uses
-   the default `inclusive=False` and OData `gt`, so the newest stored document
-   is not refetched. Timeout 20 seconds per request, with three total attempts
+2. Resolve the activity-window start: the `--since` argument if given;
+   otherwise 90 days before the run start. Stored rows do not advance a cursor:
+   every run rechecks the activity window, and content hashes make that retry
+   idempotent.
+3. Fetch documents published or last modified in the activity window, ascending
+   by `LastModified`, and page until exhausted. An explicit `--since` is passed
+   with `inclusive=True` and uses OData `ge`, so a stated date includes that day;
+   the default rolling window uses `gt`. Including `LastModified` detects a
+   recent revision even when its original publication date is older than the
+   window. Rechecking the window prevents a partial run from advancing past a
+   failed document. Timeout 20 seconds per request, with three total attempts
    and exponential backoff on timeouts and status codes 429, 500, 502, 503, and
    504. A 4xx other than 429 is not retried. A missing or malformed `value`
    collection raises a source-format error and fails the run rather than
@@ -159,7 +160,7 @@ function of its input document, so it is tested against a committed JSON fixture
    | `title` | `Title`, whitespace-collapsed |
    | `raw_text` | `Overview`, `Epidemiology`, `Assessment`, `Advice`, `Response` joined with blank lines, HTML tags stripped, entities decoded |
    | `published_at` | `PublicationDateAndTime`, UTC |
-   | `retrieved_at` | run start, UTC |
+   | `retrieved_at` | connector fetch start, UTC |
    | `language` | `en` |
    | `content_hash` | `content_hash(title, raw_text)` |
    | `signal_type` | `unknown` |
@@ -202,9 +203,9 @@ reformatting-only edit from registering as a new version.
 | Document fails to normalize or insert | Log its URL, skip it, continue, exit 1 at the end |
 | Nothing new to fetch | `inserted=0 skipped=0 failed=0`, exit 0 |
 
-The window start is derived from stored rows rather than from a separate
-watermark, so a failed run cannot advance past a gap. There is no state to
-repair after a crash.
+The activity window is derived from the requested backfill date or the current
+run time, never from partially stored rows. A failed run therefore cannot
+advance past a gap, and there is no cursor state to repair after a crash.
 
 No log line contains the connection string, and per-document failures log the
 document URL rather than its body.
