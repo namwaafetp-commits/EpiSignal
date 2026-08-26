@@ -1193,9 +1193,16 @@ def sample() -> NormalizedSignal:
     )
 
 
+def _conforms(repository: SignalRepository) -> SignalRepository:
+    # mypy checks this structurally, signatures included. isinstance below only
+    # checks that the member NAMES exist, so it cannot stand in for this.
+    return repository
+
+
 def test_sqlalchemy_repository_satisfies_the_protocol() -> None:
     repository = SqlAlchemySignalRepository(session=None)  # type: ignore[arg-type]
     assert isinstance(repository, SignalRepository)
+    assert _conforms(repository) is repository
 
 
 def test_build_signal_maps_every_normalized_field() -> None:
@@ -1340,6 +1347,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
+from episignal_backend.ingestion.fingerprint import content_hash
 from episignal_backend.ingestion.pipeline import (
     DEFAULT_WINDOW_DAYS,
     MissingSourceError,
@@ -1349,6 +1357,13 @@ from episignal_backend.ingestion.pipeline import (
 NOW = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 SOURCE = "WHO Disease Outbreak News"
 URL = "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON615"
+TITLE = "Ebola disease - Democratic Republic of the Congo"
+
+
+def digest(content: str) -> str:
+    # Real digests, not synthetic ones: NormalizedSignal requires lowercase hex,
+    # and deriving them here keeps the sentinel wording free to be anything.
+    return content_hash(TITLE, content)
 
 
 def signal(content: str = "a") -> NormalizedSignal:
@@ -1356,11 +1371,11 @@ def signal(content: str = "a") -> NormalizedSignal:
         external_id="2026-DON615",
         url=URL,
         canonical_url=URL,
-        title="Ebola disease - Democratic Republic of the Congo",
+        title=TITLE,
         raw_text=content,
         published_at=NOW - timedelta(days=1),
         retrieved_at=NOW,
-        content_hash=content[0] * 64,
+        content_hash=digest(content),
     )
 
 
@@ -1423,7 +1438,7 @@ def test_an_unseen_document_is_inserted() -> None:
     repository = FakeRepository()
     result = run_ingestion(repository, FakeConnector([signal()]), now=NOW)
     assert (result.inserted, result.skipped, result.failed) == (1, 0, 0)
-    assert repository.stored == [(URL, "a" * 64)]
+    assert repository.stored == [(URL, digest("a"))]
 
 
 def test_the_same_document_is_skipped_on_a_second_run() -> None:
@@ -1448,7 +1463,7 @@ def test_one_unparseable_document_does_not_stop_the_others() -> None:
     connector = FakeConnector([signal("unparseable"), signal("c")])
     result = run_ingestion(repository, connector, now=NOW)
     assert (result.inserted, result.skipped, result.failed) == (1, 0, 1)
-    assert repository.stored == [(URL, "c" * 64)]
+    assert repository.stored == [(URL, digest("c"))]
 
 
 def test_a_storage_failure_rolls_back_only_that_document() -> None:
