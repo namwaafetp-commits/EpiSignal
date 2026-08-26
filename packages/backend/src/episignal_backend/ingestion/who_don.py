@@ -7,7 +7,6 @@ no network access.
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from html.parser import HTMLParser
 from time import sleep as default_sleep
 from typing import Any
 
@@ -15,6 +14,7 @@ import httpx
 
 from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
 from episignal_backend.ingestion.fingerprint import content_hash
+from episignal_backend.ingestion.html_text import strip_html
 from episignal_backend.ingestion.urls import canonicalize_url
 
 SOURCE_NAME = "WHO Disease Outbreak News"
@@ -25,65 +25,8 @@ MAX_ATTEMPTS = 3
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 ITEM_URL_TEMPLATE = "https://www.who.int/emergencies/disease-outbreak-news/item/{url_name}"
 SECTION_FIELDS = ("Overview", "Epidemiology", "Assessment", "Advice", "Response")
-BLOCK_TAGS = frozenset(
-    {
-        "p",
-        "div",
-        "br",
-        "li",
-        "ul",
-        "ol",
-        "tr",
-        "td",
-        "th",
-        "table",
-        "thead",
-        "tbody",
-        "section",
-        "blockquote",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-    }
-)
-SKIPPED_TAGS = frozenset({"script", "style"})
 
-
-class _TextExtractor(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.parts: list[str] = []
-        self._skipping = 0
-
-    def handle_data(self, data: str) -> None:
-        if not self._skipping:
-            self.parts.append(data)
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in SKIPPED_TAGS:
-            self._skipping += 1
-        elif tag in BLOCK_TAGS:
-            self.parts.append(" ")
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in SKIPPED_TAGS:
-            if self._skipping:
-                self._skipping -= 1
-        elif tag in BLOCK_TAGS:
-            self.parts.append(" ")
-
-
-def strip_html(value: str) -> str:
-    extractor = _TextExtractor()
-    extractor.feed(value)
-    extractor.close()
-    # `convert_charrefs=True` already decodes entities while parsing data, so a
-    # second `html.unescape()` here would decode an upstream double-escaped
-    # value (e.g. `&amp;lt;`) into a literal tag and corrupt the evidence text.
-    return " ".join("".join(extractor.parts).split())
+__all__ = ["API_URL", "SOURCE_NAME", "WhoDonConnector", "parse_utc", "strip_html"]
 
 
 def parse_utc(value: str) -> datetime:

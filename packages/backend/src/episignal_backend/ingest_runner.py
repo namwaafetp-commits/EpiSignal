@@ -6,17 +6,24 @@ and document bodies would otherwise reach the console.
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from episignal_backend.db.session import session_scope
+from episignal_backend.ingestion.ecdc_epi import EcdcEpiConnector
 from episignal_backend.ingestion.pipeline import MissingSourceError, run_ingestion
 from episignal_backend.ingestion.protocol import SourceConnector
 from episignal_backend.ingestion.repository import SqlAlchemySignalRepository
 from episignal_backend.ingestion.who_don import WhoDonConnector
 
-CONNECTORS = {"who-don": WhoDonConnector}
+# Annotated rather than inferred: this is the structural conformance gate.
+# `runtime_checkable` only compares attribute names, so mypy checking each
+# class against the Protocol here is what actually proves a connector fits.
+CONNECTORS: dict[str, Callable[[], SourceConnector]] = {
+    "ecdc-epi": EcdcEpiConnector,
+    "who-don": WhoDonConnector,
+}
 
 
 @dataclass(frozen=True)
@@ -47,7 +54,7 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
-    connector: SourceConnector = CONNECTORS[arguments.connector]()
+    connector = CONNECTORS[arguments.connector]()
 
     try:
         with session_scope() as session:
@@ -66,7 +73,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
-    print(f"inserted={result.inserted} skipped={result.skipped} failed={result.failed}")
+    print(
+        f"inserted={result.inserted} skipped={result.skipped} "
+        f"rejected={result.rejected} failed={result.failed}"
+    )
     return 0 if result.failed == 0 else 1
 
 

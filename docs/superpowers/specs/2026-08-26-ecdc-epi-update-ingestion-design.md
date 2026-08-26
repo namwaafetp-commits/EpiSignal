@@ -22,7 +22,9 @@ verbatim from an ECDC page, and repeated runs inserting nothing new.
   only a teaser; the content is a PDF. Extracted PDF text is a transformation of
   the source, which needs its own evidence argument and its own design.
 - Backfill beyond the feed horizon. See "Known coverage limit".
-- Outbreak landing pages, whose only text is link cards.
+- Index and campaign pages that carry no prose region. They are rejected at
+  normalization rather than filtered from the feed, so they stay visible in the
+  run's counts.
 - Translation, event matching, extracted case counts, summaries, relevance
   scores, and every AI field. Those belong to later slices, and
   `NormalizedSignal` still must not carry them.
@@ -62,16 +64,23 @@ The linked article pages carry the evidence. Verified on five pages:
   2026-05-26 against a publication time of 2026-05-20.
 - `<link rel="canonical">` is present on every page.
 - `<link rel="shortlink" href="https://www.ecdc.europa.eu/en/node/41940">`
-  exposes a stable Drupal node ID on `News` and `Landing Page` pages, but **not**
-  on `website` pages, whose shortlink is the URL itself.
+  exposes a stable Drupal node ID on every page examined.
 
-`og:type` sorts the feed into three kinds:
+**`og:type` is not a usable filter.** Page summaries suggested the recurring
+overview pages reported `website`; the downloaded HTML shows `dengue-monthly`
+reports `Landing Page`, exactly as the Ebola outbreak page does. The value does
+not separate evidence from navigation:
 
-| `og:type` | Items | Node ID | Body | Decision |
-| --- | --- | --- | --- | --- |
-| `News` | 3 | Yes | 330–1970 words of prose | Ingest |
-| `website` | 4 | No | 1200–3500 words of prose | Ingest |
-| `Landing Page` | 2 | Yes | Link cards only | Reject |
+| Fixture | `og:type` | Node ID | Extracted prose |
+| --- | --- | --- | --- |
+| Hantavirus update | `News` | 42178 | 400 words |
+| Dengue overview | `Landing Page` | 33075 | 1599 words |
+| Ebola outbreak page | `Landing Page` | 41929 | 503 words, with case counts |
+
+The Ebola page is also not "link cards only": its prose region carries confirmed
+case and death counts. Every one of the three yields clean evidence from
+`div.wysiwyg-content`, which is therefore the discriminator: a page is ingested
+when it has a prose region, and rejected when it has none.
 
 ECDC content is licensed **CC BY 4.0**. Reuse and redistribution are permitted
 with attribution to ECDC as creator, a link to the licence, and an indication of
@@ -84,14 +93,14 @@ so no modification notice is required. The ECDC logo is excluded and is not used
 | Decision | Choice | Reason |
 | --- | --- | --- |
 | Stream | Epidemiological updates feed, HTML articles | One page carries one continuous prose body, which maps onto one signal the way a WHO DON does. The CDTR is a weekly roundup locked in a PDF. |
-| Item filter | Accept `og:type` of `News` and `website`; reject `Landing Page` | The real line is a continuous prose body against link cards. `og:type` alone is not a quality filter, but combined with the observed body shape it separates evidence from navigation. |
+| Item filter | Accept any page with a `div.wysiwyg-content` region; reject any page without one | `og:type` does not track evidence quality: `dengue-monthly` and the Ebola outbreak page share `Landing Page` while carrying 1599 and 503 words of prose. Presence of a body region is the property actually being tested, so it is the property tested. |
 | Backfill depth | Whatever the 10-item feed returns | The feed offers no paging. Scraping ECDC's paginated listing to reach older items adds markup coupling for history the homepage already warns is limited. |
-| Identity | `url` plus `content_hash`, unchanged | Four of the seven ingested pages are rewritten in place at a static URL. The existing composite key already turns an in-place rewrite into an appended version, preserving the prior text. No schema change. |
-| `external_id` | Drupal node ID where present, otherwise NULL | A fabricated identifier for `website` pages would be worse than an honest absence. |
+| Identity | `url` plus `content_hash`, unchanged | Most pages in this feed are rewritten in place at a static URL. The existing composite key already turns an in-place rewrite into an appended version, preserving the prior text. No schema change. |
+| `external_id` | Drupal node ID from `rel="shortlink"` where present, otherwise NULL | Every page examined carried one, but a page without one must store NULL rather than a fabricated identifier. |
 | `published_at` | `article:published_time`, falling back to feed `pubDate` | The page states its own publication time; the feed restates it. |
-| Revision signal | `content_hash` over title and body, not `og:updated_time` | `og:updated_time` is stale on `website` pages, where it equals the publication time despite in-place rewrites. Only the text decides whether the text changed. |
+| Revision signal | `content_hash` over title and body, not `og:updated_time` | `og:updated_time` is unreliable: on the dengue overview it equals the publication time despite in-place rewriting. Only the text decides whether the text changed. |
 | Article fetch failure | Recorded in the payload, raised in `normalize` | Keeps per-document failure accounting in the pipeline where it already lives, and keeps `normalize` a pure function. See "Error handling". |
-| Rejected page type | Counted as `rejected`, not `failed` | A `Landing Page` in the feed is normal and permanent. Counting it as a failure would make the command exit non-zero on every healthy run, which trains people to ignore the exit code. Counting it separately keeps the rejection visible without faking an error. |
+| Page with no body | Counted as `rejected`, not `failed` | ECDC publishes index and campaign pages to this feed. They are normal and permanent, so counting them as failures would make the command exit non-zero on every healthy run, which trains people to ignore the exit code. |
 | HTML parsing | Extend the existing stdlib `HTMLParser` approach | The backend has five runtime dependencies and no HTML library. A scoped parser is enough and adds none. |
 | Placement | `ingestion/ecdc_epi.py` plus a shared `ingestion/html_text.py` | Shared code is extracted only where the second connector forces it. |
 
@@ -194,17 +203,17 @@ boundary moves.
 `normalize(document)` is a pure function of that payload.
 
 1. If `article_error` is present, raise `ValueError`.
-2. Read `og:type`. If it is not `News` or `website`, raise `UnsupportedDocument`
-   naming the rejected type. The pipeline counts it in `rejected`, not `failed`.
+2. Extract the body (step 6). If it is blank, raise `UnsupportedDocument`. The
+   pipeline counts it in `rejected`, not `failed`. `og:type` is not read.
 3. `url` is `<link rel="canonical">`, falling back to the feed link. The page's
    own canonical is authoritative over the feed's.
 4. `canonical_url` is `canonicalize_url(url)`.
 5. `title` is the feed `<title>`, collapsed by `NormalizedSignal` as WHO's is.
-6. `raw_text` is `strip_html_within(article_html, tag="div", attribute="id",
-   value="main-content")`, with the exact container determined during
-   implementation against committed fixtures. It must exclude the global
-   navigation, the badge row, the "More on this topic" cards, and the footer. A
-   blank result raises, which `NormalizedSignal` also enforces.
+6. `raw_text` is `strip_html_within(article_html, tag="div", attribute="class",
+   token="wysiwyg-content")`. `id="main-content"` was the first candidate but
+   wraps the badge row and the related-content cards as well. Regions are joined
+   with a blank line. Each fixture carries sentinel text in its navigation, badge
+   row, related cards and footer, and the tests assert none of it survives.
 7. `published_at` is `article:published_time`, falling back to the feed
    `pubDate`. Both carry an offset; the source's offset is preserved rather than
    converted, matching `_require_aware`.
@@ -232,9 +241,9 @@ assume the connector already did.
   and raised there, so the pipeline counts it in `failed`, logs the URL and the
   exception class, rolls back that document, and continues. Folding the failure
   away inside `fetch` would have hidden it from the count.
-- A rejected `og:type` raises `UnsupportedDocument` and lands in `rejected`. It
-  is logged with the URL and the offending type, so a feed that starts returning
-  unexpected page types is visible without turning a healthy run red.
+- A page with no prose region raises `UnsupportedDocument` and lands in
+  `rejected`, logged with the URL, so a feed that starts returning pages this
+  connector cannot read is visible without turning a healthy run red.
 - `ingest_runner.py` prints counts only, and exits non-zero when `failed > 0`.
 
 A typical run therefore reports a non-zero `rejected` count and exits zero. A
@@ -247,11 +256,17 @@ No test uses credentials or the network.
 
 Committed fixtures under `packages/backend/tests/fixtures/`:
 
-- `ecdc_epi_feed.xml` — the real feed response, trimmed to four items covering
-  `News`, `website`, `Landing Page`, and one item outside the window.
-- `ecdc_epi_news.html` — a real `News` article page.
-- `ecdc_epi_website.html` — a real `website` overview page.
-- `ecdc_epi_landing.html` — a real `Landing Page`.
+- `ecdc_epi_feed.xml` — the real feed response, trimmed to the three real items
+  plus one synthetic item published outside any plausible window.
+- `ecdc_epi_news.html` — the real hantavirus update.
+- `ecdc_epi_website.html` — the real dengue overview.
+- `ecdc_epi_landing.html` — the real Ebola outbreak page.
+- `ecdc_epi_nobody.html` — a page whose only content is link cards.
+
+Each article fixture keeps the four metadata tags the connector reads and every
+`wysiwyg-content` region verbatim, wrapped in navigation, badge, related-card and
+footer elements carrying sentinel text. Full pages run 89–117 KB each; the
+trimmed fixtures state exactly what the connector depends on.
 
 `normalize` tests, against fixtures, assert:
 
@@ -261,9 +276,11 @@ Committed fixtures under `packages/backend/tests/fixtures/`:
   page;
 - `url` comes from `rel="canonical"` when it differs from the feed link;
 - `published_at` uses `article:published_time` and keeps its offset;
-- a `Landing Page` raises `UnsupportedDocument`;
+- a page with no prose region raises `UnsupportedDocument`;
 - an `article_error` payload raises `ValueError`, not `UnsupportedDocument`;
-- a page whose body region is empty raises.
+- the dengue overview and the Ebola page are both accepted, and the Ebola text
+  still contains `5 656 confirmed cases`;
+- editing one word of the body changes `content_hash`.
 
 `pipeline` tests, with the existing in-memory fakes, assert that a connector
 raising `UnsupportedDocument` increments `rejected`, leaves `failed` at zero,
@@ -305,8 +322,8 @@ corepack pnpm ingest:ecdc
 corepack pnpm ingest:ecdc
 ```
 
-The first run inserts the accepted items and reports the `Landing Page` items
-under `rejected`, exiting zero. The second reports `inserted=0` with the same
+The first run inserts the accepted items and reports any body-less pages under
+`rejected`, exiting zero. The second reports `inserted=0` with the same
 `rejected` count and the accepted items now under `skipped`, proving identity
 holds. `GET /api/v1/signals` then reports `source_count=2`, and the homepage
 shows ECDC cards alongside WHO cards with expandable exact text.

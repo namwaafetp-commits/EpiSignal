@@ -9,7 +9,11 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from episignal_backend.ingestion.protocol import SignalRepository, SourceConnector
+from episignal_backend.ingestion.protocol import (
+    SignalRepository,
+    SourceConnector,
+    UnsupportedDocument,
+)
 
 DEFAULT_WINDOW_DAYS = 90
 
@@ -25,6 +29,7 @@ class IngestionResult:
     inserted: int
     skipped: int
     failed: int
+    rejected: int = 0
 
 
 def run_ingestion(
@@ -45,6 +50,7 @@ def run_ingestion(
     inserted = 0
     skipped = 0
     failed = 0
+    rejected = 0
 
     for document in connector.fetch(window_start, inclusive=since is not None):
         try:
@@ -55,6 +61,16 @@ def run_ingestion(
             repository.add(signal, source_id)
             repository.commit()
             inserted += 1
+        except UnsupportedDocument as reason:
+            # No rollback: nothing was written. A rejected document is routine,
+            # so it must not make an otherwise healthy run report a failure.
+            rejected += 1
+            logger.info(
+                "Skipped unsupported document %s from %s (%s)",
+                document.source_url or "<unknown URL>",
+                connector.source_name,
+                reason,
+            )
         except Exception as error:
             repository.rollback()
             failed += 1
@@ -68,4 +84,4 @@ def run_ingestion(
     repository.activate(source_id)
     repository.commit()
 
-    return IngestionResult(inserted=inserted, skipped=skipped, failed=failed)
+    return IngestionResult(inserted=inserted, skipped=skipped, failed=failed, rejected=rejected)

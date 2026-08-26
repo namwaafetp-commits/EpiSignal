@@ -15,7 +15,7 @@
     "source_type": "regional_public_health_agency",
     "country_code": null,
     "base_url": "https://www.ecdc.europa.eu/en/threats-and-outbreaks",
-    "feed_url": null,
+    "feed_url": "https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed",
     "credibility_tier": "official",
     "is_official": true,
     "language": "en",

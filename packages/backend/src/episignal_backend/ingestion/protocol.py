@@ -35,3 +35,13 @@ class SignalRepository(Protocol):
     def commit(self) -> None: ...
 
     def rollback(self) -> None: ...
+
+
+class UnsupportedDocument(Exception):
+    """The source returned a document this connector does not ingest.
+
+    Distinct from a failure: the source is healthy and the connector understood
+    it, but the document carries no evidence this connector can store. Raising
+    it keeps the document visible in the run's counts without turning a normal
+    run into an error.
+    """

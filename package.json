@@ -24,6 +24,7 @@
     "db:rollback": "uv run --package episignal-api alembic -c database/alembic.ini downgrade -1",
     "db:seed": "uv run --package episignal-backend python -m episignal_backend.seed_runner",
     "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
+    "ingest:ecdc": "uv run --package episignal-backend python -m episignal_backend.ingest_runner ecdc-epi",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm contracts:check && pnpm build"
   },
   "devDependencies": {

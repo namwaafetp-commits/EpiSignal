@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" xml:base="https://www.ecdc.europa.eu/en">
+<channel>
+<title>Epidemiological update</title>
+<link>https://www.ecdc.europa.eu/en</link>
+<description/>
+<language>en</language>
+<item>
+  <title>Epidemiological update – 11 August 2026: Imported case of Andes hantavirus in the EU/EEA</title>
+  <link>https://www.ecdc.europa.eu/en/news-events/epidemiological-update-11-august-2026-imported-case-andes-hantavirus-eueea</link>
+  <description>&lt;p&gt;On 6 August 2026, French public health authorities reported an imported case of Andes hantavirus infection in a traveller from Argentina.&amp;nbsp;&lt;/p&gt;
+</description>
+  <pubDate>Thu, 20 Aug 2026 13:39:42 +0200</pubDate>
+    <dc:creator>ECDC</dc:creator>
+    <guid isPermaLink="true">https://www.ecdc.europa.eu/en/news-events/epidemiological-update-11-august-2026-imported-case-andes-hantavirus-eueea</guid>
+    </item>
+<item>
+  <title>Dengue worldwide overview</title>
+  <link>https://www.ecdc.europa.eu/en/dengue-monthly</link>
+  <description>&lt;p&gt;Every month ECDC provides detailed epidemiological overview of the worldwide transmission of dengue in its weekly threat report (Communicable Diseases Threat Report).&lt;/p&gt;
+</description>
+  <pubDate>Mon, 30 Mar 2026 09:17:53 +0200</pubDate>
+    <dc:creator>ECDC</dc:creator>
+    <guid isPermaLink="true">https://www.ecdc.europa.eu/en/dengue-monthly</guid>
+    </item>
+<item>
+  <title>Ebola disease outbreak in the Democratic Republic of the Congo and Uganda</title>
+  <link>https://www.ecdc.europa.eu/en/ebola-outbreak-democratic-republic-congo-and-uganda</link>
+  <description>&lt;p&gt;On 17 May 2026, the World Health Organization (WHO) declared the Ebola virus disease outbreak caused by Bundibugyo virus in the Democratic Republic of the Congo (DRC) and Uganda a Public Health Emergency of International Concern.&lt;/p&gt;
+</description>
+  <pubDate>Fri, 21 Aug 2026 17:36:21 +0200</pubDate>
+    <dc:creator>ECDC</dc:creator>
+    <guid isPermaLink="true">https://www.ecdc.europa.eu/en/ebola-outbreak-democratic-republic-congo-and-uganda</guid>
+    </item>
+<item>
+  <title>Epidemiological update: an item published long before the window</title>
+  <link>https://www.ecdc.europa.eu/en/news-events/epidemiological-update-out-of-window</link>
+  <description>&lt;p&gt;Outside the requested window.&lt;/p&gt;</description>
+  <pubDate>Mon, 06 Jan 2025 09:00:00 +0100</pubDate>
+  <dc:creator>ECDC</dc:creator>
+  <guid isPermaLink="true">https://www.ecdc.europa.eu/en/news-events/epidemiological-update-out-of-window</guid>
+</item>
+</channel>
+</rss>

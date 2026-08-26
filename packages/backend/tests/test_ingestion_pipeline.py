@@ -11,6 +11,7 @@ from episignal_backend.ingestion.pipeline import (
     MissingSourceError,
     run_ingestion,
 )
+from episignal_backend.ingestion.protocol import UnsupportedDocument
 
 NOW = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 SOURCE = "WHO Disease Outbreak News"
@@ -93,6 +94,8 @@ class FakeConnector:
         index = int(document.payload["index"])
         if self._signals[index].raw_text == "unparseable":
             raise ValueError("cannot normalize this document")
+        if self._signals[index].raw_text == "unsupported":
+            raise UnsupportedDocument("page carries no article body")
         return self._signals[index]
 
 
@@ -192,3 +195,42 @@ def test_a_document_failure_logs_its_url_without_evidence_text(
     assert SOURCE in caplog.text
     assert "explode" not in caplog.text
     assert "cannot store this document" not in caplog.text
+
+
+def test_an_unsupported_document_is_rejected_not_failed() -> None:
+    # A source that publishes something outside a connector's scope is healthy.
+    # Counting it as a failure would make every normal run exit non-zero.
+    repository = FakeRepository()
+    result = run_ingestion(repository, FakeConnector([signal("unsupported")]), now=NOW)
+    assert (result.inserted, result.skipped, result.rejected, result.failed) == (0, 0, 1, 0)
+
+
+def test_a_rejected_document_is_not_rolled_back() -> None:
+    # Nothing was written, so a rollback would only obscure what happened.
+    repository = FakeRepository()
+    run_ingestion(repository, FakeConnector([signal("unsupported")]), now=NOW)
+    assert repository.rollbacks == 0
+
+
+def test_a_rejected_document_does_not_stop_the_run() -> None:
+    repository = FakeRepository()
+    result = run_ingestion(
+        repository,
+        FakeConnector([signal("unsupported"), signal("a")]),
+        now=NOW,
+    )
+    assert (result.inserted, result.rejected, result.failed) == (1, 1, 0)
+    assert repository.stored == [(URL, digest("a"))]
+
+
+def test_a_failure_is_still_counted_as_a_failure() -> None:
+    repository = FakeRepository()
+    result = run_ingestion(repository, FakeConnector([signal("unparseable")]), now=NOW)
+    assert (result.rejected, result.failed) == (0, 1)
+    assert repository.rollbacks == 1
+
+
+def test_a_run_with_no_rejections_reports_zero() -> None:
+    repository = FakeRepository()
+    result = run_ingestion(repository, FakeConnector([signal()]), now=NOW)
+    assert result.rejected == 0
