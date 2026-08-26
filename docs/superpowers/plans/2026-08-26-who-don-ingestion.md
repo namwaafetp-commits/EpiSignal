@@ -48,7 +48,7 @@ A revised WHO document keeps its URL, so URL alone can no longer be the identity
 - Modify: `apps/api/tests/test_migrations.py`
 - Create: `database/migrations/versions/20260826_0002_signal_versions.py`
 
-- [ ] **Step 1: Replace the URL uniqueness test**
+- [x] **Step 1: Replace the URL uniqueness test**
 
 In `packages/backend/tests/test_models.py`, delete this test entirely:
 
@@ -74,13 +74,13 @@ def test_signal_versions_are_unique_by_url_and_content_hash() -> None:
     assert [column.name for column in constraint.columns] == ["url", "content_hash"]
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest packages/backend/tests/test_models.py -k versions -v`
 
 Expected: FAIL with `StopIteration`, because no constraint is named `uq_signals_url_content_hash` yet.
 
-- [ ] **Step 3: Change the model**
+- [x] **Step 3: Change the model**
 
 In `packages/backend/src/episignal_backend/models/signal.py`, add `UniqueConstraint` to the existing `sqlalchemy` import list, so it reads:
 
@@ -124,13 +124,13 @@ The constraint carries an explicit name because the metadata naming convention
 would otherwise derive `uq_signals_url` from the first column and collide with
 the constraint this migration drops.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run pytest packages/backend/tests/test_models.py -v`
 
 Expected: PASS, 9 tests.
 
-- [ ] **Step 5: Update the migration head test**
+- [x] **Step 5: Update the migration head test**
 
 In `apps/api/tests/test_migrations.py`, change the head assertion:
 
@@ -151,13 +151,13 @@ def test_second_revision_versions_signals_by_content_hash() -> None:
     assert "drop constraint uq_signals_url" in sql
 ```
 
-- [ ] **Step 6: Run the migration tests to verify they fail**
+- [x] **Step 6: Run the migration tests to verify they fail**
 
 Run: `uv run pytest apps/api/tests/test_migrations.py -v`
 
 Expected: FAIL. `test_migrations_have_one_linear_head` reports `['20260826_0001'] != ['20260826_0002']` because the second revision does not exist yet.
 
-- [ ] **Step 7: Write the migration**
+- [x] **Step 7: Write the migration**
 
 Create `database/migrations/versions/20260826_0002_signal_versions.py`:
 
@@ -199,13 +199,13 @@ def downgrade() -> None:
     op.create_unique_constraint("uq_signals_url", "signals", ["url"])
 ```
 
-- [ ] **Step 8: Run the migration tests to verify they pass**
+- [x] **Step 8: Run the migration tests to verify they pass**
 
 Run: `uv run pytest apps/api/tests/test_migrations.py -v`
 
 Expected: PASS, 4 tests.
 
-- [ ] **Step 9: Run every check**
+- [x] **Step 9: Run every check**
 
 ```powershell
 uv run pytest -q
@@ -216,7 +216,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: every test passes; Ruff and mypy clean.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add packages/backend database/migrations apps/api/tests/test_migrations.py
@@ -232,7 +232,7 @@ git commit -m "feat: version signals by content hash"
 - Create: `packages/backend/tests/test_ingestion_urls.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/urls.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_urls.py`:
 
@@ -275,13 +275,13 @@ def test_canonicalize_url_is_idempotent() -> None:
     assert canonicalize_url(once) == once
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_urls.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion'`.
 
-- [ ] **Step 3: Create the package marker**
+- [x] **Step 3: Create the package marker**
 
 Create `packages/backend/src/episignal_backend/ingestion/__init__.py` containing exactly one line:
 
@@ -289,7 +289,7 @@ Create `packages/backend/src/episignal_backend/ingestion/__init__.py` containing
 """Source ingestion: fetch documents, normalize them, store them once."""
 ```
 
-- [ ] **Step 4: Implement canonicalize_url**
+- [x] **Step 4: Implement canonicalize_url**
 
 Create `packages/backend/src/episignal_backend/ingestion/urls.py`:
 
@@ -335,13 +335,13 @@ def canonicalize_url(url: str) -> str:
     )
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_urls.py -v`
 
 Expected: PASS, 11 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/backend
@@ -356,7 +356,7 @@ git commit -m "feat: canonicalize source document URLs"
 - Create: `packages/backend/tests/test_ingestion_fingerprint.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/fingerprint.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_fingerprint.py`:
 
@@ -390,13 +390,13 @@ def test_content_hash_does_not_confuse_title_and_body_boundaries() -> None:
     assert content_hash("a", "b") != content_hash("a b", "")
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_fingerprint.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.fingerprint'`.
 
-- [ ] **Step 3: Implement content_hash**
+- [x] **Step 3: Implement content_hash**
 
 Create `packages/backend/src/episignal_backend/ingestion/fingerprint.py`:
 
@@ -427,13 +427,13 @@ The unit separator keeps the title and body fields distinct, so a title ending
 in a word the body begins with cannot collide with a different split of the same
 characters.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_fingerprint.py -v`
 
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/backend
@@ -449,7 +449,7 @@ git commit -m "feat: fingerprint document content"
 - Create: `packages/backend/src/episignal_backend/ingestion/documents.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/protocol.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_documents.py`:
 
@@ -515,13 +515,13 @@ def test_raw_document_keeps_the_untouched_source_payload() -> None:
     assert document.retrieved_at == MOMENT
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_documents.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.documents'`.
 
-- [ ] **Step 3: Implement the document contracts**
+- [x] **Step 3: Implement the document contracts**
 
 Create `packages/backend/src/episignal_backend/ingestion/documents.py`:
 
@@ -581,13 +581,13 @@ class NormalizedSignal(BaseModel):
         return value
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_documents.py -v`
 
 Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Implement the Protocols**
+- [x] **Step 5: Implement the Protocols**
 
 Create `packages/backend/src/episignal_backend/ingestion/protocol.py`:
 
@@ -633,7 +633,7 @@ class SignalRepository(Protocol):
     def rollback(self) -> None: ...
 ```
 
-- [ ] **Step 6: Run the checks**
+- [x] **Step 6: Run the checks**
 
 ```powershell
 uv run pytest -q
@@ -643,7 +643,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: all tests pass; Ruff and mypy clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/backend
@@ -659,7 +659,7 @@ git commit -m "feat: define ingestion contracts and boundaries"
 - Create: `packages/backend/tests/test_who_don_normalize.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/who_don.py`
 
-- [ ] **Step 1: Add the fixture**
+- [x] **Step 1: Add the fixture**
 
 Create `packages/backend/tests/fixtures/who_don_sample.json`. This is a trimmed
 capture of a real WHO API response, keeping the fields the connector reads:
@@ -701,7 +701,7 @@ capture of a real WHO API response, keeping the fields the connector reads:
 }
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `packages/backend/tests/test_who_don_normalize.py`:
 
@@ -788,13 +788,13 @@ def test_connector_names_the_seeded_source() -> None:
     assert WhoDonConnector().source_name == "WHO Disease Outbreak News"
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_normalize.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.who_don'`.
 
-- [ ] **Step 4: Implement normalization**
+- [x] **Step 4: Implement normalization**
 
 Create `packages/backend/src/episignal_backend/ingestion/who_don.py`:
 
@@ -880,13 +880,13 @@ class WhoDonConnector:
         )
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_normalize.py -v`
 
 Expected: PASS, 10 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/backend
