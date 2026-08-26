@@ -19,7 +19,7 @@ from starlette.requests import Request
 
 from episignal_api import API_NAME, API_VERSION
 from episignal_api.middleware import REQUEST_ID_HEADER, RequestIDMiddleware
-from episignal_api.routes import health, version
+from episignal_api.routes import health, signals, version
 
 logger = logging.getLogger("episignal_api")
 
@@ -53,6 +53,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(version.router)
+    app.include_router(signals.router)
 
     app.add_exception_handler(Exception, handle_unexpected_error)
     return app

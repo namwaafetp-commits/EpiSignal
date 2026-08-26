@@ -1,11 +1,15 @@
-"""Injectable readiness check.
+"""Injectable database reads.
 
-Routes depend on this callable rather than on the database module so unit tests
-can override it and never reach the hosted project.
+Routes depend on these callables rather than opening sessions themselves, so
+unit tests can override them and never reach the hosted project.
 """
 
-from episignal_backend.db.session import connection_scope
+from typing import Annotated
+
+from episignal_backend.db.session import connection_scope, session_scope
+from episignal_backend.evidence import EvidencePage, query_evidence_page
 from episignal_backend.health import DatabaseHealth, check_database
+from fastapi import Query
 
 
 def get_database_health() -> DatabaseHealth:
@@ -14,3 +18,11 @@ def get_database_health() -> DatabaseHealth:
             return check_database(connection)
     except Exception:
         return DatabaseHealth(database="down", postgis="unknown")
+
+
+def get_evidence_page(
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EvidencePage:
+    with session_scope() as session:
+        return query_evidence_page(session, limit=limit, offset=offset)
