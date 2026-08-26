@@ -2,6 +2,9 @@
   "name": "episignal",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.19.0"
+  },
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "dev": "concurrently -n web,api -c cyan,magenta \"pnpm --filter @episignal/web dev\" \"uv run --package episignal-api python -m episignal_api.run\"",
