@@ -43,7 +43,7 @@ Configuration and framework scaffold files are generated or declarative and are 
 - Create: `packages/backend/src/episignal_backend/__init__.py`
 - Create: `packages/contracts/package.json`
 
-- [ ] **Step 1: Generate the empty Next.js application**
+- [x] **Step 1: Generate the empty Next.js application**
 
 Run:
 
@@ -53,7 +53,7 @@ pnpm create next-app@16.3.2 apps/web --ts --tailwind --eslint --app --src-dir --
 
 Expected: `apps/web` contains an App Router project and no nested `.git` directory.
 
-- [ ] **Step 2: Add root workspace configuration**
+- [x] **Step 2: Add root workspace configuration**
 
 Create `pnpm-workspace.yaml`:
 
@@ -133,7 +133,7 @@ strict = true
 packages = ["episignal_api", "episignal_backend"]
 ```
 
-- [ ] **Step 3: Add Python package manifests**
+- [x] **Step 3: Add Python package manifests**
 
 Create `packages/backend/pyproject.toml`:
 
@@ -194,7 +194,7 @@ Create `packages/contracts/package.json`:
 }
 ```
 
-- [ ] **Step 4: Add safe environment templates and ignore rules**
+- [x] **Step 4: Add safe environment templates and ignore rules**
 
 Create `apps/api/.env.example`:
 
@@ -241,7 +241,7 @@ htmlcov/
 
 Create `.python-version` containing `3.12` and `.editorconfig` with UTF-8, LF, final newline, four spaces for Python, and two spaces for JSON/YAML/TypeScript/CSS.
 
-- [ ] **Step 5: Normalize generated web package metadata and install tooling**
+- [x] **Step 5: Normalize generated web package metadata and install tooling**
 
 Change `apps/web/package.json` name to `@episignal/web`, add scripts `"typecheck": "tsc --noEmit"` and `"test": "vitest run"`, and add `"@episignal/contracts": "workspace:*"` under dependencies. Create empty package markers at `apps/api/src/episignal_api/__init__.py` and `packages/backend/src/episignal_backend/__init__.py`, then run:
 
@@ -253,7 +253,7 @@ uv sync
 
 Expected: `pnpm-lock.yaml`, `uv.lock`, and `.venv` are created; dependency resolution succeeds.
 
-- [ ] **Step 6: Verify workspace discovery**
+- [x] **Step 6: Verify workspace discovery**
 
 Run:
 
@@ -264,7 +264,7 @@ uv workspace list
 
 Expected: pnpm lists `episignal`, `@episignal/web`, and `@episignal/contracts`; uv lists the root, `episignal-api`, and `episignal-backend`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add .gitignore .editorconfig .python-version package.json pnpm-workspace.yaml pyproject.toml pnpm-lock.yaml uv.lock apps packages
@@ -278,7 +278,7 @@ git commit -m "build: scaffold EpiSignal monorepo"
 - Create: `packages/backend/src/episignal_backend/config.py`
 - Modify: `packages/backend/src/episignal_backend/__init__.py`
 
-- [ ] **Step 1: Write failing configuration tests**
+- [x] **Step 1: Write failing configuration tests**
 
 ```python
 from pydantic import ValidationError
@@ -353,13 +353,13 @@ def test_database_url_is_required() -> None:
         Settings(_env_file=None)
 ```
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 Run: `uv run pytest packages/backend/tests/test_config.py -v`
 
 Expected: collection fails because `episignal_backend.config` does not exist.
 
-- [ ] **Step 3: Implement minimal validated settings**
+- [x] **Step 3: Implement minimal validated settings**
 
 ```python
 from functools import lru_cache
@@ -437,13 +437,13 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
-- [ ] **Step 4: Run tests and confirm GREEN**
+- [x] **Step 4: Run tests and confirm GREEN**
 
 Run: `uv run pytest packages/backend/tests/test_config.py -v`
 
 Expected: twelve tests pass and no secret appears in output.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add packages/backend
@@ -461,7 +461,7 @@ git commit -m "feat: add safe backend configuration"
 - Create: `packages/backend/src/episignal_backend/models/event.py`
 - Create: `packages/backend/src/episignal_backend/models/__init__.py`
 
-- [ ] **Step 1: Write failing metadata tests**
+- [x] **Step 1: Write failing metadata tests**
 
 ```python
 from episignal_backend.db.base import Base
@@ -525,13 +525,13 @@ def test_location_uses_postgis_geography() -> None:
     assert str(Base.metadata.tables["event_locations"].c.geometry.type) == "geography(POINT,4326)"
 ```
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 Run: `uv run pytest packages/backend/tests/test_models.py -v`
 
 Expected: import fails because the database model modules do not exist.
 
-- [ ] **Step 3: Implement shared SQLAlchemy primitives**
+- [x] **Step 3: Implement shared SQLAlchemy primitives**
 
 Create `db/base.py` with a `DeclarativeBase`, deterministic constraint naming, PostgreSQL-generated UUID primary-key mixin, and UTC `created_at`/`updated_at` mixin. Create `db/types.py` with these exact `StrEnum` vocabularies:
 
@@ -595,7 +595,7 @@ class TimestampMixin:
     )
 ```
 
-- [ ] **Step 4: Implement catalog and signal models**
+- [x] **Step 4: Implement catalog and signal models**
 
 Implement typed SQLAlchemy 2 models matching the approved design. Use PostgreSQL `ARRAY(Text)` for synonyms, `JSONB` for AI extraction, and `Enum(EnumClass, native_enum=False, create_constraint=True)` with stable names such as `source_type_values` and `event_status_values`. Use named `CheckConstraint` objects for every range. Confidence, relevance, extraction, geocoding, and match scores use `[0, 1]`; attention score uses `[0, 100]`; CFR is a percentage using `[0, 100]`; all case/death/recovery/hospitalization/affected-area counts are non-negative.
 
@@ -620,7 +620,7 @@ ai_processed_at, processing_status, created_at, updated_at
 
 Define `url` as `Text(nullable=False, unique=True)` and index `source_id`, `published_at`, `canonical_url`, `content_hash`, and `processing_status`.
 
-- [ ] **Step 5: Implement event, relationship, observation, and location models**
+- [x] **Step 5: Implement event, relationship, observation, and location models**
 
 Required event columns:
 
@@ -655,7 +655,7 @@ latitude, longitude, geometry, geocoding_source, geocoding_confidence, created_a
 
 Use `Geography(geometry_type="POINT", srid=4326, spatial_index=False)` and explicit GiST indexes for event and location geometry. Define exact B-tree indexes named `ix_events_status`, `ix_events_verification_status`, `ix_events_disease_id`, `ix_events_country_code`, `ix_events_last_updated_at`, `ix_signals_source_id`, `ix_signals_published_at`, `ix_signals_processing_status`, `ix_signals_canonical_url`, `ix_signals_content_hash`, and compound `ix_event_observations_event_date` on `(event_id, observation_date)`. Exporting model metadata must show every enum check, unique event `public_id` and slug, unique catalog slugs and source URLs, unique source name and signal URL, the relationship composite primary key, all required foreign keys, named range checks, named indexes, and PostgreSQL UUID server defaults.
 
-- [ ] **Step 6: Export every model and run tests**
+- [x] **Step 6: Export every model and run tests**
 
 Import all eight mapped classes from `models/__init__.py`, then run:
 
@@ -667,7 +667,7 @@ uv run ruff check packages/backend
 
 Expected: eight tests pass; mypy and Ruff report no issues.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add packages/backend
@@ -683,7 +683,7 @@ git commit -m "feat: model epidemiological provenance"
 - Create: `database/migrations/versions/20260826_0001_core_schema.py`
 - Create: `apps/api/tests/test_migrations.py`
 
-- [ ] **Step 1: Write a failing migration-structure test**
+- [x] **Step 1: Write a failing migration-structure test**
 
 ```python
 from pathlib import Path
@@ -795,17 +795,17 @@ def test_offline_downgrade_drops_dependents_before_parents() -> None:
     assert "drop extension postgis" not in sql
 ```
 
-- [ ] **Step 2: Run test and confirm RED**
+- [x] **Step 2: Run test and confirm RED**
 
 Run: `uv run pytest apps/api/tests/test_migrations.py -v`
 
 Expected: failure because `database/alembic.ini` does not exist.
 
-- [ ] **Step 3: Configure Alembic without storing a URL**
+- [x] **Step 3: Configure Alembic without storing a URL**
 
 Set `script_location = %(here)s/migrations` in `database/alembic.ini`. In `env.py`, import `Base`, load all models, and configure `compare_type=True`. Online mode must obtain `get_settings().sqlalchemy_database_url` and redact it from logging. Offline mode must not instantiate `Settings`; use `postgresql+psycopg://offline:offline@localhost/offline` only as a dialect selector so SQL rendering needs no credentials or network.
 
-- [ ] **Step 4: Create and review the explicit initial revision**
+- [x] **Step 4: Create and review the explicit initial revision**
 
 Create revision `20260826_0001` with message `create core epidemiology schema`. Its `upgrade()` must:
 
@@ -827,7 +827,7 @@ Select-String -Path $env:TEMP\episignal-foundation-down.sql -Pattern 'DROP TABLE
 
 Expected: all upgrade and downgrade patterns are present; neither command reads `apps/api/.env` or contacts a database.
 
-- [ ] **Step 5: Run migration test and static checks**
+- [x] **Step 5: Run migration test and static checks**
 
 Run:
 
@@ -838,7 +838,7 @@ uv run ruff check database apps/api/tests/test_migrations.py
 
 Expected: all three migration tests pass and Ruff is clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add database apps/api/tests/test_migrations.py
@@ -854,7 +854,7 @@ git commit -m "feat: add core PostGIS migration"
 - Create: `packages/backend/src/episignal_backend/seeds.py`
 - Create: `packages/backend/src/episignal_backend/seed_runner.py`
 
-- [ ] **Step 1: Add reviewed seed datasets**
+- [x] **Step 1: Add reviewed seed datasets**
 
 `diseases.json` must contain these unique canonical identities and kebab-case slugs:
 
@@ -869,7 +869,7 @@ Unknown respiratory illness, Unknown febrile illness, Unknown disease
 
 `sources.json` must define `WHO Disease Outbreak News` and `ECDC`, both official but inactive source identities with stable base/feed URLs and no connector-specific state. Connectors activate them only in the later ingestion slice.
 
-- [ ] **Step 2: Write failing seed tests**
+- [x] **Step 2: Write failing seed tests**
 
 ```python
 from episignal_backend.seeds import load_diseases, load_sources
@@ -893,13 +893,13 @@ def test_source_seeds_are_official_and_unique() -> None:
     assert all(item.active is False for item in sources)
 ```
 
-- [ ] **Step 3: Run tests and confirm RED**
+- [x] **Step 3: Run tests and confirm RED**
 
 Run: `uv run pytest packages/backend/tests/test_seeds.py -v`
 
 Expected: import fails because `episignal_backend.seeds` does not exist.
 
-- [ ] **Step 4: Implement validated loading and upsert statements**
+- [x] **Step 4: Implement validated loading and upsert statements**
 
 Define strict Pydantic `DiseaseSeed` and `SourceSeed` models, load JSON relative to the repository root, and build PostgreSQL upserts using `diseases.slug` and `sources.name` as stable natural keys. Exclude `id`, `created_at`, and each natural key from updates. Use this implementation shape:
 
@@ -947,13 +947,13 @@ def seed_database(session: Session) -> SeedResult:
 
 `SeedResult` contains the number of canonical disease and source identities processed. `seed_runner.py` opens one transaction, calls `seed_database`, prints only counts, and returns a non-zero exit code on failure.
 
-- [ ] **Step 5: Run tests and confirm GREEN**
+- [x] **Step 5: Run tests and confirm GREEN**
 
 Run: `uv run pytest packages/backend/tests/test_seeds.py -v`
 
 Expected: two tests pass, including inactive connector assertions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add database/seeds packages/backend
@@ -976,7 +976,7 @@ git commit -m "feat: add canonical epidemiology seeds"
 - Create: `apps/api/src/episignal_api/run.py`
 - Create: `apps/api/src/episignal_api/database_check.py`
 
-- [ ] **Step 1: Write failing backend health tests**
+- [x] **Step 1: Write failing backend health tests**
 
 ```python
 from episignal_backend.health import DatabaseHealth, check_database
@@ -1006,17 +1006,17 @@ def test_database_health_sanitizes_connection_failures() -> None:
     assert "unavailable" not in repr(result)
 ```
 
-- [ ] **Step 2: Run backend tests and confirm RED**
+- [x] **Step 2: Run backend tests and confirm RED**
 
 Run: `uv run pytest packages/backend/tests/test_health.py -v`
 
 Expected: import fails because `health.py` does not exist.
 
-- [ ] **Step 3: Implement engine/session factories and health checking**
+- [x] **Step 3: Implement engine/session factories and health checking**
 
 Create a lazy SQLAlchemy engine with `pool_pre_ping=True`, `pool_size=5`, `max_overflow=5`, and `connect_timeout=5`. Expose context-managed connections and sessions. `check_database` executes `SELECT 1` and `SELECT postgis_full_version()` and returns only component states; it never returns exception text, URL, hostname, or PostGIS build details.
 
-- [ ] **Step 4: Write failing API contract tests**
+- [x] **Step 4: Write failing API contract tests**
 
 ```python
 import os
@@ -1159,13 +1159,13 @@ def test_unexpected_error_is_sanitized_and_correlated(caplog) -> None:
     assert response.headers["X-Request-ID"] in caplog.text
 ```
 
-- [ ] **Step 5: Run API tests and confirm RED**
+- [x] **Step 5: Run API tests and confirm RED**
 
 Run: `uv run pytest apps/api/tests/test_api.py -v`
 
 Expected: import fails because the API modules do not exist.
 
-- [ ] **Step 6: Implement the app factory, routes, and request IDs**
+- [x] **Step 6: Implement the app factory, routes, and request IDs**
 
 Use Pydantic response models. `factory.create_app(settings: Settings)` requires already validated settings but does not connect to the database. Add CORS from those settings, add request-ID middleware that accepts a valid inbound UUID or creates `uuid4()`, include the health and v1 routers, log unexpected exceptions with the request ID, and register a sanitized catch-all exception handler returning:
 
@@ -1179,7 +1179,7 @@ Use Pydantic response models. `factory.create_app(settings: Settings)` requires 
 
 Use dependency injection for `get_database_health` so unit tests never access Supabase. Add `load_runtime_settings()` that converts each missing or invalid setting into concise stderr guidance naming the actual `EPISIGNAL_` environment field derived from Pydantic's error location, without printing rejected values. `main.py` must contain `app = create_app(load_runtime_settings())`; importing the production entry point therefore fails immediately when configuration is missing or invalid. `run.py` reads the same validated settings and starts Uvicorn using `api_host`, `api_port`, and `log_level`. `database_check.py` performs the same readiness call for `pnpm db:check`, labels failures as `configuration`, `connection`, or `postgis`, and exits 1 unless both components are up.
 
-- [ ] **Step 7: Run all backend checks**
+- [x] **Step 7: Run all backend checks**
 
 Run:
 
@@ -1191,7 +1191,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: all tests pass; Ruff and mypy are clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add packages/backend apps/api
@@ -1206,7 +1206,7 @@ git commit -m "feat: expose API health and readiness"
 - Create: `packages/contracts/src/index.d.ts`
 - Create: `apps/api/tests/test_openapi.py`
 
-- [ ] **Step 1: Write a failing OpenAPI stability test**
+- [x] **Step 1: Write a failing OpenAPI stability test**
 
 ```python
 from episignal_api.factory import create_app
@@ -1222,13 +1222,13 @@ def test_openapi_exposes_only_foundation_routes() -> None:
     assert paths == {"/health/live", "/health/ready", "/api/v1"}
 ```
 
-- [ ] **Step 2: Run test and confirm expected state**
+- [x] **Step 2: Run test and confirm expected state**
 
 Run: `uv run pytest apps/api/tests/test_openapi.py -v`
 
 Expected: pass only if the API task exposed exactly the approved routes; otherwise correct route registration before continuing.
 
-- [ ] **Step 3: Implement deterministic export and generation**
+- [x] **Step 3: Implement deterministic export and generation**
 
 `export_openapi.py` must create the app with the same non-secret dialect-only settings used by the OpenAPI test, then serialize its schema with sorted keys and two-space indentation to `packages/contracts/openapi.json`, ending with one newline. It must not import `episignal_api.main`, read `.env`, or contact a database. Run:
 
@@ -1239,7 +1239,7 @@ pnpm contracts:check
 
 Expected: `src/index.d.ts` is generated and the second command produces no Git diff after generation.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add apps/api packages/contracts pnpm-lock.yaml
@@ -1260,7 +1260,7 @@ git commit -m "build: generate typed API contracts"
 - Modify: `apps/web/src/app/layout.tsx`
 - Modify: `apps/web/src/app/globals.css`
 
-- [ ] **Step 1: Configure Vitest**
+- [x] **Step 1: Configure Vitest**
 
 ```typescript
 // vitest.config.ts
@@ -1279,7 +1279,7 @@ export default defineConfig({
 
 Install `@vitejs/plugin-react`, and import `@testing-library/jest-dom/vitest` from `src/test/setup.ts`.
 
-- [ ] **Step 2: Write failing shell accessibility tests**
+- [x] **Step 2: Write failing shell accessibility tests**
 
 ```tsx
 import { render, screen } from "@testing-library/react";
@@ -1320,13 +1320,13 @@ test("marks the mobile readiness panel as a bottom sheet", () => {
 });
 ```
 
-- [ ] **Step 3: Run shell test and confirm RED**
+- [x] **Step 3: Run shell test and confirm RED**
 
 Run: `pnpm --filter @episignal/web test -- src/components/home-shell.test.tsx`
 
 Expected: import fails because `home-shell.tsx` does not exist.
 
-- [ ] **Step 4: Implement the semantic shell**
+- [x] **Step 4: Implement the semantic shell**
 
 Create `HomeShell` with `apiStatus: "loading" | "ready" | "unavailable"`. Map those states to `Checking API`, `API connected`, and `API unavailable`. It must render:
 
@@ -1373,13 +1373,13 @@ Create `HomeShell` with `apiStatus: "loading" | "ready" | "unavailable"`. Map th
 
 Implement the approved warm off-white, navy, and teal tokens in `globals.css`. Use CSS Grid for the desktop explore area; below 760px switch to a full-width map and overlapping rounded readiness sheet. Preserve visible keyboard focus, minimum 44px interactive targets, readable contrast, and `prefers-reduced-motion` behavior. Do not add event numbers, severity colors, or sample outbreak cards.
 
-- [ ] **Step 5: Run shell tests and confirm GREEN**
+- [x] **Step 5: Run shell tests and confirm GREEN**
 
 Run: `pnpm --filter @episignal/web test -- src/components/home-shell.test.tsx`
 
 Expected: four tests pass.
 
-- [ ] **Step 6: Write failing API health client tests**
+- [x] **Step 6: Write failing API health client tests**
 
 ```typescript
 import { afterEach, expect, test, vi } from "vitest";
@@ -1407,13 +1407,13 @@ test("returns unavailable instead of throwing", async () => {
 });
 ```
 
-- [ ] **Step 7: Run client tests and confirm RED**
+- [x] **Step 7: Run client tests and confirm RED**
 
 Run: `pnpm --filter @episignal/web test -- src/lib/api-health.test.ts`
 
 Expected: import fails because `api-health.ts` does not exist.
 
-- [ ] **Step 8: Implement the bounded server-side health client**
+- [x] **Step 8: Implement the bounded server-side health client**
 
 ```typescript
 import type { paths } from "@episignal/contracts";
@@ -1439,7 +1439,7 @@ export async function getApiStatus(): Promise<ApiStatus> {
 
 Make `page.tsx` an async server component that calls `getApiStatus()` and passes the result to `HomeShell`. Make `loading.tsx` render `<HomeShell apiStatus="loading" />`, giving App Router a stable loading shell during the readiness request. In `layout.tsx`, define descriptive metadata and load one editorial display font plus one sans-serif UI font through `next/font` without runtime network requests.
 
-- [ ] **Step 9: Run frontend verification**
+- [x] **Step 9: Run frontend verification**
 
 Run:
 
@@ -1452,7 +1452,7 @@ pnpm --filter @episignal/web build
 
 Expected: tests, lint, type-check, and production build all pass with no warnings.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```powershell
 git add apps/web pnpm-lock.yaml
@@ -1466,7 +1466,7 @@ git commit -m "feat: build responsive public foundation shell"
 - Create: `docs/architecture/supabase-setup.md`
 - Create: `README.md`
 
-- [ ] **Step 1: Implement a fail-fast live verification script**
+- [x] **Step 1: Implement a fail-fast live verification script**
 
 `verify-live-database.ps1` must:
 
@@ -1482,7 +1482,7 @@ git commit -m "feat: build responsive public foundation shell"
 
 Use `$ErrorActionPreference = "Stop"` and direct `& pnpm ...` invocations with `$LASTEXITCODE` checks. The script must not create, delete, reset, or drop a Supabase project.
 
-- [ ] **Step 2: Document Supabase connection modes accurately**
+- [x] **Step 2: Document Supabase connection modes accurately**
 
 `docs/architecture/supabase-setup.md` must explain:
 
@@ -1504,11 +1504,11 @@ pnpm db:seed
 pwsh -File scripts/verify-live-database.ps1
 ```
 
-- [ ] **Step 3: Write the root README**
+- [x] **Step 3: Write the root README**
 
 The README must contain: product principle, current foundation scope, prerequisites, workspace map, Windows quick start, environment setup, local URLs, quality commands, live database safety warning, source-provenance model, and link to the approved design. It must say explicitly that the repository does not contain live ingestion or fabricated outbreak data yet.
 
-- [ ] **Step 4: Run the credential-free verification suite**
+- [x] **Step 4: Run the credential-free verification suite**
 
 Run:
 
@@ -1519,13 +1519,13 @@ git status --short
 
 Expected: all format, lint, type-check, tests, contract checks, and production build pass. Git status contains only intentional documentation changes before commit and no `.env` files.
 
-- [ ] **Step 5: Run the live smoke test only after the user configures Supabase**
+- [x] **Step 5: Run the live smoke test only after the user configures Supabase**
 
 Run: `pwsh -File scripts/verify-live-database.ps1`
 
 Expected: the script reports database, PostGIS, eight tables, 29 stable disease identities, and two stable inactive source identities as ready. If credentials are not yet configured, record this single check as pending without weakening any credential-free acceptance test.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add -- README.md docs/architecture scripts
@@ -1537,7 +1537,7 @@ git commit -m "docs: add lean Supabase development guide"
 **Files:**
 - Modify only files that fail the checks below.
 
-- [ ] **Step 1: Run the full deterministic verification again**
+- [x] **Step 1: Run the full deterministic verification again**
 
 ```powershell
 pnpm verify
@@ -1545,7 +1545,7 @@ pnpm verify
 
 Expected: exit code 0 with clean formatter, linters, type-checkers, tests, contract drift check, and Next.js production build.
 
-- [ ] **Step 2: Audit secrets and generated artifacts**
+- [x] **Step 2: Audit secrets and generated artifacts**
 
 Run:
 
@@ -1557,7 +1557,7 @@ rg -n -i 'EPISIGNAL_DATABASE_URL|postgres(ql)?://|db\.[a-z0-9]+\.supabase\.co' a
 
 Expected: local environment files appear ignored; `git grep` finds only safe placeholders and documentation examples. The `.next/static` scan exits 1 because browser assets contain no database URL, Supabase database host, or private setting name.
 
-- [ ] **Step 3: Confirm API and web behavior locally**
+- [x] **Step 3: Confirm API and web behavior locally**
 
 Start `pnpm dev`, then verify:
 
@@ -1569,7 +1569,7 @@ Invoke-WebRequest http://localhost:3000 -UseBasicParsing | Select-Object StatusC
 
 Expected: with a valid `.env`, liveness reports `alive`, API metadata reports version `0.1.0`, and the web request returns 200. Invalid or missing configuration prevents API startup; a configured but unreachable database produces readiness 503.
 
-- [ ] **Step 4: Inspect repository history and status**
+- [x] **Step 4: Inspect repository history and status**
 
 Run:
 

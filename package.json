@@ -1,0 +1,31 @@
+{
+  "name": "episignal",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "22.19.0"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"pnpm --filter @episignal/web dev\" \"uv run --package episignal-api python -m episignal_api.run\"",
+    "build": "pnpm --filter @episignal/web build",
+    "lint": "pnpm lint:web && pnpm lint:python",
+    "lint:web": "pnpm --filter @episignal/web lint",
+    "lint:python": "uv run ruff check .",
+    "format:check": "uv run ruff format --check . && pnpm --filter @episignal/web exec prettier --check .",
+    "typecheck": "pnpm typecheck:web && uv run mypy apps/api/src packages/backend/src",
+    "typecheck:web": "pnpm --filter @episignal/web typecheck",
+    "test": "pnpm test:web && uv run pytest",
+    "test:web": "pnpm --filter @episignal/web test",
+    "contracts:generate": "uv run --package episignal-api python -m episignal_api.export_openapi && pnpm --filter @episignal/contracts generate",
+    "contracts:check": "pnpm contracts:generate && git diff --exit-code -- packages/contracts",
+    "db:check": "uv run --package episignal-api python -m episignal_api.database_check",
+    "db:migrate": "uv run --package episignal-api alembic -c database/alembic.ini upgrade head",
+    "db:rollback": "uv run --package episignal-api alembic -c database/alembic.ini downgrade -1",
+    "db:seed": "uv run --package episignal-backend python -m episignal_backend.seed_runner",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm contracts:check && pnpm build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
