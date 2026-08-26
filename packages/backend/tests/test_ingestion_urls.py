@@ -15,6 +15,8 @@ ITEM = "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON615"
         ("HTTPS://WWW.WHO.INT/emergencies", "https://www.who.int/emergencies"),
         (f"{ITEM}?b=2&a=1", f"{ITEM}?a=1&b=2"),
         ("https://www.who.int/", "https://www.who.int/"),
+        (f"{ITEM}?note=100%25done", f"{ITEM}?note=100%25done"),
+        (f"{ITEM}?a=1&a=2", f"{ITEM}?a=1&a=2"),
     ],
 )
 def test_canonicalize_url_removes_noise_without_changing_identity(raw: str, expected: str) -> None:
