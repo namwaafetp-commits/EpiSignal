@@ -1537,7 +1537,7 @@ git commit -m "docs: add lean Supabase development guide"
 **Files:**
 - Modify only files that fail the checks below.
 
-- [ ] **Step 1: Run the full deterministic verification again**
+- [x] **Step 1: Run the full deterministic verification again**
 
 ```powershell
 pnpm verify
@@ -1545,7 +1545,7 @@ pnpm verify
 
 Expected: exit code 0 with clean formatter, linters, type-checkers, tests, contract drift check, and Next.js production build.
 
-- [ ] **Step 2: Audit secrets and generated artifacts**
+- [x] **Step 2: Audit secrets and generated artifacts**
 
 Run:
 
@@ -1557,7 +1557,7 @@ rg -n -i 'EPISIGNAL_DATABASE_URL|postgres(ql)?://|db\.[a-z0-9]+\.supabase\.co' a
 
 Expected: local environment files appear ignored; `git grep` finds only safe placeholders and documentation examples. The `.next/static` scan exits 1 because browser assets contain no database URL, Supabase database host, or private setting name.
 
-- [ ] **Step 3: Confirm API and web behavior locally**
+- [x] **Step 3: Confirm API and web behavior locally**
 
 Start `pnpm dev`, then verify:
 
@@ -1569,7 +1569,7 @@ Invoke-WebRequest http://localhost:3000 -UseBasicParsing | Select-Object StatusC
 
 Expected: with a valid `.env`, liveness reports `alive`, API metadata reports version `0.1.0`, and the web request returns 200. Invalid or missing configuration prevents API startup; a configured but unreachable database produces readiness 503.
 
-- [ ] **Step 4: Inspect repository history and status**
+- [x] **Step 4: Inspect repository history and status**
 
 Run:
 
