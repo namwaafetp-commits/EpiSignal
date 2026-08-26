@@ -1,0 +1,209 @@
+[
+  {
+    "canonical_name": "Cholera",
+    "slug": "cholera",
+    "icd10": "A00",
+    "synonyms": ["Vibrio cholerae infection", "acute watery diarrhoea"],
+    "category": "waterborne"
+  },
+  {
+    "canonical_name": "Dengue",
+    "slug": "dengue",
+    "icd10": "A90",
+    "synonyms": ["dengue fever", "breakbone fever", "severe dengue"],
+    "category": "vector_borne"
+  },
+  {
+    "canonical_name": "Measles",
+    "slug": "measles",
+    "icd10": "B05",
+    "synonyms": ["rubeola", "morbilli"],
+    "category": "vaccine_preventable"
+  },
+  {
+    "canonical_name": "Mpox",
+    "slug": "mpox",
+    "icd10": "B04",
+    "synonyms": ["monkeypox", "monkeypox virus infection"],
+    "category": "zoonotic"
+  },
+  {
+    "canonical_name": "Ebola virus disease",
+    "slug": "ebola-virus-disease",
+    "icd10": "A98.4",
+    "synonyms": ["Ebola", "EVD", "Ebola haemorrhagic fever"],
+    "category": "viral_haemorrhagic_fever"
+  },
+  {
+    "canonical_name": "Marburg virus disease",
+    "slug": "marburg-virus-disease",
+    "icd10": "A98.3",
+    "synonyms": ["Marburg", "MVD", "Marburg haemorrhagic fever"],
+    "category": "viral_haemorrhagic_fever"
+  },
+  {
+    "canonical_name": "Yellow fever",
+    "slug": "yellow-fever",
+    "icd10": "A95",
+    "synonyms": ["yellow jack"],
+    "category": "viral_haemorrhagic_fever"
+  },
+  {
+    "canonical_name": "West Nile virus disease",
+    "slug": "west-nile-virus-disease",
+    "icd10": "A92.3",
+    "synonyms": ["West Nile fever", "West Nile virus infection", "WNV"],
+    "category": "vector_borne"
+  },
+  {
+    "canonical_name": "Chikungunya",
+    "slug": "chikungunya",
+    "icd10": "A92.0",
+    "synonyms": ["chikungunya fever", "chikungunya virus disease", "CHIKV"],
+    "category": "vector_borne"
+  },
+  {
+    "canonical_name": "Avian influenza",
+    "slug": "avian-influenza",
+    "icd10": "J09",
+    "synonyms": ["bird flu", "H5N1", "H5N6", "H7N9", "highly pathogenic avian influenza"],
+    "category": "respiratory"
+  },
+  {
+    "canonical_name": "Seasonal influenza",
+    "slug": "seasonal-influenza",
+    "icd10": "J11",
+    "synonyms": ["flu", "influenza", "influenza-like illness"],
+    "category": "respiratory"
+  },
+  {
+    "canonical_name": "COVID-19",
+    "slug": "covid-19",
+    "icd10": "U07.1",
+    "synonyms": ["SARS-CoV-2 infection", "coronavirus disease 2019"],
+    "category": "respiratory"
+  },
+  {
+    "canonical_name": "MERS",
+    "slug": "mers",
+    "icd10": null,
+    "synonyms": ["Middle East respiratory syndrome", "MERS-CoV infection"],
+    "category": "respiratory"
+  },
+  {
+    "canonical_name": "Lassa fever",
+    "slug": "lassa-fever",
+    "icd10": "A96.2",
+    "synonyms": ["Lassa virus infection"],
+    "category": "viral_haemorrhagic_fever"
+  },
+  {
+    "canonical_name": "Rift Valley fever",
+    "slug": "rift-valley-fever",
+    "icd10": "A92.4",
+    "synonyms": ["RVF", "Rift Valley fever virus infection"],
+    "category": "viral_haemorrhagic_fever"
+  },
+  {
+    "canonical_name": "Polio",
+    "slug": "polio",
+    "icd10": "A80",
+    "synonyms": ["poliomyelitis", "acute flaccid paralysis", "cVDPV", "wild poliovirus"],
+    "category": "vaccine_preventable"
+  },
+  {
+    "canonical_name": "Diphtheria",
+    "slug": "diphtheria",
+    "icd10": "A36",
+    "synonyms": ["Corynebacterium diphtheriae infection"],
+    "category": "vaccine_preventable"
+  },
+  {
+    "canonical_name": "Pertussis",
+    "slug": "pertussis",
+    "icd10": "A37",
+    "synonyms": ["whooping cough", "Bordetella pertussis infection"],
+    "category": "vaccine_preventable"
+  },
+  {
+    "canonical_name": "Meningococcal disease",
+    "slug": "meningococcal-disease",
+    "icd10": "A39",
+    "synonyms": ["meningococcal meningitis", "Neisseria meningitidis infection"],
+    "category": "vaccine_preventable"
+  },
+  {
+    "canonical_name": "Anthrax",
+    "slug": "anthrax",
+    "icd10": "A22",
+    "synonyms": ["Bacillus anthracis infection"],
+    "category": "zoonotic"
+  },
+  {
+    "canonical_name": "Hantavirus infection",
+    "slug": "hantavirus-infection",
+    "icd10": "A98.5",
+    "synonyms": [
+      "haemorrhagic fever with renal syndrome",
+      "hantavirus pulmonary syndrome",
+      "HPS"
+    ],
+    "category": "zoonotic"
+  },
+  {
+    "canonical_name": "Leptospirosis",
+    "slug": "leptospirosis",
+    "icd10": "A27",
+    "synonyms": ["Weil disease", "Leptospira infection"],
+    "category": "zoonotic"
+  },
+  {
+    "canonical_name": "Malaria",
+    "slug": "malaria",
+    "icd10": "B54",
+    "synonyms": ["Plasmodium infection", "falciparum malaria", "vivax malaria"],
+    "category": "vector_borne"
+  },
+  {
+    "canonical_name": "Zika virus disease",
+    "slug": "zika-virus-disease",
+    "icd10": "A92.5",
+    "synonyms": ["Zika", "Zika virus infection", "ZIKV"],
+    "category": "vector_borne"
+  },
+  {
+    "canonical_name": "Typhoid fever",
+    "slug": "typhoid-fever",
+    "icd10": "A01.0",
+    "synonyms": ["enteric fever", "Salmonella Typhi infection"],
+    "category": "foodborne"
+  },
+  {
+    "canonical_name": "Salmonellosis",
+    "slug": "salmonellosis",
+    "icd10": "A02",
+    "synonyms": ["non-typhoidal Salmonella infection", "Salmonella gastroenteritis"],
+    "category": "foodborne"
+  },
+  {
+    "canonical_name": "Unknown respiratory illness",
+    "slug": "unknown-respiratory-illness",
+    "icd10": null,
+    "synonyms": ["undiagnosed respiratory illness", "unexplained pneumonia"],
+    "category": "unknown"
+  },
+  {
+    "canonical_name": "Unknown febrile illness",
+    "slug": "unknown-febrile-illness",
+    "icd10": null,
+    "synonyms": ["undiagnosed febrile illness", "fever of unknown origin"],
+    "category": "unknown"
+  },
+  {
+    "canonical_name": "Unknown disease",
+    "slug": "unknown-disease",
+    "icd10": null,
+    "synonyms": ["undiagnosed illness", "mystery disease"],
+    "category": "unknown"
+  }
+]
