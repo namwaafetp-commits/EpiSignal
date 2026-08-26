@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,6 +23,7 @@ from episignal_backend.db.types import ProcessingStatus, SignalType, vocabulary
 class Signal(IdentityMixin, TimestampMixin, Base):
     __tablename__ = "signals"
     __table_args__ = (
+        UniqueConstraint("url", "content_hash", name="uq_signals_url_content_hash"),
         CheckConstraint(
             "relevance_score >= 0 AND relevance_score <= 1", name="relevance_score_range"
         ),
@@ -36,7 +38,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         ForeignKey("sources.id", ondelete="RESTRICT"), nullable=False
     )
     external_id: Mapped[str | None] = mapped_column(Text)
-    url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
     canonical_url: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text: Mapped[str | None] = mapped_column(Text)

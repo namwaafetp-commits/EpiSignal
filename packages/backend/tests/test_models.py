@@ -25,10 +25,16 @@ def test_observations_preserve_event_and_signal_provenance() -> None:
     assert "signals.id" in targets
 
 
-def test_signal_original_url_is_unique_and_required() -> None:
-    url = Base.metadata.tables["signals"].c.url
-    assert url.nullable is False
-    assert url.unique is True
+def test_signal_versions_are_unique_by_url_and_content_hash() -> None:
+    table = Base.metadata.tables["signals"]
+    assert table.c.url.nullable is False
+    assert table.c.url.unique is not True
+    constraint = next(
+        item
+        for item in table.constraints
+        if getattr(item, "name", None) == "uq_signals_url_content_hash"
+    )
+    assert [column.name for column in constraint.columns] == ["url", "content_hash"]
 
 
 def test_database_generates_uuid_primary_keys() -> None:
