@@ -4,8 +4,9 @@
 **Branch:** `feat/who-don-ingestion`
 **Worktree:** `D:\Projects\Side Project\EpiSignal\.worktrees\ingestion`
 **State:** Tasks 1–10 are committed and live-verified. The evidence-browser
-slice is committed, followed by one small uncommitted review correction that
-still needs the full gate and a commit.
+slice is committed, and the blank-evidence correction is now committed after a
+full gate run. The working tree is clean. Only the live dev-server recheck and
+the branch-finishing decision remain.
 
 ## Start here
 
@@ -39,16 +40,16 @@ d43e9d4 feat: add the ingest command and correct the WHO source URL
 5934207 feat: run the source ingestion pipeline
 ```
 
-The following uncommitted correction was developed RED→GREEN after the final
-spec recheck found that whitespace-only `raw_text` could make the whole web feed
-unavailable:
+`429c0b0 fix: reject blank source evidence` was developed RED→GREEN after the
+final spec recheck found that whitespace-only `raw_text` could make the whole
+web feed unavailable. It touched:
 
 ```text
-M apps/web/src/lib/api-signals.ts
-M packages/backend/src/episignal_backend/evidence.py
-M packages/backend/src/episignal_backend/ingestion/documents.py
-M packages/backend/tests/test_evidence.py
-M packages/backend/tests/test_ingestion_documents.py
+apps/web/src/lib/api-signals.ts
+packages/backend/src/episignal_backend/evidence.py
+packages/backend/src/episignal_backend/ingestion/documents.py
+packages/backend/tests/test_evidence.py
+packages/backend/tests/test_ingestion_documents.py
 ```
 
 The correction does three aligned things:
@@ -81,38 +82,10 @@ corepack pnpm --filter @episignal/web exec vitest run src/lib/api-signals.test.t
 
 ## Exact next steps
 
-1. Inspect the uncommitted diff only; do not redo the completed broad review.
-2. Run the full gates from this worktree:
+The full gate ran clean on the committed tree; see "Verification already
+completed". The remaining work is:
 
-   ```powershell
-   uv run pytest -q
-   uv run ruff check .
-   uv run ruff format --check .
-   uv run mypy packages/backend/src apps/api/src
-   corepack pnpm test:web
-   corepack pnpm lint:web
-   corepack pnpm typecheck:web
-   corepack pnpm build
-   ```
-
-   The Python suite should now report 126 tests. That count is an expectation,
-   not a completed verification: the prior full run was interrupted after the
-   new blank-evidence test was added.
-
-3. If all gates pass, commit the five product/test files with:
-
-   ```powershell
-   git add apps/web/src/lib/api-signals.ts `
-     packages/backend/src/episignal_backend/evidence.py `
-     packages/backend/src/episignal_backend/ingestion/documents.py `
-     packages/backend/tests/test_evidence.py `
-     packages/backend/tests/test_ingestion_documents.py
-   git commit -m "fix: reject blank source evidence"
-   ```
-
-   Commit `HANDOFF.md` with the handoff/documentation change as appropriate.
-
-4. Restart the web/API only after all edits and commits are finished:
+1. Restart the web/API:
 
    ```powershell
    corepack pnpm dev
@@ -124,10 +97,10 @@ corepack pnpm --filter @episignal/web exec vitest run src/lib/api-signals.test.t
    report cards, collection dates, expandable evidence, publisher links, and
    the limited-coverage warning.
 
-5. Run one focused spec recheck for the whitespace finding. The broad standards
+2. Run one focused spec recheck for the whitespace finding. The broad standards
    recheck already approved with no Critical or Important findings.
 
-6. Use the branch-finishing workflow. Offer merge to local `main`, PR, or keep
+3. Use the branch-finishing workflow. Offer merge to local `main`, PR, or keep
    the worktree. Do not merge or push without the user's choice.
 
 ## What is complete
@@ -160,7 +133,38 @@ relevance scores, or AI fields.
 
 ## Verification already completed
 
-Before the final uncommitted whitespace correction:
+On the committed tree, including `429c0b0`, run on 2026-08-26:
+
+```text
+uv run pytest -q
+126 passed, 1 warning; exit 0
+
+uv run ruff check .
+All checks passed!; exit 0
+
+uv run ruff format --check .
+57 files already formatted; exit 0
+
+uv run mypy packages/backend/src apps/api/src
+Success: no issues found in 36 source files; exit 0
+
+corepack pnpm --filter @episignal/web test
+3 files passed; 10 tests passed; exit 0
+
+corepack pnpm --filter @episignal/web lint
+exit 0
+
+corepack pnpm --filter @episignal/web typecheck
+exit 0
+
+corepack pnpm --filter @episignal/web build
+exit 0; `/` is server-rendered dynamically
+
+(from apps/web) corepack pnpm exec prettier --check src/lib/api-signals.ts
+All matched files use Prettier code style!; exit 0
+```
+
+The earlier run, before the whitespace correction:
 
 ```text
 uv run pytest -q
@@ -265,6 +269,12 @@ Do not build a generic scraper or treat raw source count as coverage quality.
 6. On Windows, Uvicorn's reloader watches the whole worktree. Editing tests while
    `corepack pnpm dev` runs prompts `Terminate batch job (Y/N)?` and kills both
    the API and web process under `concurrently`. Start it after edits are done.
-7. The in-app browser successfully displayed all 12 cards and expanded exact WHO
+7. The root `test:web`, `lint:web`, `typecheck:web`, and `build` scripts shell
+   out to a bare `pnpm`, which is not on `PATH`. Running them through
+   `corepack pnpm` still fails inside the script. Invoke the underlying
+   commands directly instead, for example
+   `corepack pnpm --filter @episignal/web test`. Root-level
+   `corepack pnpm exec prettier` also fails; run Prettier from `apps/web`.
+8. The in-app browser successfully displayed all 12 cards and expanded exact WHO
    text before the last correction. A later automated reload was blocked by the
    browser URL policy. The current dev server is stopped; restart it manually.
