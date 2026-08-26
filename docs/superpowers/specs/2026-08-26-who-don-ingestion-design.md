@@ -102,7 +102,9 @@ packages/backend/src/episignal_backend/ingest_runner.py
 class SourceConnector(Protocol):
     source_name: str
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]: ...
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]: ...
 
     def normalize(self, document: RawDocument) -> NormalizedSignal: ...
 ```
@@ -139,11 +141,14 @@ function of its input document, so it is tested against a committed JSON fixture
    newest `published_at` already stored for that source; otherwise 90 days before
    the run start.
 3. Fetch, ascending by `PublicationDateAndTime`, paging until exhausted. An
-   explicit `--since` is inclusive, so a stated date ingests that day; a window
-   start derived from stored rows is exclusive, so the newest stored document
-   is not refetched. Timeout 20 seconds per request, three
-   retries with exponential backoff on timeouts and 5xx responses. A 4xx other
-   than 429 is not retried.
+   explicit `--since` is passed with `inclusive=True` and uses OData `ge`, so a
+   stated date ingests that day. A window start derived from stored rows uses
+   the default `inclusive=False` and OData `gt`, so the newest stored document
+   is not refetched. Timeout 20 seconds per request, with three total attempts
+   and exponential backoff on timeouts and status codes 429, 500, 502, 503, and
+   504. A 4xx other than 429 is not retried. A missing or malformed `value`
+   collection raises a source-format error and fails the run rather than
+   looking like an empty response.
 4. Normalize each document into a `NormalizedSignal`:
 
    | Field | Value |
@@ -193,6 +198,7 @@ reformatting-only edit from registering as a new version.
 | --- | --- |
 | Source row missing | Message naming `pnpm db:seed`, exit 1, nothing fetched |
 | Network or HTTP failure after retries | Run fails, exit 1 |
+| Source response lacks a list `value` or contains a non-object item | Run fails, exit 1; source-format drift must not look like an empty fetch |
 | Document fails to normalize or insert | Log its URL, skip it, continue, exit 1 at the end |
 | Nothing new to fetch | `inserted=0 skipped=0 failed=0`, exit 0 |
 

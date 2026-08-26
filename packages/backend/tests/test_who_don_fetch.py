@@ -47,6 +47,37 @@ def test_fetch_filters_and_orders_by_publication_time() -> None:
     assert query["$top"] == str(PAGE_SIZE)
 
 
+def test_fetch_uses_an_inclusive_filter_when_requested() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={"value": []}), requests)
+    connector.fetch(SINCE, inclusive=True)
+    assert requests[0].url.params["$filter"] == "PublicationDateAndTime ge 2026-05-28T00:00:00Z"
+
+
+def test_fetch_rejects_a_response_without_value() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={}), requests)
+    with pytest.raises(ValueError, match="value"):
+        connector.fetch(SINCE)
+
+
+def test_fetch_rejects_a_non_list_value() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={"value": {}}), requests)
+    with pytest.raises(ValueError, match="value"):
+        connector.fetch(SINCE)
+
+
+def test_fetch_rejects_a_non_object_value_item() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(
+        lambda request: httpx.Response(200, json={"value": [item(1), "not an object"]}),
+        requests,
+    )
+    with pytest.raises(ValueError, match="items"):
+        connector.fetch(SINCE)
+
+
 def test_fetch_pages_until_a_short_page_arrives() -> None:
     requests: list[httpx.Request] = []
     pages = [

@@ -5,7 +5,7 @@ a pure function of one payload, so it is tested against a committed fixture with
 no network access.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from time import sleep as default_sleep
@@ -104,13 +104,13 @@ class WhoDonConnector:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]:
+    def fetch(self, since: datetime, *, inclusive: bool = False) -> Sequence[RawDocument]:
         retrieved_at = datetime.now(UTC)
         documents: list[RawDocument] = []
         skip = 0
 
         while True:
-            items = self._page(since, skip)
+            items = self._page(since, skip, inclusive=inclusive)
             documents.extend(
                 RawDocument(payload=entry, retrieved_at=retrieved_at) for entry in items
             )
@@ -118,17 +118,24 @@ class WhoDonConnector:
                 return documents
             skip += PAGE_SIZE
 
-    def _page(self, since: datetime, skip: int) -> list[dict[str, Any]]:
+    def _page(self, since: datetime, skip: int, *, inclusive: bool) -> list[dict[str, Any]]:
         moment = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        operator = "ge" if inclusive else "gt"
         parameters = {
-            "$filter": f"PublicationDateAndTime gt {moment}",
+            "$filter": f"PublicationDateAndTime {operator} {moment}",
             "$orderby": "PublicationDateAndTime asc",
             "$top": str(PAGE_SIZE),
             "$skip": str(skip),
         }
         payload = self._request(parameters)
-        value = payload.get("value", [])
-        return [entry for entry in value if isinstance(entry, dict)]
+        if "value" not in payload:
+            raise ValueError("WHO API response has no value")
+        value = payload["value"]
+        if not isinstance(value, list):
+            raise ValueError("WHO API response value must be a list")
+        if not all(isinstance(entry, Mapping) for entry in value):
+            raise ValueError("WHO API response value items must be objects")
+        return [dict(entry) for entry in value]
 
     def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
         last_error: Exception | None = None

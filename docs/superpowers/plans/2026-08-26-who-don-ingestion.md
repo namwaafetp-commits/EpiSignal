@@ -611,7 +611,9 @@ from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
 class SourceConnector(Protocol):
     source_name: str
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]: ...
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]: ...
 
     def normalize(self, document: RawDocument) -> NormalizedSignal: ...
 
@@ -902,7 +904,7 @@ git commit -m "feat: normalize WHO outbreak news documents"
 - Create: `packages/backend/tests/test_who_don_fetch.py`
 - Modify: `packages/backend/src/episignal_backend/ingestion/who_don.py`
 
-- [ ] **Step 1: Add the HTTP dependency**
+- [x] **Step 1: Add the HTTP dependency**
 
 In `packages/backend/pyproject.toml`, add `httpx` to `dependencies` so the list reads:
 
@@ -918,7 +920,7 @@ dependencies = [
 
 Then run: `uv sync -q`
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `packages/backend/tests/test_who_don_fetch.py`:
 
@@ -974,6 +976,13 @@ def test_fetch_filters_and_orders_by_publication_time() -> None:
     assert query["$top"] == str(PAGE_SIZE)
 
 
+def test_fetch_uses_an_inclusive_filter_when_requested() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={"value": []}), requests)
+    connector.fetch(SINCE, inclusive=True)
+    assert requests[0].url.params["$filter"] == "PublicationDateAndTime ge 2026-05-28T00:00:00Z"
+
+
 def test_fetch_pages_until_a_short_page_arrives() -> None:
     requests: list[httpx.Request] = []
     pages = [
@@ -1017,23 +1026,46 @@ def test_fetch_does_not_retry_a_client_error() -> None:
     with pytest.raises(httpx.HTTPError):
         connector.fetch(SINCE)
     assert len(requests) == 1
+
+
+def test_fetch_rejects_a_response_without_value() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={}), requests)
+    with pytest.raises(ValueError, match="value"):
+        connector.fetch(SINCE)
+
+
+def test_fetch_rejects_a_non_list_value() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={"value": {}}), requests)
+    with pytest.raises(ValueError, match="value"):
+        connector.fetch(SINCE)
+
+
+def test_fetch_rejects_a_non_object_value_item() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(
+        lambda request: httpx.Response(200, json={"value": [item(1), "not an object"]}),
+        requests,
+    )
+    with pytest.raises(ValueError, match="items"):
+        connector.fetch(SINCE)
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_fetch.py -v`
 
 Expected: FAIL at collection with `ImportError: cannot import name 'PAGE_SIZE'`.
 
-- [ ] **Step 4: Implement fetching**
+- [x] **Step 4: Implement fetching**
 
 In `packages/backend/src/episignal_backend/ingestion/who_don.py`, extend the
 imports at the top of the file:
 
 ```python
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from html import unescape
 from html.parser import HTMLParser
 from time import sleep as default_sleep
 from typing import Any
@@ -1070,13 +1102,15 @@ class WhoDonConnector:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]:
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]:
         retrieved_at = datetime.now(UTC)
         documents: list[RawDocument] = []
         skip = 0
 
         while True:
-            items = self._page(since, skip)
+            items = self._page(since, skip, inclusive=inclusive)
             documents.extend(
                 RawDocument(payload=entry, retrieved_at=retrieved_at) for entry in items
             )
@@ -1084,17 +1118,24 @@ class WhoDonConnector:
                 return documents
             skip += PAGE_SIZE
 
-    def _page(self, since: datetime, skip: int) -> list[dict[str, Any]]:
+    def _page(
+        self, since: datetime, skip: int, *, inclusive: bool
+    ) -> list[dict[str, Any]]:
         moment = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        operator = "ge" if inclusive else "gt"
         parameters = {
-            "$filter": f"PublicationDateAndTime gt {moment}",
+            "$filter": f"PublicationDateAndTime {operator} {moment}",
             "$orderby": "PublicationDateAndTime asc",
             "$top": str(PAGE_SIZE),
             "$skip": str(skip),
         }
         payload = self._request(parameters)
-        value = payload.get("value", [])
-        return [entry for entry in value if isinstance(entry, dict)]
+        if "value" not in payload or not isinstance(payload["value"], list):
+            raise ValueError("WHO API response value must be a list")
+        value = payload["value"]
+        if not all(isinstance(entry, Mapping) for entry in value):
+            raise ValueError("WHO API response value items must be objects")
+        return [dict(entry) for entry in value]
 
     def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
         last_error: Exception | None = None
@@ -1123,16 +1164,16 @@ class WhoDonConnector:
         raise last_error if last_error else httpx.HTTPError("WHO API request failed")
 ```
 
-Note that `since` is exclusive here: the OData `gt` operator means the newest
-already-stored document is not fetched again.
+The default `inclusive=False` uses OData `gt`, so the newest already-stored
+document is not fetched again. An explicit `inclusive=True` uses `ge`.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_fetch.py -v`
 
-Expected: PASS, 6 tests.
+Expected: PASS, 10 tests.
 
-- [ ] **Step 6: Run every check**
+- [x] **Step 6: Run every check**
 
 ```powershell
 uv run pytest -q
@@ -1144,7 +1185,7 @@ uv run mypy packages/backend/src apps/api/src
 Expected: all pass. If `ruff format --check` reports a file, run
 `uv run ruff format packages database apps/api` and rerun the checks.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/backend uv.lock
@@ -1419,9 +1460,13 @@ class FakeConnector:
     def __init__(self, signals: Sequence[NormalizedSignal]) -> None:
         self._signals = signals
         self.since: datetime | None = None
+        self.inclusive: bool | None = None
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]:
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]:
         self.since = since
+        self.inclusive = inclusive
         return [
             RawDocument(payload={"index": index}, retrieved_at=NOW)
             for index in range(len(self._signals))
@@ -1488,6 +1533,7 @@ def test_a_missing_source_aborts_before_fetching() -> None:
     with pytest.raises(MissingSourceError, match=SOURCE):
         run_ingestion(repository, connector, now=NOW)
     assert connector.since is None
+    assert connector.inclusive is None
 
 
 def test_a_successful_run_activates_the_source() -> None:
@@ -1500,6 +1546,7 @@ def test_the_first_run_uses_the_default_window() -> None:
     connector = FakeConnector([])
     run_ingestion(FakeRepository(), connector, now=NOW)
     assert connector.since == NOW - timedelta(days=DEFAULT_WINDOW_DAYS)
+    assert connector.inclusive is False
 
 
 def test_a_later_run_resumes_from_the_newest_stored_document() -> None:
@@ -1508,6 +1555,7 @@ def test_a_later_run_resumes_from_the_newest_stored_document() -> None:
     connector = FakeConnector([])
     run_ingestion(repository, connector, now=NOW)
     assert connector.since == repository.latest
+    assert connector.inclusive is False
 
 
 def test_an_explicit_since_overrides_the_stored_watermark() -> None:
@@ -1517,6 +1565,7 @@ def test_an_explicit_since_overrides_the_stored_watermark() -> None:
     requested = datetime(2026, 1, 1, tzinfo=UTC)
     run_ingestion(repository, connector, since=requested, now=NOW)
     assert connector.since == requested
+    assert connector.inclusive is True
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1580,7 +1629,7 @@ def run_ingestion(
     skipped = 0
     failed = 0
 
-    for document in connector.fetch(window_start):
+    for document in connector.fetch(window_start, inclusive=since is not None):
         try:
             signal = connector.normalize(document)
             if repository.exists(signal.url, signal.content_hash):
@@ -1604,7 +1653,8 @@ def run_ingestion(
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_pipeline.py -v`
 
-Expected: PASS, 11 tests.
+Expected: PASS, 11 tests, including inclusive fetch semantics for explicit
+`--since` and exclusive semantics for default and stored watermarks.
 
 - [ ] **Step 5: Run every check**
 
