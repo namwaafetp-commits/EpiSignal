@@ -1,9 +1,9 @@
-from sqlalchemy import Boolean, CheckConstraint, Enum, String, Text
+from sqlalchemy import Boolean, CheckConstraint, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
-from episignal_backend.db.types import CredibilityTier, SourceType
+from episignal_backend.db.types import CredibilityTier, SourceType, vocabulary
 
 
 class Source(IdentityMixin, TimestampMixin, Base):
@@ -12,19 +12,14 @@ class Source(IdentityMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     source_type: Mapped[SourceType] = mapped_column(
-        Enum(SourceType, native_enum=False, create_constraint=True, name="source_type_values"),
+        vocabulary(SourceType, "source_type_values"),
         nullable=False,
     )
     country_code: Mapped[str | None] = mapped_column(String(2))
     base_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     feed_url: Mapped[str | None] = mapped_column(Text, unique=True)
     credibility_tier: Mapped[CredibilityTier] = mapped_column(
-        Enum(
-            CredibilityTier,
-            native_enum=False,
-            create_constraint=True,
-            name="credibility_tier_values",
-        ),
+        vocabulary(CredibilityTier, "credibility_tier_values"),
         nullable=False,
         default=CredibilityTier.UNKNOWN,
     )

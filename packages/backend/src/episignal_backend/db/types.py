@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+from sqlalchemy import Enum
+
 
 class SourceType(StrEnum):
     INTERNATIONAL_ORGANIZATION = "international_organization"
@@ -94,3 +96,14 @@ class LocationRole(StrEnum):
     TRAVEL = "travel"
     REPORTING = "reporting"
     AFFECTED_AREA = "affected_area"
+
+
+def vocabulary(enum_class: type[StrEnum], name: str) -> Enum:
+    """Store a controlled vocabulary as its lowercase values, not member names."""
+    return Enum(
+        enum_class,
+        native_enum=False,
+        create_constraint=True,
+        name=name,
+        values_callable=lambda members: [member.value for member in members],
+    )

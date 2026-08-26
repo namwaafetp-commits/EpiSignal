@@ -1,5 +1,6 @@
 import episignal_backend.models  # noqa: F401
 from episignal_backend.db.base import Base
+from sqlalchemy import Enum
 
 EXPECTED_TABLES = {
     "sources",
@@ -56,3 +57,17 @@ def test_event_signal_relationship_has_composite_primary_key() -> None:
 
 def test_location_uses_postgis_geography() -> None:
     assert str(Base.metadata.tables["event_locations"].c.geometry.type) == "geography(POINT,4326)"
+
+
+def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
+    enum_columns = [
+        column
+        for table in Base.metadata.tables.values()
+        for column in table.c
+        if isinstance(column.type, Enum)
+    ]
+    assert len(enum_columns) == 9
+    for column in enum_columns:
+        enum_class = column.type.enum_class
+        assert enum_class is not None
+        assert column.type.enums == [member.value for member in enum_class]

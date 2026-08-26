@@ -6,7 +6,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Index,
@@ -17,7 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
-from episignal_backend.db.types import ProcessingStatus, SignalType
+from episignal_backend.db.types import ProcessingStatus, SignalType, vocabulary
 
 
 class Signal(IdentityMixin, TimestampMixin, Base):
@@ -49,7 +48,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     relevance_score: Mapped[float | None] = mapped_column(Float)
     public_health_relevant: Mapped[bool | None] = mapped_column(Boolean)
     signal_type: Mapped[SignalType] = mapped_column(
-        Enum(SignalType, native_enum=False, create_constraint=True, name="signal_type_values"),
+        vocabulary(SignalType, "signal_type_values"),
         nullable=False,
         default=SignalType.UNKNOWN,
     )
@@ -57,12 +56,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     ai_model: Mapped[str | None] = mapped_column(Text)
     ai_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     processing_status: Mapped[ProcessingStatus] = mapped_column(
-        Enum(
-            ProcessingStatus,
-            native_enum=False,
-            create_constraint=True,
-            name="processing_status_values",
-        ),
+        vocabulary(ProcessingStatus, "processing_status_values"),
         nullable=False,
         default=ProcessingStatus.FETCHED,
     )

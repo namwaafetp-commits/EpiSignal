@@ -8,7 +8,6 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Index,
@@ -26,6 +25,7 @@ from episignal_backend.db.types import (
     LocationRole,
     RelationshipType,
     VerificationStatus,
+    vocabulary,
 )
 
 
@@ -60,22 +60,17 @@ class Event(IdentityMixin, TimestampMixin, Base):
         ForeignKey("pathogens.id", ondelete="RESTRICT")
     )
     event_type: Mapped[EventType] = mapped_column(
-        Enum(EventType, native_enum=False, create_constraint=True, name="event_type_values"),
+        vocabulary(EventType, "event_type_values"),
         nullable=False,
         default=EventType.OTHER,
     )
     status: Mapped[EventStatus] = mapped_column(
-        Enum(EventStatus, native_enum=False, create_constraint=True, name="event_status_values"),
+        vocabulary(EventStatus, "event_status_values"),
         nullable=False,
         default=EventStatus.MONITORING,
     )
     verification_status: Mapped[VerificationStatus] = mapped_column(
-        Enum(
-            VerificationStatus,
-            native_enum=False,
-            create_constraint=True,
-            name="verification_status_values",
-        ),
+        vocabulary(VerificationStatus, "verification_status_values"),
         nullable=False,
         default=VerificationStatus.UNVERIFIED,
     )
@@ -108,12 +103,7 @@ class EventSignal(Base):
         ForeignKey("signals.id", ondelete="CASCADE"), primary_key=True
     )
     relationship_type: Mapped[RelationshipType] = mapped_column(
-        Enum(
-            RelationshipType,
-            native_enum=False,
-            create_constraint=True,
-            name="relationship_type_values",
-        ),
+        vocabulary(RelationshipType, "relationship_type_values"),
         nullable=False,
         default=RelationshipType.SUPPORTING_SOURCE,
     )
@@ -187,7 +177,7 @@ class EventLocation(IdentityMixin, Base):
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
     location_role: Mapped[LocationRole] = mapped_column(
-        Enum(LocationRole, native_enum=False, create_constraint=True, name="location_role_values"),
+        vocabulary(LocationRole, "location_role_values"),
         nullable=False,
         default=LocationRole.PRIMARY,
     )
