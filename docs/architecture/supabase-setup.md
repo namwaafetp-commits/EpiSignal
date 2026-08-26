@@ -51,7 +51,7 @@ Copy-Item apps/web/.env.local.example apps/web/.env.local
 pnpm db:check
 pnpm db:migrate
 pnpm db:seed
-pwsh -File scripts/verify-live-database.ps1
+powershell -File scripts/verify-live-database.ps1   # or: pwsh -File ...
 ```
 
 `pnpm db:check` reports whether the failure is configuration, connection, or

@@ -18,12 +18,28 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     Write-Error "Missing configuration file: apps/api/.env"
 }
 
+# pnpm may be a real command or only reachable through the Corepack shim.
+$pnpmCommand = "pnpm"
+$pnpmPrefix = @()
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    if (-not (Get-Command corepack -ErrorAction SilentlyContinue)) {
+        Write-Error "Neither pnpm nor corepack is available. Install Node.js 22 and run 'corepack enable'."
+    }
+    $pnpmCommand = "corepack"
+    $pnpmPrefix = @("pnpm")
+}
+
+function Invoke-Pnpm {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+    & $pnpmCommand @($pnpmPrefix + $Arguments)
+}
+
 Push-Location $root
 try {
-    & pnpm db:check
+    Invoke-Pnpm db:check
     if ($LASTEXITCODE -ne 0) { Write-Error "pnpm db:check failed." }
 
-    & pnpm db:migrate
+    Invoke-Pnpm db:migrate
     if ($LASTEXITCODE -ne 0) { Write-Error "pnpm db:migrate failed." }
 
     function Get-SchemaReport {
@@ -32,11 +48,11 @@ try {
         return ($json | ConvertFrom-Json)
     }
 
-    & pnpm db:seed
+    Invoke-Pnpm db:seed
     if ($LASTEXITCODE -ne 0) { Write-Error "pnpm db:seed failed on the first run." }
     $first = Get-SchemaReport
 
-    & pnpm db:seed
+    Invoke-Pnpm db:seed
     if ($LASTEXITCODE -ne 0) { Write-Error "pnpm db:seed failed on the second run." }
     $second = Get-SchemaReport
 

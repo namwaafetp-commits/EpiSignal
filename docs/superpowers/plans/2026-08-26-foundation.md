@@ -1519,7 +1519,7 @@ git status --short
 
 Expected: all format, lint, type-check, tests, contract checks, and production build pass. Git status contains only intentional documentation changes before commit and no `.env` files.
 
-- [ ] **Step 5: Run the live smoke test only after the user configures Supabase**
+- [x] **Step 5: Run the live smoke test only after the user configures Supabase**
 
 Run: `pwsh -File scripts/verify-live-database.ps1`
 

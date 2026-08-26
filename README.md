@@ -27,7 +27,7 @@ appear only after source ingestion is connected in a later slice.
 - Node.js 22 with pnpm 11 (`corepack enable`)
 - Python 3.12 with [uv](https://docs.astral.sh/uv/)
 - A Supabase project with PostGIS enabled
-- PowerShell 7 (`pwsh`) for the verification scripts
+- PowerShell for the verification scripts (Windows PowerShell 5.1 or `pwsh` 7)
 
 ## Workspace map
 
