@@ -46,7 +46,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     language: Mapped[str | None] = mapped_column(String(8))
-    content_hash: Mapped[str | None] = mapped_column(String(64))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     relevance_score: Mapped[float | None] = mapped_column(Float)
     public_health_relevant: Mapped[bool | None] = mapped_column(Boolean)
     signal_type: Mapped[SignalType] = mapped_column(

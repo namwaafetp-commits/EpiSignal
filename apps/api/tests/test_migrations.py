@@ -51,7 +51,6 @@ def test_offline_upgrade_declares_every_core_invariant() -> None:
         "uq_sources_name",
         "uq_sources_base_url",
         "uq_sources_feed_url",
-        "uq_signals_url",
         "uq_diseases_slug",
         "uq_pathogens_slug",
         "uq_events_public_id",

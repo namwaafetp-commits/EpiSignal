@@ -12,6 +12,7 @@ observation was extracted from.
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260826_0002"
@@ -21,6 +22,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # A NULL component would make the composite key vacuous: PostgreSQL treats
+    # NULLs as distinct, so the same URL could be stored without limit.
+    op.alter_column("signals", "content_hash", existing_type=sa.String(length=64), nullable=False)
     op.drop_constraint("uq_signals_url", "signals", type_="unique")
     op.create_unique_constraint("uq_signals_url_content_hash", "signals", ["url", "content_hash"])
 
@@ -31,3 +35,4 @@ def downgrade() -> None:
     # than a failed downgrade.
     op.drop_constraint("uq_signals_url_content_hash", "signals", type_="unique")
     op.create_unique_constraint("uq_signals_url", "signals", ["url"])
+    op.alter_column("signals", "content_hash", existing_type=sa.String(length=64), nullable=True)

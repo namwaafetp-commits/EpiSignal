@@ -29,6 +29,7 @@ def test_signal_versions_are_unique_by_url_and_content_hash() -> None:
     table = Base.metadata.tables["signals"]
     assert table.c.url.nullable is False
     assert table.c.url.unique is not True
+    assert table.c.content_hash.nullable is False
     constraint = next(
         item
         for item in table.constraints
