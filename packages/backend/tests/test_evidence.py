@@ -102,6 +102,13 @@ def test_query_pages_exact_evidence_newest_first_with_live_counts() -> None:
                 published_at=datetime(2026, 8, 20, tzinfo=UTC),
                 raw_text=None,
             ),
+            signal(
+                signal_id="55555555-5555-5555-5555-555555555555",
+                source_id=SOURCE_ONE,
+                title="Blank is not evidence",
+                published_at=datetime(2026, 8, 21, tzinfo=UTC),
+                raw_text="   ",
+            ),
         ]
     )
     session.commit()

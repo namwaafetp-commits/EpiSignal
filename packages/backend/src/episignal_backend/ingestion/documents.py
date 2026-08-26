@@ -69,6 +69,13 @@ class NormalizedSignal(BaseModel):
             raise ValueError("url must not be blank")
         return value
 
+    @field_validator("raw_text")
+    @classmethod
+    def raw_text_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("raw_text must not be blank")
+        return value
+
     @field_validator("published_at", "retrieved_at")
     @classmethod
     def timestamp_is_aware(cls, value: datetime) -> datetime:

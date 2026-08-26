@@ -31,15 +31,14 @@ class EvidencePage:
 
 
 def query_evidence_page(session: Session, *, limit: int = 20, offset: int = 0) -> EvidencePage:
+    has_evidence = func.length(func.trim(Signal.raw_text)) > 0
     total, source_count = session.execute(
-        select(func.count(Signal.id), func.count(distinct(Signal.source_id))).where(
-            Signal.raw_text.is_not(None)
-        )
+        select(func.count(Signal.id), func.count(distinct(Signal.source_id))).where(has_evidence)
     ).one()
     rows = session.execute(
         select(Signal, Source.name)
         .join(Source, Signal.source_id == Source.id)
-        .where(Signal.raw_text.is_not(None))
+        .where(has_evidence)
         .order_by(
             Signal.published_at.desc().nullslast(),
             Signal.retrieved_at.desc(),

@@ -45,6 +45,11 @@ def test_normalized_signal_rejects_an_empty_title() -> None:
         valid_signal(title="   ")
 
 
+def test_normalized_signal_rejects_blank_evidence() -> None:
+    with pytest.raises(ValidationError):
+        valid_signal(raw_text="   ")
+
+
 def test_normalized_signal_is_frozen() -> None:
     signal = valid_signal()
     with pytest.raises(ValidationError):

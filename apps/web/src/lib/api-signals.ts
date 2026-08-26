@@ -44,7 +44,7 @@ function isEvidenceItem(value: unknown) {
     typeof value.title === "string" &&
     value.title.length > 0 &&
     typeof value.raw_text === "string" &&
-    value.raw_text.length > 0 &&
+    value.raw_text.trim().length > 0 &&
     isSourceUrl(value.url) &&
     isTimestamp(value.published_at, true) &&
     isTimestamp(value.retrieved_at)
