@@ -1,0 +1,11 @@
+from episignal_api.factory import create_app
+from episignal_backend.config import Settings
+
+
+def test_openapi_exposes_only_foundation_routes() -> None:
+    settings = Settings(
+        database_url="postgresql://openapi:openapi@localhost/openapi",
+        _env_file=None,
+    )
+    paths = set(create_app(settings).openapi()["paths"])
+    assert paths == {"/health/live", "/health/ready", "/api/v1"}
