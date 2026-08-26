@@ -137,7 +137,7 @@ class EventObservation(IdentityMixin, Base):
         CheckConstraint("recoveries >= 0", name="recoveries_non_negative"),
         CheckConstraint("hospitalizations >= 0", name="hospitalizations_non_negative"),
         CheckConstraint("affected_admin_areas >= 0", name="affected_admin_areas_non_negative"),
-        CheckConstraint("cfr >= 0 AND cfr <= 100", name="cfr_percentage_range"),
+        CheckConstraint("cfr >= 0 AND cfr <= 100", name="cfr_range"),
         CheckConstraint(
             "extraction_confidence >= 0 AND extraction_confidence <= 1",
             name="extraction_confidence_range",

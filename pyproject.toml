@@ -6,6 +6,8 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+  "episignal-api",
+  "episignal-backend",
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",
   "pytest-cov>=6.2,<7",
@@ -14,6 +16,10 @@ dev = [
 
 [tool.uv.workspace]
 members = ["apps/api", "packages/backend"]
+
+[tool.uv.sources]
+episignal-api = { workspace = true }
+episignal-backend = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["apps/api/tests", "packages/backend/tests"]

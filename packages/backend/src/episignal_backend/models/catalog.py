@@ -8,9 +8,7 @@ from episignal_backend.db.types import CredibilityTier, SourceType
 
 class Source(IdentityMixin, TimestampMixin, Base):
     __tablename__ = "sources"
-    __table_args__ = (
-        CheckConstraint("length(country_code) = 2", name="country_code_alpha2"),
-    )
+    __table_args__ = (CheckConstraint("length(country_code) = 2", name="country_code_alpha2"),)
 
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     source_type: Mapped[SourceType] = mapped_column(
