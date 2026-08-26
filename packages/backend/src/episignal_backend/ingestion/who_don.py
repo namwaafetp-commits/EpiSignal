@@ -5,14 +5,24 @@ a pure function of one payload, so it is tested against a committed fixture with
 no network access.
 """
 
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from html.parser import HTMLParser
+from time import sleep as default_sleep
+from typing import Any
+
+import httpx
 
 from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
 from episignal_backend.ingestion.fingerprint import content_hash
 from episignal_backend.ingestion.urls import canonicalize_url
 
 SOURCE_NAME = "WHO Disease Outbreak News"
+API_URL = "https://www.who.int/api/news/diseaseoutbreaknews"
+PAGE_SIZE = 50
+TIMEOUT_SECONDS = 20.0
+MAX_ATTEMPTS = 3
+RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 ITEM_URL_TEMPLATE = "https://www.who.int/emergencies/disease-outbreak-news/item/{url_name}"
 SECTION_FIELDS = ("Overview", "Epidemiology", "Assessment", "Advice", "Response")
 BLOCK_TAGS = frozenset(
@@ -85,6 +95,64 @@ def parse_utc(value: str) -> datetime:
 
 class WhoDonConnector:
     source_name = SOURCE_NAME
+
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        sleep: Callable[[float], None] = default_sleep,
+    ) -> None:
+        self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
+        self._sleep = sleep
+
+    def fetch(self, since: datetime) -> Sequence[RawDocument]:
+        retrieved_at = datetime.now(UTC)
+        documents: list[RawDocument] = []
+        skip = 0
+
+        while True:
+            items = self._page(since, skip)
+            documents.extend(
+                RawDocument(payload=entry, retrieved_at=retrieved_at) for entry in items
+            )
+            if len(items) < PAGE_SIZE:
+                return documents
+            skip += PAGE_SIZE
+
+    def _page(self, since: datetime, skip: int) -> list[dict[str, Any]]:
+        moment = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        parameters = {
+            "$filter": f"PublicationDateAndTime gt {moment}",
+            "$orderby": "PublicationDateAndTime asc",
+            "$top": str(PAGE_SIZE),
+            "$skip": str(skip),
+        }
+        payload = self._request(parameters)
+        value = payload.get("value", [])
+        return [entry for entry in value if isinstance(entry, dict)]
+
+    def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
+        last_error: Exception | None = None
+
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                response = self._client.get(API_URL, params=parameters, timeout=TIMEOUT_SECONDS)
+            except (httpx.TimeoutException, httpx.TransportError) as error:
+                last_error = error
+            else:
+                if response.status_code not in RETRY_STATUS:
+                    response.raise_for_status()
+                    result: dict[str, Any] = response.json()
+                    return result
+                last_error = httpx.HTTPStatusError(
+                    f"WHO API returned {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+
+            if attempt < MAX_ATTEMPTS - 1:
+                self._sleep(2.0**attempt)
+
+        raise last_error if last_error else httpx.HTTPError("WHO API request failed")
 
     def normalize(self, document: RawDocument) -> NormalizedSignal:
         payload = document.payload
