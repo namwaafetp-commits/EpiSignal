@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from episignal_backend.db.types import ProcessingStatus, SignalType
 from episignal_backend.ingestion.documents import RawDocument
-from episignal_backend.ingestion.who_don import WhoDonConnector
+from episignal_backend.ingestion.who_don import WhoDonConnector, strip_html
 
 FIXTURE = Path(__file__).parent / "fixtures" / "who_don_sample.json"
 RETRIEVED = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
@@ -76,3 +76,35 @@ def test_normalize_rejects_a_document_without_a_url_name() -> None:
 
 def test_connector_names_the_seeded_source() -> None:
     assert WhoDonConnector().source_name == "WHO Disease Outbreak News"
+
+
+def test_strip_html_separates_adjacent_table_cells() -> None:
+    assert strip_html("<td>45</td><td>12</td>") == "45 12"
+
+
+def test_strip_html_keeps_case_counts_attached_to_their_province() -> None:
+    table = (
+        "<table><tr><th>Province</th><th>Cases</th></tr>"
+        "<tr><td>North Kivu</td><td>45</td></tr>"
+        "<tr><td>Ituri</td><td>3</td></tr></table>"
+    )
+    text = strip_html(table)
+    assert "4512" not in text
+    assert "North Kivu 45" in text
+    assert "Ituri 3" in text
+
+
+def test_strip_html_does_not_decode_entities_twice() -> None:
+    assert strip_html("<p>&amp;amp;</p>") == "&amp;"
+    assert strip_html("<p>5 &amp;lt; 10</p>") == "5 &lt; 10"
+
+
+def test_strip_html_drops_script_and_style_bodies() -> None:
+    markup = "<p>Text</p><script>var x=1;</script><style>p{color:red}</style>"
+    assert strip_html(markup) == "Text"
+
+
+def test_normalize_rejects_a_document_without_a_publication_time() -> None:
+    broken = RawDocument(payload={"UrlName": "2026-DON1"}, retrieved_at=RETRIEVED)
+    with pytest.raises(ValueError, match="PublicationDateAndTime"):
+        WhoDonConnector().normalize(broken)
