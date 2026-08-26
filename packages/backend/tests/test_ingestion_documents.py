@@ -55,3 +55,28 @@ def test_raw_document_keeps_the_untouched_source_payload() -> None:
     document = RawDocument(payload={"Title": "x", "UrlName": "y"}, retrieved_at=MOMENT)
     assert document.payload["UrlName"] == "y"
     assert document.retrieved_at == MOMENT
+
+
+def test_normalized_signal_rejects_an_overlong_language_tag() -> None:
+    with pytest.raises(ValidationError):
+        valid_signal(language="zh-Hans-CN-x-private")
+
+
+def test_normalized_signal_rejects_a_non_hex_content_hash() -> None:
+    with pytest.raises(ValidationError):
+        valid_signal(content_hash="A" * 64)
+
+
+def test_normalized_signal_rejects_a_blank_url() -> None:
+    with pytest.raises(ValidationError):
+        valid_signal(url="   ")
+
+
+def test_raw_document_rejects_a_naive_retrieved_at() -> None:
+    with pytest.raises(ValidationError):
+        RawDocument(payload={}, retrieved_at=datetime(2026, 8, 14, 15, 38, 29))
+
+
+def test_raw_document_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        RawDocument(payload={}, retrieved_at=MOMENT, bogus=1)  # type: ignore[call-arg]
