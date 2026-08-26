@@ -23,3 +23,12 @@ def test_content_hash_changes_when_the_title_changes() -> None:
 
 def test_content_hash_does_not_confuse_title_and_body_boundaries() -> None:
     assert content_hash("a", "b") != content_hash("a b", "")
+
+
+def test_content_hash_ignores_unicode_normalization_form() -> None:
+    # Built from explicit code points so the source file's own normalization
+    # cannot silently collapse the two forms before the test even runs.
+    precomposed = "C" + "ô" + "te d'Ivoire"  # o-circumflex, one code point
+    decomposed = "C" + "o" + "̂" + "te d'Ivoire"  # "o" + combining circumflex
+    assert precomposed != decomposed
+    assert content_hash("Cholera", precomposed) == content_hash("Cholera", decomposed)

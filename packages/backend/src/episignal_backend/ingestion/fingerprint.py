@@ -7,12 +7,15 @@ a reported number. The digest is 64 hex characters, exactly the width of
 """
 
 import hashlib
+import unicodedata
 
 SEPARATOR = "\x1f"
 
 
 def _collapse(value: str) -> str:
-    return " ".join(value.split())
+    # NFC first: the same place name can arrive precomposed or decomposed, and a
+    # re-encoded diacritic is not a change in what the document says.
+    return " ".join(unicodedata.normalize("NFC", value).split())
 
 
 def content_hash(title: str, body: str) -> str:
