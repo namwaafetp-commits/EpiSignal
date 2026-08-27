@@ -174,9 +174,7 @@ def test_the_openrouter_key_is_not_printed_by_repr() -> None:
 
 def test_a_batch_larger_than_the_run_limit_is_rejected() -> None:
     with pytest.raises(ValidationError):
-        build_settings(
-            EPISIGNAL_AI_BATCH_SIZE="500", EPISIGNAL_AI_SIGNAL_BATCH_LIMIT="100"
-        )
+        build_settings(EPISIGNAL_AI_BATCH_SIZE="500", EPISIGNAL_AI_SIGNAL_BATCH_LIMIT="100")
 
 
 def test_a_confidence_floor_outside_zero_to_one_is_rejected() -> None:
@@ -197,4 +195,3 @@ def test_a_negative_cost_cap_is_rejected() -> None:
 def test_a_tier_above_the_ladder_is_rejected() -> None:
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_AI_MAX_TIER="4")
-

@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from episignal_backend.ai.schema import Extraction, GroundedCount, GroundedFlag
+from pydantic import ValidationError
 
 
 def minimal(**overrides: object) -> dict[str, object]:
@@ -11,9 +10,7 @@ def minimal(**overrides: object) -> dict[str, object]:
         "disease": {"name": "Cholera", "confidence": 0.97},
         "pathogen": None,
         "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
-        "epidemiology": {
-            "confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"}
-        },
+        "epidemiology": {"confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"}},
         "dates": {"data_as_of": "2026-08-25"},
         "transmission": None,
         "confidence": 0.94,
@@ -60,9 +57,7 @@ def test_an_unknown_signal_type_is_rejected() -> None:
 
 def test_an_unknown_location_role_is_rejected() -> None:
     with pytest.raises(ValidationError):
-        Extraction.model_validate(
-            minimal(locations=[{"role": "somewhere", "country": "Angola"}])
-        )
+        Extraction.model_validate(minimal(locations=[{"role": "somewhere", "country": "Angola"}]))
 
 
 def test_confidence_outside_zero_to_one_is_rejected() -> None:
@@ -128,4 +123,3 @@ def test_a_classification_response_with_no_results_is_rejected() -> None:
 
     with pytest.raises(ValidationError):
         ClassificationResponse.model_validate({"results": []})
-

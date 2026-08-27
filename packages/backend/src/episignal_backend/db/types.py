@@ -75,7 +75,6 @@ class AiOutcome(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-
 class EventType(StrEnum):
     OUTBREAK = "outbreak"
     CLUSTER = "cluster"

@@ -161,4 +161,3 @@ class ClassificationResponse(BaseModel):
 
 def classification_json_schema() -> dict[str, Any]:
     return ClassificationResponse.model_json_schema()
-

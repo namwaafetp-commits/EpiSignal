@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-
 from episignal_backend.ai.documents import ChatRequest
 from episignal_backend.ai.openrouter import OpenRouterChatModel
 from episignal_backend.ai.protocol import ModelUnavailable

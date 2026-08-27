@@ -75,11 +75,15 @@ def check_arithmetic(epidemiology: Epidemiology) -> None:
 
     confirmed = epidemiology.confirmed_cases
     suspected = epidemiology.suspected_cases
-    if total is not None and confirmed is not None and suspected is not None:
-        if confirmed.value + suspected.value > total.value:
-            raise Rejected(
-                RejectionReason.ARITHMETIC, "confirmed_cases plus suspected_cases above total_cases"
-            )
+    if (
+        total is not None
+        and confirmed is not None
+        and suspected is not None
+        and confirmed.value + suspected.value > total.value
+    ):
+        raise Rejected(
+            RejectionReason.ARITHMETIC, "confirmed_cases plus suspected_cases above total_cases"
+        )
 
 
 def parse_extraction(content: str) -> Extraction:
@@ -179,9 +183,7 @@ def validate_extraction(
     return extraction
 
 
-def validate_classification(
-    content: str, sent: Sequence[UUID]
-) -> ClassificationResponse:
+def validate_classification(content: str, sent: Sequence[UUID]) -> ClassificationResponse:
     """Accept a batch answer only if it answers exactly the batch that was sent.
 
     Whole-response rejection is deliberate. A model that returns an id nobody
@@ -202,5 +204,3 @@ def validate_classification(
         raise Rejected(RejectionReason.BATCH_IDENTITY, "id set does not match the batch")
 
     return response
-
-

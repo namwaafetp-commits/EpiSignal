@@ -133,9 +133,7 @@ def test_a_relevant_and_an_irrelevant_signal_are_both_decided() -> None:
 
 def test_an_id_that_was_never_sent_escalates_the_whole_batch() -> None:
     repository = FakeRepository((signal(FIRST, "Cholera cases rise"),))
-    model = ScriptedModel(
-        [answer(verdict(uuid4(), True)), answer(verdict(FIRST, True))]
-    )
+    model = ScriptedModel([answer(verdict(uuid4(), True)), answer(verdict(FIRST, True))])
 
     run_classification(
         repository, model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW
@@ -159,7 +157,9 @@ def test_rejection_at_every_tier_sends_the_whole_batch_for_review() -> None:
 
 def test_an_unreachable_provider_leaves_the_signals_untouched() -> None:
     repository = FakeRepository((signal(FIRST, "a"),))
-    model = ScriptedModel([ModelUnavailable("429"), ModelUnavailable("429"), ModelUnavailable("429")])
+    model = ScriptedModel(
+        [ModelUnavailable("429"), ModelUnavailable("429"), ModelUnavailable("429")]
+    )
 
     run_classification(
         repository, model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW

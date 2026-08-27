@@ -169,4 +169,3 @@ def seed_database(session: Session) -> SeedResult:
         filter_rules=len(filter_rules),
         ai_models=len(ai_models),
     )
-

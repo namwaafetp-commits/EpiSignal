@@ -76,9 +76,7 @@ class AiRequest(IdentityMixin, TimestampMixin, Base):
     # Nullable: a classification request covers a batch and belongs to no single
     # signal. SET NULL rather than CASCADE, because deleting a signal must not
     # delete the record of what was spent on it.
-    signal_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("signals.id", ondelete="SET NULL")
-    )
+    signal_id: Mapped[UUID | None] = mapped_column(ForeignKey("signals.id", ondelete="SET NULL"))
     batch_size: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="1")
     # Integer, not SmallInteger: a prompt can exceed 32767 tokens and a timeout
     # exceeds 32767 milliseconds, and a ledger that overflows is worse than none.

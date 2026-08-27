@@ -11,9 +11,9 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from episignal_backend.ai.documents import (
-    AiRequestRecord,
     ChatRequest,
     ClassifiableSignal,
     ModelSpec,
@@ -61,6 +61,20 @@ def _batches(
     return [pending[start : start + size] for start in range(0, len(pending), size)]
 
 
+def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
+    def _request(spec: ModelSpec) -> ChatRequest:
+        return ChatRequest(model_id=spec.model_id, system=system, user=user)
+
+    return _request
+
+
+def _accept_builder(identifiers: Sequence[UUID]) -> Callable[[str], ClassificationResponse]:
+    def _accept(content: str) -> ClassificationResponse:
+        return validate_classification(content, identifiers)
+
+    return _accept
+
+
 def run_classification(
     repository: AiRepository,
     model: ChatModel,
@@ -84,7 +98,7 @@ def run_classification(
     stopped_early = False
 
     for batch in _batches(pending, batch_size):
-        identifiers = tuple(signal.id for signal in batch)
+        identifiers = [signal.id for signal in batch]
         system, user = classification_prompt(batch, max_characters=max_input_characters)
         attempts: list[Attempt] = []
 
@@ -92,10 +106,8 @@ def run_classification(
             ladder=ladder,
             budget=budget,
             model=model,
-            request_for=lambda spec: ChatRequest(
-                model_id=spec.model_id, system=system, user=user
-            ),
-            accept=lambda content: validate_classification(content, identifiers),
+            request_for=_request_builder(system, user),
+            accept=_accept_builder(identifiers),
             on_attempt=attempts.append,
         )
         requests += len(attempts)

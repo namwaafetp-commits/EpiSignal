@@ -3,13 +3,12 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Select, Update
-
 from episignal_backend.ai.documents import AiRequestRecord, StoredExtraction, Verdict
 from episignal_backend.ai.protocol import AiRepository
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
 from episignal_backend.ai.schema import Extraction
 from episignal_backend.db.types import AiOutcome, AiPurpose, ProcessingStatus, SignalType
+from sqlalchemy import Select, Update
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 
@@ -78,9 +77,7 @@ def test_only_relevant_classified_signals_are_offered_for_extraction() -> None:
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
 
-    rendered = str(
-        session.executed[0].compile(compile_kwargs={"literal_binds": True})
-    )
+    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
     assert ProcessingStatus.CLASSIFIED.value in rendered
     assert "public_health_relevant" in rendered
 

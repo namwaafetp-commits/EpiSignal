@@ -165,11 +165,7 @@ def test_the_ledger_survives_retiring_a_model_or_deleting_a_signal() -> None:
 def test_the_ai_downgrade_refuses_to_discard_the_ledger() -> None:
     root = Path(__file__).parents[3]
     source = (
-        root
-        / "database"
-        / "migrations"
-        / "versions"
-        / "20260827_0005_ai_extraction.py"
+        root / "database" / "migrations" / "versions" / "20260827_0005_ai_extraction.py"
     ).read_text(encoding="utf-8")
 
     assert "EPISIGNAL_ALLOW_AI_AUDIT_LOSS" in source
@@ -184,4 +180,3 @@ def test_the_offline_downgrade_still_renders_through_the_ledger_guard() -> None:
 
     assert "drop table ai_requests" in sql
     assert "drop table ai_models" in sql
-

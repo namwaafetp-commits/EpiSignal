@@ -92,9 +92,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     # The disease this signal's extraction resolved to, when it resolved to one.
     # A foreign key rather than an id inside `ai_extraction`, because the
     # database cannot enforce a reference buried in JSONB.
-    disease_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("diseases.id", ondelete="SET NULL")
-    )
+    disease_id: Mapped[UUID | None] = mapped_column(ForeignKey("diseases.id", ondelete="SET NULL"))
     # Self-referencing: a syndicated copy keeps its own row and its own
     # publisher, and points at the copy that was seen first. Flattened on
     # assignment, so this never leads to another duplicate.

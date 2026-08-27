@@ -2,10 +2,23 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-
-from episignal_backend.ai.documents import ModelSpec, TokenUsage
-from episignal_backend.ai.ladder import Guards, Ladder, RunBudget, cost_usd
-from episignal_backend.ai.protocol import NoModelsConfigured
+from episignal_backend.ai.documents import (
+    ChatRequest,
+    ChatResponse,
+    ModelSpec,
+    TokenUsage,
+)
+from episignal_backend.ai.ladder import (
+    Attempt,
+    ClimbOutcome,
+    Guards,
+    Ladder,
+    RunBudget,
+    climb,
+    cost_usd,
+)
+from episignal_backend.ai.protocol import ModelUnavailable, NoModelsConfigured
+from episignal_backend.ai.validate import Rejected, RejectionReason
 
 
 def spec(tier: int, prompt: str = "0", completion: str = "0") -> ModelSpec:
@@ -91,12 +104,6 @@ def test_the_budget_reports_what_it_spent() -> None:
     assert budget.spent == Decimal("0.05")
 
 
-from episignal_backend.ai.documents import ChatRequest, ChatResponse
-from episignal_backend.ai.ladder import Attempt, ClimbOutcome, climb
-from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.ai.validate import RejectionReason, Rejected
-
-
 class ScriptedModel:
     """Answers from a script, one entry per call, so a climb is reproducible."""
 
@@ -110,8 +117,10 @@ class ScriptedModel:
         if isinstance(answer, Exception):
             raise answer
         return ChatResponse(
-            content=str(answer), usage=TokenUsage(prompt_tokens=10, completion_tokens=5),
-            http_status=200, latency_ms=5,
+            content=str(answer),
+            usage=TokenUsage(prompt_tokens=10, completion_tokens=5),
+            http_status=200,
+            latency_ms=5,
         )
 
 
@@ -272,5 +281,3 @@ def test_a_cost_row_carries_the_price_that_was_in_force() -> None:
 
     assert row.prompt_price_per_million == Decimal("0.100000")
     assert row.cost_usd == Decimal("0.100000")
-
-

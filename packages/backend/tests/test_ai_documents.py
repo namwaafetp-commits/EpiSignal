@@ -3,8 +3,6 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from episignal_backend.ai.documents import (
     AiRequestRecord,
     ChatRequest,
@@ -15,6 +13,7 @@ from episignal_backend.ai.documents import (
     TokenUsage,
 )
 from episignal_backend.db.types import AiOutcome, AiPurpose
+from pydantic import ValidationError
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 

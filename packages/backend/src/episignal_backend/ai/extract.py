@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 from episignal_backend.ai.documents import (
     ChatRequest,
-    ExtractableSignal,
+    ModelSpec,
     StoredExtraction,
 )
 from episignal_backend.ai.ladder import (
@@ -28,6 +28,7 @@ from episignal_backend.ai.ladder import (
 )
 from episignal_backend.ai.prompts import extraction_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
+from episignal_backend.ai.schema import Extraction
 from episignal_backend.ai.validate import validate_extraction
 from episignal_backend.db.types import AiPurpose
 
@@ -47,6 +48,20 @@ class ExtractionResult:
     unavailable: int = 0
     requests: int = 0
     stopped_early: bool = False
+
+
+def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
+    def _request(spec: ModelSpec) -> ChatRequest:
+        return ChatRequest(model_id=spec.model_id, system=system, user=user)
+
+    return _request
+
+
+def _accept_builder(raw_text: str, min_confidence: float) -> Callable[[str], Extraction]:
+    def _accept(content: str) -> Extraction:
+        return validate_extraction(content, raw_text, min_confidence=min_confidence)
+
+    return _accept
 
 
 def run_extraction(
@@ -78,12 +93,8 @@ def run_extraction(
             ladder=ladder,
             budget=budget,
             model=model,
-            request_for=lambda spec: ChatRequest(
-                model_id=spec.model_id, system=system, user=user
-            ),
-            accept=lambda content: validate_extraction(
-                content, signal.raw_text, min_confidence=min_confidence
-            ),
+            request_for=_request_builder(system, user),
+            accept=_accept_builder(signal.raw_text, min_confidence),
             on_attempt=attempts.append,
         )
         requests += len(attempts)

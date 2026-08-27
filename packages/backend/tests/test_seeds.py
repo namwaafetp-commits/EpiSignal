@@ -134,4 +134,3 @@ def test_the_tiers_do_not_all_come_from_one_vendor() -> None:
     vendors = {model.model_id.split("/")[0] for model in load_ai_models()}
 
     assert len(vendors) > 1
-

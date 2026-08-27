@@ -94,7 +94,7 @@ class SqlAlchemyAiRepository:
                 or_(
                     func.lower(Disease.canonical_name) == needle,
                     func.lower(Disease.slug) == needle,
-                    Disease.synonyms.any(needle),
+                    Disease.synonyms.any(needle),  # type: ignore[arg-type]
                 )
             )
         ).scalar_one_or_none()

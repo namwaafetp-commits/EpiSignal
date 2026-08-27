@@ -1,15 +1,15 @@
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from episignal_backend.ai.documents import ExtractableSignal, StoredExtraction, Verdict
 from episignal_backend.ai.extract import ExtractionResult, run_extraction
 from episignal_backend.ai.protocol import ModelUnavailable
 from episignal_backend.db.types import AiOutcome, AiPurpose
 from test_ai_classify import (
-    FakeRepository,
     NOW,
+    FakeRepository,
     ScriptedModel,
     guards,
 )
@@ -78,9 +78,7 @@ def french() -> ExtractableSignal:
 
 
 def run(repository: ExtractRepository, model: ScriptedModel) -> ExtractionResult:
-    return run_extraction(
-        repository, model, guards=guards(), limit=100, now=lambda: NOW
-    )
+    return run_extraction(repository, model, guards=guards(), limit=100, now=lambda: NOW)
 
 
 def test_a_grounded_extraction_is_stored_with_its_model_and_time() -> None:

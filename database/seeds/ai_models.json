@@ -1,24 +1,24 @@
 [
   {
     "tier": 1,
-    "model_id": "meta-llama/llama-3.3-70b-instruct:free",
-    "label": "Llama 3.3 70B Instruct (free)",
+    "model_id": "google/gemma-4-31b-it:free",
+    "label": "Gemma 4 31B IT (free)",
     "prompt_price_per_million": "0",
     "completion_price_per_million": "0",
     "active": true
   },
   {
     "tier": 2,
-    "model_id": "google/gemini-2.0-flash-exp:free",
-    "label": "Gemini 2.0 Flash Experimental (free)",
+    "model_id": "minimax/minimax-m2.7:free",
+    "label": "MiniMax M2.7 (free)",
     "prompt_price_per_million": "0",
     "completion_price_per_million": "0",
     "active": true
   },
   {
     "tier": 3,
-    "model_id": "deepseek/deepseek-r1:free",
-    "label": "DeepSeek R1 (free)",
+    "model_id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "label": "NVIDIA Nemotron 3 Nano Omni 30B Reasoning (free)",
     "prompt_price_per_million": "0",
     "completion_price_per_million": "0",
     "active": true

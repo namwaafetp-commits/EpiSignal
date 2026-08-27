@@ -17,9 +17,7 @@ from episignal_backend.ai.protocol import AiRepository, ChatModel
 
 class StubModel:
     def complete(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content="{}", usage=TokenUsage(), http_status=200, latency_ms=1
-        )
+        return ChatResponse(content="{}", usage=TokenUsage(), http_status=200, latency_ms=1)
 
 
 class StubRepository:

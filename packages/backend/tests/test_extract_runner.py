@@ -1,5 +1,4 @@
 import pytest
-
 from episignal_backend.ai.classify import ClassificationResult
 from episignal_backend.ai.extract import ExtractionResult
 from episignal_backend.extract_runner import Arguments, main, parse_arguments
@@ -12,9 +11,7 @@ def _classification_result() -> ClassificationResult:
 
 
 def _extraction_result() -> ExtractionResult:
-    return ExtractionResult(
-        examined=5, extracted=5, reviewed=0, unavailable=0, requests=5
-    )
+    return ExtractionResult(examined=5, extracted=5, reviewed=0, unavailable=0, requests=5)
 
 
 def test_defaults_run_both_stages() -> None:
@@ -39,9 +36,7 @@ def test_a_successful_run_prints_counts_only(
 ) -> None:
     monkeypatch.setattr(
         "episignal_backend.extract_runner._run",
-        lambda arguments: (
-            _classification_result(), _extraction_result()
-        ),
+        lambda arguments: (_classification_result(), _extraction_result()),
     )
 
     assert main([]) == 0

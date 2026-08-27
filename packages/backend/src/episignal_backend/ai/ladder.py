@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Generic, TypeVar
 from uuid import UUID
 
 from episignal_backend.ai.documents import (
@@ -87,9 +86,6 @@ class Ladder:
         return cls(rungs=rungs)
 
 
-T = TypeVar("T")
-
-
 class ClimbOutcome(StrEnum):
     ACCEPTED = "accepted"
     # Every tier answered and no answer could be trusted. The signal is now
@@ -115,13 +111,13 @@ class Attempt:
 
 
 @dataclass(frozen=True)
-class ClimbResult(Generic[T]):
+class ClimbResult[T]:
     outcome: ClimbOutcome
     value: T | None = None
     reason: str | None = None
 
 
-def climb(
+def climb[T](
     *,
     ladder: Ladder,
     budget: RunBudget,
@@ -231,4 +227,3 @@ def cost_row(
         cost_usd=attempt.cost,
         requested_at=at,
     )
-

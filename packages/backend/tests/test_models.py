@@ -194,9 +194,7 @@ def test_the_model_roster_orders_the_ladder_by_tier() -> None:
     from episignal_backend.models import AiModel
 
     assert AiModel.__tablename__ == "ai_models"
-    assert {"tier", "model_id", "prompt_price_per_million"} <= set(
-        AiModel.__table__.columns.keys()
-    )
+    assert {"tier", "model_id", "prompt_price_per_million"} <= set(AiModel.__table__.columns.keys())
     assert AiModel.__table__.columns["model_id"].unique is True
 
 
@@ -228,9 +226,7 @@ def test_retiring_a_model_does_not_delete_its_spend() -> None:
     from episignal_backend.models import AiRequest
 
     foreign_key = next(
-        key
-        for key in AiRequest.__table__.foreign_keys
-        if key.column.table.name == "ai_models"
+        key for key in AiRequest.__table__.foreign_keys if key.column.table.name == "ai_models"
     )
 
     assert foreign_key.ondelete == "SET NULL"
@@ -241,5 +237,3 @@ def test_a_signal_links_to_the_disease_it_resolved_to() -> None:
 
     assert "disease_id" in Signal.__table__.columns
     assert Signal.__table__.columns["disease_id"].nullable is True
-
-

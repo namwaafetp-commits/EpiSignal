@@ -1,9 +1,17 @@
 import json
+from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
-
 from episignal_backend.ai.schema import Extraction
-from episignal_backend.ai.validate import RejectionReason, Rejected, parse_extraction
+from episignal_backend.ai.validate import (
+    MIN_CONFIDENCE_DEFAULT,
+    Rejected,
+    RejectionReason,
+    parse_extraction,
+    validate_classification,
+    validate_extraction,
+)
 
 GROUNDED = {
     "signal_type": "outbreak_report",
@@ -90,10 +98,6 @@ def test_a_comparison_with_a_missing_side_is_not_a_contradiction() -> None:
     assert extraction.epidemiology.total_cases is None
 
 
-from pathlib import Path
-
-from episignal_backend.ai.validate import MIN_CONFIDENCE_DEFAULT, validate_extraction
-
 FIXTURES = Path(__file__).parent / "fixtures"
 BODY = (FIXTURES / "ai_outbreak_body.txt").read_text(encoding="utf-8")
 
@@ -138,9 +142,7 @@ def test_a_span_the_article_does_not_contain_is_rejected() -> None:
 
 def test_a_span_that_does_not_contain_its_own_number_is_rejected() -> None:
     payload = grounded_payload()
-    payload["epidemiology"] = {
-        "deaths": {"value": 14, "source_span": "Officials said"}
-    }
+    payload["epidemiology"] = {"deaths": {"value": 14, "source_span": "Officials said"}}
 
     with pytest.raises(Rejected) as error:
         validate_extraction(json.dumps(payload), BODY)
@@ -223,10 +225,6 @@ def test_grounding_is_checked_before_confidence() -> None:
     assert error.value.reason is RejectionReason.UNGROUNDED
 
 
-from uuid import UUID, uuid4
-
-from episignal_backend.ai.validate import validate_classification
-
 FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
 SECOND = UUID("b3f1c2d4-0000-4000-8000-000000000002")
 
@@ -280,5 +278,3 @@ def test_a_malformed_classification_body_is_rejected_before_identity() -> None:
         validate_classification("not json at all", (FIRST,))
 
     assert error.value.reason is RejectionReason.NOT_JSON
-
-

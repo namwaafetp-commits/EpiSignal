@@ -19,7 +19,8 @@ def main() -> int:
         return 1
     print(
         f"diseases={result.diseases} sources={result.sources} "
-        f"query_rules={result.query_rules} filter_rules={result.filter_rules}"
+        f"query_rules={result.query_rules} filter_rules={result.filter_rules} "
+        f"ai_models={result.ai_models}"
     )
 
     return 0
