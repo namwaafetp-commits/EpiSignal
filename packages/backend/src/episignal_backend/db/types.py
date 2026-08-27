@@ -27,6 +27,11 @@ class DiscoveryMethod(StrEnum):
     GDELT = "gdelt"
 
 
+class FilterRuleGroup(StrEnum):
+    TITLE_EXCLUSION = "title_exclusion"
+    DOMAIN_BLOCKLIST = "domain_blocklist"
+
+
 class SignalType(StrEnum):
     OUTBREAK_REPORT = "outbreak_report"
     SURVEILLANCE_UPDATE = "surveillance_update"
@@ -49,6 +54,9 @@ class ProcessingStatus(StrEnum):
     GEOCODED = "geocoded"
     MATCHED = "matched"
     PUBLISHED = "published"
+    # Terminal, like FAILED: a duplicate is not processed further, but unlike
+    # FAILED it is a correct outcome rather than an error.
+    DUPLICATE = "duplicate"
     FAILED = "failed"
     NEEDS_REVIEW = "needs_review"
 

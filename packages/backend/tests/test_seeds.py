@@ -47,3 +47,56 @@ def test_no_query_rule_is_a_bare_generic_term() -> None:
     # A single generic query returns mostly noise and defeats grouping.
     banned = {"outbreak", "disease", "virus", "illness"}
     assert all(rule.query.strip().casefold() not in banned for rule in load_query_rules())
+
+
+def test_filter_rules_load_and_are_all_negative() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.seeds import load_filter_rules
+
+    rules = load_filter_rules()
+
+    assert len(rules) >= 10
+    assert any(rule.rule_group is FilterRuleGroup.DOMAIN_BLOCKLIST for rule in rules)
+    assert all(rule.pattern.strip() for rule in rules)
+
+
+def test_every_seeded_title_pattern_compiles() -> None:
+    import re
+
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.seeds import load_filter_rules
+
+    for rule in load_filter_rules():
+        if rule.rule_group is FilterRuleGroup.TITLE_EXCLUSION:
+            re.compile(rule.pattern)
+
+
+def test_no_seeded_rule_would_reject_a_real_outbreak_headline() -> None:
+    from datetime import UTC, datetime
+
+    from episignal_backend.ingestion.documents import DiscoveredArticle, FilterRule
+    from episignal_backend.ingestion.filtering import compile_rules, evaluate
+    from episignal_backend.seeds import load_filter_rules
+
+    rules = compile_rules(
+        tuple(
+            FilterRule(rule_group=seed.rule_group, pattern=seed.pattern, label=seed.label)
+            for seed in load_filter_rules()
+        )
+    )
+    headlines = (
+        "Measles outbreak spreads in Pennsylvania",
+        "Cholera cases double in Juba after floods",
+        "Health ministry confirms H5N1 in poultry workers",
+        "Dos residentes no vacunados mueren de sarampion en Pensilvania",
+        "Eighteen students hospitalised with unknown fever",
+    )
+    for headline in headlines:
+        article = DiscoveredArticle(
+            url="https://example.org/a",
+            canonical_url="https://example.org/a",
+            title=headline,
+            domain="example.org",
+            gdelt_seen_at=datetime(2026, 8, 27, 7, 45, tzinfo=UTC),
+        )
+        assert evaluate(article, rules) is None, headline

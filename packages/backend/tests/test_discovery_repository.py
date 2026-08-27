@@ -48,6 +48,9 @@ class FakeResult:
     def all(self) -> Any:
         return self._value
 
+    def scalars(self) -> Any:
+        return self._value
+
 
 class FakeSession:
     """Answers `execute` from a queue and assigns ids on flush.
@@ -277,3 +280,46 @@ def test_repository_satisfies_the_protocol() -> None:
     repository = SqlAlchemyDiscoveryRepository(session=None)  # type: ignore[arg-type]
     assert isinstance(repository, DiscoveryRepository)
     assert _conforms(repository) is repository
+
+
+def test_active_filter_rules_are_returned_as_contracts() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.models import SignalFilterRule
+
+    row = SignalFilterRule(
+        rule_group=FilterRuleGroup.TITLE_EXCLUSION,
+        pattern=r"\bviral video\b",
+        label="Viral content",
+        active=True,
+    )
+    row.id = uuid4()
+    session = FakeSession([[row]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    rules = repository.filter_rules()
+
+    assert len(rules) == 1
+    assert rules[0].pattern == r"\bviral video\b"
+    assert rules[0].rule_group is FilterRuleGroup.TITLE_EXCLUSION
+    assert rules[0].id == row.id
+
+
+def test_recording_a_rejection_issues_one_statement() -> None:
+    from episignal_backend.ingestion.documents import Rejection
+
+    session = FakeSession([])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    repository.record_rejection(
+        Rejection(
+            url="https://example.com/a",
+            canonical_url="https://example.com/a",
+            title="Outbreak of violence in the capital",
+            domain="example.com",
+            gdelt_seen_at=SEEN,
+            rejected_at=NOW,
+            filter_rule_id=uuid4(),
+        )
+    )
+
+    assert len(session.executed) == 1

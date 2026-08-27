@@ -1,5 +1,9 @@
 from episignal_backend.models.catalog import Disease, Pathogen, Source
-from episignal_backend.models.discovery import GdeltQueryRule
+from episignal_backend.models.discovery import (
+    GdeltQueryRule,
+    RejectedSighting,
+    SignalFilterRule,
+)
 from episignal_backend.models.event import (
     Event,
     EventLocation,
@@ -16,6 +20,8 @@ __all__ = [
     "EventSignal",
     "GdeltQueryRule",
     "Pathogen",
+    "RejectedSighting",
     "Signal",
+    "SignalFilterRule",
     "Source",
 ]

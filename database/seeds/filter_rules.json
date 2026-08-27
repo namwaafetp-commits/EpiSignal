@@ -1,0 +1,62 @@
+[
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\boutbreak of (violence|war|fighting|unrest|protests?|riots?|crime)\\b",
+    "label": "Outbreak of violence"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\bepidemic of (violence|loneliness|misinformation|debt|hate|fraud|burglaries)\\b",
+    "label": "Epidemic as metaphor"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\bplague of (locusts|rats|mice|potholes|scandals)\\b",
+    "label": "Plague as metaphor"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\bviral (video|photo|post|tweet|clip|moment|sensation)\\b",
+    "label": "Viral content"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\b(injury|injuries) (epidemic|outbreak|crisis)\\b",
+    "label": "Sports injury metaphor"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\bfever pitch\\b",
+    "label": "Fever pitch metaphor"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\b(1918|1919) (flu|influenza|pandemic)\\b",
+    "label": "1918 pandemic retrospective"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\b(movie|film|series|episode|trailer|box office)\\b.*\\b(outbreak|contagion|pandemic|zombie|virus)\\b",
+    "label": "Entertainment coverage"
+  },
+  {
+    "rule_group": "title_exclusion",
+    "pattern": "\\b(shares?|stocks?|earnings|ipo|dividend)\\b.*\\b(vaccine|pharma|biotech)\\b",
+    "label": "Pharmaceutical market coverage"
+  },
+  {
+    "rule_group": "domain_blocklist",
+    "pattern": "prnewswire.com",
+    "label": "PR Newswire"
+  },
+  {
+    "rule_group": "domain_blocklist",
+    "pattern": "globenewswire.com",
+    "label": "GlobeNewswire"
+  },
+  {
+    "rule_group": "domain_blocklist",
+    "pattern": "businesswire.com",
+    "label": "Business Wire"
+  }
+]

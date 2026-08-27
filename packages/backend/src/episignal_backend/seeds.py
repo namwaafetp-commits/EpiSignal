@@ -14,8 +14,13 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from episignal_backend.db.types import CredibilityTier, SourceType
-from episignal_backend.models import Disease, GdeltQueryRule, Source
+from episignal_backend.db.types import CredibilityTier, FilterRuleGroup, SourceType
+from episignal_backend.models import (
+    Disease,
+    GdeltQueryRule,
+    SignalFilterRule,
+    Source,
+)
 from episignal_backend.models.discovery import ANY_LANGUAGE
 
 
@@ -53,11 +58,21 @@ class QueryRuleSeed(BaseModel):
     active: bool = True
 
 
+class FilterRuleSeed(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_group: FilterRuleGroup
+    pattern: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    active: bool = True
+
+
 @dataclass(frozen=True)
 class SeedResult:
     diseases: int
     sources: int
     query_rules: int
+    filter_rules: int
 
 
 def _read_seed(name: str) -> object:
@@ -77,9 +92,13 @@ def load_query_rules() -> tuple[QueryRuleSeed, ...]:
     return tuple(TypeAdapter(list[QueryRuleSeed]).validate_python(_read_seed("gdelt_queries.json")))
 
 
+def load_filter_rules() -> tuple[FilterRuleSeed, ...]:
+    return tuple(TypeAdapter(list[FilterRuleSeed]).validate_python(_read_seed("filter_rules.json")))
+
+
 def _upsert(
     session: Session,
-    model: type[Disease] | type[Source] | type[GdeltQueryRule],
+    model: type[Disease] | type[Source] | type[GdeltQueryRule] | type[SignalFilterRule],
     rows: list[dict[str, Any]],
     natural_key: tuple[str, ...],
 ) -> None:
@@ -101,6 +120,7 @@ def seed_database(session: Session) -> SeedResult:
     diseases = load_diseases()
     sources = load_sources()
     query_rules = load_query_rules()
+    filter_rules = load_filter_rules()
     _upsert(session, Disease, [item.model_dump() for item in diseases], ("slug",))
     _upsert(session, Source, [item.model_dump() for item in sources], ("name",))
     _upsert(
@@ -109,4 +129,15 @@ def seed_database(session: Session) -> SeedResult:
         [item.model_dump() for item in query_rules],
         ("query", "language"),
     )
-    return SeedResult(diseases=len(diseases), sources=len(sources), query_rules=len(query_rules))
+    _upsert(
+        session,
+        SignalFilterRule,
+        [item.model_dump() for item in filter_rules],
+        ("rule_group", "pattern"),
+    )
+    return SeedResult(
+        diseases=len(diseases),
+        sources=len(sources),
+        query_rules=len(query_rules),
+        filter_rules=len(filter_rules),
+    )

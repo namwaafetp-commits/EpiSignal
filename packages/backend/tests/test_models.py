@@ -12,6 +12,8 @@ EXPECTED_TABLES = {
     "event_observations",
     "event_locations",
     "gdelt_query_rules",
+    "filter_rules",
+    "rejected_sightings",
 }
 
 
@@ -74,7 +76,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 10
+    assert len(enum_columns) == 11
 
     for column in enum_columns:
         enum_class = column.type.enum_class
@@ -125,3 +127,47 @@ def test_source_records_its_domain() -> None:
 
     assert Source.__table__.c.domain.nullable
     assert Source.__table__.c.domain.unique
+
+
+def test_filter_rule_groups_are_stored_as_their_values() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+
+    assert FilterRuleGroup.TITLE_EXCLUSION.value == "title_exclusion"
+    assert FilterRuleGroup.DOMAIN_BLOCKLIST.value == "domain_blocklist"
+
+
+def test_duplicate_is_a_processing_status() -> None:
+    from episignal_backend.db.types import ProcessingStatus
+
+    assert ProcessingStatus.DUPLICATE.value == "duplicate"
+
+
+def test_filter_rules_are_unique_per_group_and_pattern() -> None:
+    from episignal_backend.models import SignalFilterRule
+
+    constraints = {constraint.name for constraint in SignalFilterRule.__table__.constraints}
+    assert "uq_filter_rules_rule_group" in constraints
+    assert SignalFilterRule.__tablename__ == "filter_rules"
+
+
+def test_rejected_sighting_is_unique_per_canonical_url() -> None:
+    from episignal_backend.models import RejectedSighting
+
+    constraints = {constraint.name for constraint in RejectedSighting.__table__.constraints}
+    assert "uq_rejected_sightings_canonical_url" in constraints
+
+
+def test_rejected_sighting_keeps_its_rule_when_the_rule_is_deleted() -> None:
+    from episignal_backend.models import RejectedSighting
+
+    foreign_key = next(iter(RejectedSighting.__table__.c.filter_rule_id.foreign_keys))
+    assert foreign_key.ondelete == "SET NULL"
+
+
+def test_signal_points_at_its_primary_when_duplicate() -> None:
+    from episignal_backend.models import Signal
+
+    column = Signal.__table__.c.duplicate_of_signal_id
+    assert column.nullable is True
+    foreign_key = next(iter(column.foreign_keys))
+    assert foreign_key.column.table.name == "signals"

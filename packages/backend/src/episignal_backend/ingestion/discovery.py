@@ -13,7 +13,8 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from episignal_backend.ingestion.documents import DiscoveredArticle, TimeWindow
+from episignal_backend.ingestion.documents import DiscoveredArticle, Rejection, TimeWindow
+from episignal_backend.ingestion.filtering import compile_rules, evaluate
 from episignal_backend.ingestion.protocol import (
     DiscoveryConnector,
     DiscoveryRepository,
@@ -32,8 +33,10 @@ logger = logging.getLogger("episignal_backend.ingestion.discovery")
 class DiscoveryResult:
     rules_run: int = 0
     rules_failed: int = 0
+    rules_invalid: int = 0
     discovered: int = 0
     duplicate: int = 0
+    rejected: int = 0
     deferred: int = 0
     stored: int = 0
     needs_review: int = 0
@@ -61,7 +64,14 @@ def run_discovery(
     window = TimeWindow(start=moment - timedelta(minutes=window_minutes), end=moment)
 
     rules = repository.active_rules()
+    filters = compile_rules(repository.filter_rules())
+    if not filters.titles and not filters.domains:
+        # A valid configuration, not an error. Said out loud because the
+        # alternative reading — a seeding accident — looks identical from the
+        # counts alone.
+        logger.info("No active filter rules; discovery is running unfiltered")
     rules_failed = 0
+    failed = 0
     discovered: dict[str, DiscoveredArticle] = {}
 
     for rule in rules:
@@ -82,11 +92,48 @@ def run_discovery(
             discovered.setdefault(article.canonical_url, article)
 
     already_stored = repository.seen_urls(tuple(discovered))
-    candidates = [
+    surviving = [
         article
         for canonical_url, article in discovered.items()
         if canonical_url not in already_stored
     ]
+
+    # Gate one. Before the cap, so the run's budget is spent on articles worth
+    # having rather than on articles about to be discarded.
+    candidates: list[DiscoveredArticle] = []
+    rejected = 0
+    for article in surviving:
+        filter_rule = evaluate(article, filters)
+        if filter_rule is None:
+            candidates.append(article)
+            continue
+        try:
+            repository.record_rejection(
+                Rejection(
+                    url=article.url,
+                    canonical_url=article.canonical_url,
+                    title=article.title,
+                    domain=article.domain,
+                    gdelt_seen_at=article.gdelt_seen_at,
+                    rejected_at=moment,
+                    filter_rule_id=filter_rule.id,
+                )
+            )
+            repository.commit()
+        except Exception as error:
+            repository.rollback()
+            failed += 1
+            # Keep it: losing the audit row must not also lose the article.
+            candidates.append(article)
+            logger.error(
+                "Could not record the rejection of %s (%s)",
+                article.canonical_url,
+                type(error).__name__,
+            )
+            continue
+        rejected += 1
+        logger.info("Rejected %s (%s)", article.canonical_url, filter_rule.label)
+
     # Oldest first, so a burst of fresh articles never starves a discovery that
     # has already been waiting for a slot.
     candidates.sort(key=lambda article: article.gdelt_seen_at)
@@ -94,7 +141,6 @@ def run_discovery(
 
     stored = 0
     needs_review = 0
-    failed = 0
 
     for article in selected:
         first_seen = repository.first_seen_at(article.canonical_url) or moment
@@ -130,8 +176,10 @@ def run_discovery(
     return DiscoveryResult(
         rules_run=len(rules),
         rules_failed=rules_failed,
+        rules_invalid=filters.invalid,
         discovered=len(discovered),
         duplicate=len(already_stored),
+        rejected=rejected,
         deferred=len(candidates) - len(selected),
         stored=stored,
         needs_review=needs_review,

@@ -104,10 +104,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(
         f"rules={result.rules_run} rules_failed={result.rules_failed} "
-        f"discovered={result.discovered} duplicate={result.duplicate} "
+        f"rules_invalid={result.rules_invalid} discovered={result.discovered} "
+        f"duplicate={result.duplicate} rejected={result.rejected} "
         f"deferred={result.deferred} stored={result.stored} "
         f"needs_review={result.needs_review} failed={result.failed}"
     )
+
     return 1 if result.rules_failed == result.rules_run and result.rules_run else 0
 
 
