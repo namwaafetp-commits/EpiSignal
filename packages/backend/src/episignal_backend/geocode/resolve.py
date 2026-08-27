@@ -127,11 +127,26 @@ def _coarsen(
     return _unresolved(place, country_code=country_code)
 
 
+def _worldwide(place: ExtractedPlace, gazetteer: GazetteerRepository) -> ResolvedLocation:
+    """The only search run without a country scope.
+
+    Reached when no country was extracted, or none resolved. A name unique in
+    the whole gazetteer is safe to accept; anything else is left unresolved,
+    because there is no scope left to coarsen into.
+    """
+    if place.place_name:
+        match = _unique_match(gazetteer, place.place_name, country_code=None, admin1_code=None)
+        if match is not None:
+            found, form = match
+            return _accept(place, found, form=form)
+    return _unresolved(place)
+
+
 def resolve_place(place: ExtractedPlace, gazetteer: GazetteerRepository) -> ResolvedLocation:
     """Run the ladder over one extracted place, exactly once."""
     country_code = resolve_country(place.country_name, gazetteer.country_aliases())
     if country_code is None:
-        raise NotImplementedError("the no-country path arrives in a later task")
+        return _worldwide(place, gazetteer)
 
     admin1_code = None
     if place.admin1_name:

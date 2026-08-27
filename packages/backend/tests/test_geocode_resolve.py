@@ -299,3 +299,75 @@ def test_a_country_with_no_centroid_at_all_is_unresolved() -> None:
     assert resolved.latitude is None
     assert resolved.confidence is None
     assert resolved.country_code == "NG"
+
+
+def test_a_globally_unique_name_resolves_without_a_country() -> None:
+    gazetteer = StubGazetteer(
+        by_form={
+            ("Kinshasa", "exact", None): (
+                candidate(
+                    2314302,
+                    "Kinshasa",
+                    country_code="CD",
+                    admin1_code="12",
+                    latitude=-4.32,
+                    longitude=15.31,
+                ),
+            )
+        }
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, place_name="Kinshasa"), gazetteer
+    )
+    assert resolved.precision == Precision.PLACE
+    assert resolved.country_code == "CD"
+    assert resolved.confidence == 0.95
+
+
+def test_a_globally_ambiguous_name_is_unresolved_rather_than_guessed() -> None:
+    gazetteer = StubGazetteer(
+        by_form={
+            ("Springfield", "exact", None): (
+                candidate(1, "Springfield", country_code="US"),
+                candidate(2, "Springfield", country_code="AU"),
+            )
+        }
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, place_name="Springfield"), gazetteer
+    )
+    assert resolved.precision == Precision.UNRESOLVED
+    assert resolved.place_name == "Springfield"
+    assert resolved.country_code is None
+
+
+def test_an_unresolvable_country_name_falls_back_to_the_worldwide_search() -> None:
+    gazetteer = StubGazetteer(
+        by_form={("Kinshasa", "exact", None): (candidate(2314302, "Kinshasa", country_code="CD"),)}
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Ruritania", place_name="Kinshasa"),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.PLACE
+    assert resolved.country_name == "Ruritania"
+
+
+def test_the_worldwide_search_ignores_the_extracted_admin1() -> None:
+    # An admin1 name cannot be scoped without a country, so it is not consulted.
+    gazetteer = StubGazetteer(
+        by_form={("Kinshasa", "exact", None): (candidate(2314302, "Kinshasa", country_code="CD"),)}
+    )
+    resolve_place(
+        ExtractedPlace(
+            role=LocationRole.PRIMARY, admin1_name="Somewhere", place_name="Kinshasa"
+        ),
+        gazetteer,
+    )
+    assert gazetteer.calls[0] == ("Kinshasa", "exact", None, None)
+
+
+def test_a_location_naming_nothing_but_a_role_is_unresolved() -> None:
+    resolved = resolve_place(ExtractedPlace(role=LocationRole.REPORTING), StubGazetteer())
+    assert resolved.precision == Precision.UNRESOLVED
+    assert resolved.role == LocationRole.REPORTING
