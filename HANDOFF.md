@@ -100,9 +100,11 @@ three-tier free AI model roster seeded.
 **The event schema already exists.** The foundation migration created `events`,
 `event_signals`, `event_observations`, and `event_locations`, along with the
 `EventStatus`, `RelationshipType`, `LocationRole`, and `VerificationStatus`
-vocabularies. The GDELT path has never written a row to any of them. D is the
-sub-project that first fills them, so its design decides how, not whether, these
-tables are used.
+vocabularies. **No pipeline has ever written a row to any of them.** The WHO DON
+and ECDC connectors produce signals, not events, so every source in the system
+currently stops at `extracted`. D is the sub-project that first fills the event
+tables, for official and discovered sources alike, so its design decides how, not
+whether, these tables are used.
 
 **`ProcessingStatus` already reserves D's states.** `geocoded` and `matched` are
 declared in `db/types.py` and are so far unreachable. D makes them reachable.
@@ -138,9 +140,11 @@ most likely to breach:
    row; never overwrite a running total on the event.
 5. **A number without its span is never stored.** Observations promoted out of
    `signals.ai_extraction` keep their grounding.
-6. **Official source provenance is only added to.** The WHO DON and ECDC pipelines
-   already write events and observations; D joins that history rather than
-   rewriting it.
+6. **Official source provenance is only added to.** The WHO DON and ECDC
+   connectors write `signals`, not events, and their signals flow through the same
+   `fetched` → `normalized` → `classified` → `extracted` states as GDELT ones. D
+   must not weaken the official columns or the source standing those signals
+   carry when it starts grouping them.
 7. **Decision modules import neither SQLAlchemy nor httpx.** Sub-project C's seam
    discipline is the house pattern: pure decision modules, one repository module
    for the database, one adapter module per network provider.
