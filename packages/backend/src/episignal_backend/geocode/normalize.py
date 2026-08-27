@@ -10,6 +10,7 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import unicodedata
+from collections.abc import Mapping
 
 
 def normalized_form(value: str) -> str:
@@ -27,3 +28,16 @@ def ascii_form(value: str) -> str:
     return "".join(
         character for character in decomposed if not unicodedata.combining(character)
     )
+
+
+def resolve_country(name: str | None, aliases: Mapping[str, str]) -> str | None:
+    """Map an extracted country name to an ISO-3166 alpha-2 code.
+
+    Exact match against the normalized form, never fuzzy. A country that fails
+    to resolve is a seed row someone adds; a fuzzy match is Niger silently
+    becoming Nigeria, which is the error this whole sub-project is shaped to
+    avoid.
+    """
+    if name is None:
+        return None
+    return aliases.get(normalized_form(name))
