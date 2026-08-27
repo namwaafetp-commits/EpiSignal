@@ -244,3 +244,33 @@ def test_the_language_of_the_document_never_appears_in_the_climb() -> None:
     assert "language" not in source
     assert "script" not in source
 
+
+def test_a_cost_row_carries_the_price_that_was_in_force() -> None:
+    from datetime import UTC, datetime
+
+    from episignal_backend.ai.ladder import cost_row
+    from episignal_backend.db.types import AiOutcome, AiPurpose
+
+    priced = spec(2, prompt="0.100000", completion="0.400000")
+    attempt = Attempt(
+        spec=priced,
+        usage=TokenUsage(prompt_tokens=1_000_000, completion_tokens=0),
+        http_status=200,
+        latency_ms=12,
+        outcome=AiOutcome.ACCEPTED,
+        reason=None,
+        cost=Decimal("0.100000"),
+    )
+
+    row = cost_row(
+        attempt,
+        purpose=AiPurpose.EXTRACTION,
+        signal_id=None,
+        batch_size=1,
+        at=datetime(2026, 8, 27, 9, 0, tzinfo=UTC),
+    )
+
+    assert row.prompt_price_per_million == Decimal("0.100000")
+    assert row.cost_usd == Decimal("0.100000")
+
+
