@@ -17,3 +17,34 @@ def test_source_seeds_are_official_and_unique() -> None:
     assert {item.name for item in sources} == {"WHO Disease Outbreak News", "ECDC"}
     assert all(item.is_official for item in sources)
     assert all(item.active is False for item in sources)
+
+
+def test_query_rules_load_and_are_grouped() -> None:
+    from episignal_backend.seeds import load_query_rules
+
+    rules = load_query_rules()
+    assert len(rules) >= 40
+    groups = {rule.rule_group for rule in rules}
+    assert groups == {
+        "known_disease",
+        "syndromic",
+        "zoonotic",
+        "public_health_abnormality",
+    }
+
+
+def test_query_rules_have_no_duplicate_identity() -> None:
+    from episignal_backend.seeds import load_query_rules
+
+    rules = load_query_rules()
+    identities = [(rule.query, rule.language) for rule in rules]
+    assert len(identities) == len(set(identities))
+
+
+def test_no_query_rule_is_a_bare_generic_term() -> None:
+    from episignal_backend.seeds import load_query_rules
+
+    # A single generic query returns mostly noise and defeats grouping.
+    banned = {"outbreak", "disease", "virus", "illness"}
+    assert all(rule.query.strip().casefold() not in banned for rule in load_query_rules())
+

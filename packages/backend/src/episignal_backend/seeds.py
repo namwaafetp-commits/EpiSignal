@@ -15,7 +15,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import CredibilityTier, SourceType
-from episignal_backend.models import Disease, Source
+from episignal_backend.models import Disease, GdeltQueryRule, Source
+from episignal_backend.models.discovery import ANY_LANGUAGE
 
 
 class DiseaseSeed(BaseModel):
@@ -42,10 +43,21 @@ class SourceSeed(BaseModel):
     active: bool = False
 
 
+class QueryRuleSeed(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_group: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    language: str = ANY_LANGUAGE
+    active: bool = True
+
+
 @dataclass(frozen=True)
 class SeedResult:
     diseases: int
     sources: int
+    query_rules: int
 
 
 def _read_seed(name: str) -> object:
@@ -61,21 +73,27 @@ def load_sources() -> tuple[SourceSeed, ...]:
     return tuple(TypeAdapter(list[SourceSeed]).validate_python(_read_seed("sources.json")))
 
 
+def load_query_rules() -> tuple[QueryRuleSeed, ...]:
+    return tuple(
+        TypeAdapter(list[QueryRuleSeed]).validate_python(_read_seed("gdelt_queries.json"))
+    )
+
+
 def _upsert(
     session: Session,
-    model: type[Disease] | type[Source],
+    model: type[Disease] | type[Source] | type[GdeltQueryRule],
     rows: list[dict[str, Any]],
-    natural_key: str,
+    natural_key: tuple[str, ...],
 ) -> None:
     statement = insert(model).values(rows)
     updates = {
         column.name: getattr(statement.excluded, column.name)
         for column in model.__table__.columns
-        if column.name not in {"id", "created_at", natural_key}
+        if column.name not in {"id", "created_at", *natural_key}
     }
     session.execute(
         statement.on_conflict_do_update(
-            index_elements=[getattr(model, natural_key)],
+            index_elements=[getattr(model, name) for name in natural_key],
             set_=updates,
         )
     )
@@ -84,6 +102,15 @@ def _upsert(
 def seed_database(session: Session) -> SeedResult:
     diseases = load_diseases()
     sources = load_sources()
-    _upsert(session, Disease, [item.model_dump() for item in diseases], "slug")
-    _upsert(session, Source, [item.model_dump() for item in sources], "name")
-    return SeedResult(diseases=len(diseases), sources=len(sources))
+    query_rules = load_query_rules()
+    _upsert(session, Disease, [item.model_dump() for item in diseases], ("slug",))
+    _upsert(session, Source, [item.model_dump() for item in sources], ("name",))
+    _upsert(
+        session,
+        GdeltQueryRule,
+        [item.model_dump() for item in query_rules],
+        ("query", "language"),
+    )
+    return SeedResult(
+        diseases=len(diseases), sources=len(sources), query_rules=len(query_rules)
+    )
