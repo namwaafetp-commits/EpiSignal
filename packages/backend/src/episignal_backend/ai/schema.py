@@ -10,6 +10,7 @@ This module imports neither SQLAlchemy nor httpx.
 
 from datetime import date
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -136,3 +137,28 @@ def extraction_json_schema() -> dict[str, Any]:
     validator is a prompt that produces rejections nobody can explain.
     """
     return Extraction.model_json_schema()
+
+
+class ClassificationVerdict(BaseModel):
+    """One signal's relevance decision, addressed by the id it was sent with."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    is_public_health_relevant: bool
+    signal_type: SignalType
+    relevance: float = Field(ge=0.0, le=1.0)
+
+
+class ClassificationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # min_length=1: an empty result set is not an answer about zero signals, it
+    # is a model that did not answer, and it must escalate rather than silently
+    # clear a batch.
+    results: tuple[ClassificationVerdict, ...] = Field(min_length=1)
+
+
+def classification_json_schema() -> dict[str, Any]:
+    return ClassificationResponse.model_json_schema()
+

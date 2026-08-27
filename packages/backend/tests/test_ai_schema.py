@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from pydantic import ValidationError
 
 from episignal_backend.ai.schema import Extraction, GroundedCount, GroundedFlag
@@ -83,3 +83,49 @@ def test_the_prompt_schema_names_every_field_the_model_must_return() -> None:
     assert schema["additionalProperties"] is False
     assert "epidemiology" in schema["properties"]
     assert "confidence" in schema["properties"]
+
+
+def test_a_classification_response_carries_one_verdict_per_signal() -> None:
+    from episignal_backend.ai.schema import ClassificationResponse
+
+    response = ClassificationResponse.model_validate(
+        {
+            "results": [
+                {
+                    "id": "b3f1c2d4-0000-4000-8000-000000000001",
+                    "is_public_health_relevant": True,
+                    "signal_type": "outbreak_report",
+                    "relevance": 0.88,
+                }
+            ]
+        }
+    )
+
+    assert len(response.results) == 1
+    assert response.results[0].relevance == 0.88
+
+
+def test_a_classification_verdict_with_an_unparseable_id_is_rejected() -> None:
+    from episignal_backend.ai.schema import ClassificationResponse
+
+    with pytest.raises(ValidationError):
+        ClassificationResponse.model_validate(
+            {
+                "results": [
+                    {
+                        "id": "the first one",
+                        "is_public_health_relevant": True,
+                        "signal_type": "outbreak_report",
+                        "relevance": 0.88,
+                    }
+                ]
+            }
+        )
+
+
+def test_a_classification_response_with_no_results_is_rejected() -> None:
+    from episignal_backend.ai.schema import ClassificationResponse
+
+    with pytest.raises(ValidationError):
+        ClassificationResponse.model_validate({"results": []})
+
