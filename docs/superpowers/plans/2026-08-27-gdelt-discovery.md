@@ -4,7 +4,7 @@
 
 **Goal:** Discover news articles through the GDELT DOC 2.0 API and store each one as a signal attributed to the publisher that actually wrote it, with its original URL, its own body text, and four separately recorded timestamps.
 
-**Architecture:** A second ingestion pipeline, `run_discovery`, sits beside the existing `run_ingestion`. `run_ingestion` resolves one source per run from a connector name, which suits WHO and ECDC. `run_discovery` resolves a publisher per document, because GDELT surfaces articles from thousands of unknown domains. Both share URL canonicalization, content fingerprinting, and the `signals` table. GDELT returns no publication date and no article text, so the connector fetches the publisher's own page for both.
+**Architecture:** A second ingestion pipeline, `run_discovery`, sits beside the existing `run_ingestion`. `run_ingestion` resolves one source per run from a connector name, which suits WHO and ECDC. `run_discovery` resolves a publisher per document, because GDELT surfaces articles from thousands of unknown domains. Both share URL canonicalization, content fingerprinting, and the `signals` table. GDELT returns no publication date and no article text, so the connector fetches the publisher's own page for both. A page that will not read is stored as a stub and retried on later runs by `run_retry`, within a bounded attempt budget.
 
 **Tech Stack:** Python 3.12, SQLAlchemy 2.0, Alembic, Pydantic v2, pydantic-settings, httpx, pytest, mypy strict, ruff. No new dependency is added: HTML is parsed with the standard library `html.parser`, matching `ingestion/html_text.py`.
 
@@ -572,6 +572,7 @@ def test_signal_records_discovery_provenance() -> None:
     assert not columns.first_seen_at.nullable
     assert columns.gdelt_seen_at.nullable
     assert columns.published_at_offset_minutes.nullable
+    assert not columns.retrieval_attempts.nullable
     assert columns.query_rule_id.nullable
 
 
@@ -636,6 +637,11 @@ Add these five columns at the end of the `Signal` class body:
     # timestamptz normalizes to UTC and discards the offset the publisher wrote,
     # which is a property of the document, not of the reader.
     published_at_offset_minutes: Mapped[int | None] = mapped_column(SmallInteger)
+    # Bounds the retry pass. A stub stops being selected once the budget is
+    # spent, so the counter is also the reason a row stopped moving.
+    retrieval_attempts: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
     query_rule_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("gdelt_query_rules.id", ondelete="SET NULL")
     )
@@ -722,6 +728,7 @@ def test_third_revision_adds_gdelt_discovery() -> None:
         "first_seen_at",
         "gdelt_seen_at",
         "published_at_offset_minutes",
+        "retrieval_attempts",
         "query_rule_id",
     ):
         assert f"add column {column}" in sql
@@ -818,6 +825,10 @@ def upgrade() -> None:
     op.add_column(
         "signals", sa.Column("published_at_offset_minutes", sa.SmallInteger(), nullable=True)
     )
+    op.add_column(
+        "signals",
+        sa.Column("retrieval_attempts", sa.SmallInteger(), server_default="0", nullable=False),
+    )
     op.add_column("signals", sa.Column("query_rule_id", sa.Uuid(), nullable=True))
     op.create_foreign_key(
         "fk_signals_query_rule_id_gdelt_query_rules",
@@ -837,6 +848,7 @@ def downgrade() -> None:
     op.drop_index("ix_signals_discovered_via", table_name="signals")
     op.drop_constraint("fk_signals_query_rule_id_gdelt_query_rules", "signals", type_="foreignkey")
     op.drop_column("signals", "query_rule_id")
+    op.drop_column("signals", "retrieval_attempts")
     op.drop_column("signals", "published_at_offset_minutes")
     op.drop_column("signals", "gdelt_seen_at")
     op.drop_column("signals", "first_seen_at")
@@ -1209,6 +1221,15 @@ def test_query_rule_and_window_are_frozen() -> None:
 def test_window_rejects_an_end_before_its_start() -> None:
     with pytest.raises(ValidationError, match="end"):
         TimeWindow(start=SEEN, end=SEEN - timedelta(minutes=1))
+
+
+def test_stub_retrieval_rejects_a_negative_attempt_count() -> None:
+    from uuid import uuid4
+
+    from episignal_backend.ingestion.documents import StubRetrieval
+
+    with pytest.raises(ValidationError):
+        StubRetrieval(signal_id=uuid4(), article=article(), first_seen_at=SEEN, attempts=-1)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1370,13 +1391,34 @@ class DiscoveredSignal(BaseModel):
     @classmethod
     def published_at_is_aware(cls, value: datetime | None) -> datetime | None:
         return None if value is None else _require_aware(value)
+
+
+class StubRetrieval(BaseModel):
+    """A stored stub waiting for another attempt at its page.
+
+    Carries the article as GDELT reported it, so the retry pass can call the
+    same `retrieve` the discovery pass uses, and the original `first_seen_at`,
+    which a retry must never reset.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    signal_id: UUID
+    article: DiscoveredArticle
+    first_seen_at: datetime
+    attempts: int = Field(ge=0)
+
+    @field_validator("first_seen_at")
+    @classmethod
+    def timestamp_is_aware(cls, value: datetime) -> datetime:
+        return _require_aware(value)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest packages/backend/tests/test_discovery_documents.py -v`
 
-Expected: PASS, 8 tests.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1435,6 +1477,7 @@ from episignal_backend.ingestion.documents import (
     Publisher,
     QueryRule,
     RawDocument,
+    StubRetrieval,
     TimeWindow,
 )
 ```
@@ -1474,6 +1517,14 @@ class DiscoveryRepository(Protocol):
     def publisher_source_id(self, publisher: Publisher) -> UUID: ...
 
     def add(self, signal: DiscoveredSignal, source_id: UUID) -> None: ...
+
+    def stubs_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int
+    ) -> Sequence[StubRetrieval]: ...
+
+    def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool: ...
+
+    def record_failed_attempt(self, signal_id: UUID) -> None: ...
 
     def commit(self) -> None: ...
 
@@ -2873,7 +2924,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from episignal_backend.db.types import ProcessingStatus
-from episignal_backend.ingestion.discovery import DiscoveryResult, run_discovery
+from episignal_backend.ingestion.discovery import (
+    DiscoveryResult,
+    RetryResult,
+    run_discovery,
+    run_retry,
+)
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,
     DiscoveredSignal,
@@ -3338,6 +3394,9 @@ class FakeResult:
     def scalar_one(self) -> Any:
         return self._value
 
+    def all(self) -> Any:
+        return self._value
+
 
 class FakeSession:
     """Answers `execute` from a queue and assigns ids on flush.
@@ -3346,18 +3405,32 @@ class FakeSession:
     `gen_random_uuid()`, which only PostgreSQL provides.
     """
 
-    def __init__(self, results: list[Any]) -> None:
+    def __init__(
+        self,
+        results: list[Any],
+        stored: dict[UUID, Any] | None = None,
+        flush_error: Exception | None = None,
+    ) -> None:
         self.results = results
+        self.stored = stored or {}
+        self.flush_error = flush_error
         self.added: list[Any] = []
+        self.executed: list[Any] = []
         self.rollbacks = 0
 
     def execute(self, statement: Any) -> FakeResult:
-        return FakeResult(self.results.pop(0))
+        self.executed.append(statement)
+        return FakeResult(self.results.pop(0) if self.results else None)
+
+    def get(self, model: Any, identity: UUID) -> Any:
+        return self.stored.get(identity)
 
     def add(self, instance: Any) -> None:
         self.added.append(instance)
 
     def flush(self) -> None:
+        if self.flush_error is not None:
+            raise self.flush_error
         for instance in self.added:
             if getattr(instance, "id", None) is None:
                 instance.id = uuid4()
@@ -3444,6 +3517,97 @@ def test_a_colliding_publisher_name_falls_back_to_the_domain() -> None:
     assert session.added[0].domain == "example.vn"
 
 
+def stub_row() -> Any:
+    from episignal_backend.db.types import DiscoveryMethod
+    from episignal_backend.models import Signal
+
+    return Signal(
+        id=uuid4(),
+        source_id=uuid4(),
+        url="https://example.vn/a",
+        canonical_url="https://example.vn/a",
+        title="Report",
+        raw_text=None,
+        retrieved_at=NOW,
+        first_seen_at=FIRST,
+        gdelt_seen_at=SEEN,
+        language="vi",
+        content_hash="d" * 64,
+        discovered_via=DiscoveryMethod.GDELT,
+        retrieval_attempts=1,
+        processing_status=ProcessingStatus.NEEDS_REVIEW,
+    )
+
+
+def test_a_stub_is_offered_for_retry_with_its_original_first_seen_time() -> None:
+    from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+
+    session = FakeSession([[(stub_row(), "example.vn", "VN")]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+    stubs = repository.stubs_awaiting_retrieval(max_attempts=3, limit=10)
+
+    assert len(stubs) == 1
+    # A retry must never reset the clock the lead-time metric is measured from.
+    assert stubs[0].first_seen_at == FIRST
+    assert stubs[0].attempts == 1
+    assert stubs[0].article.domain == "example.vn"
+    assert stubs[0].article.gdelt_seen_at == SEEN
+
+
+def test_a_stub_with_no_seen_time_is_not_offered_for_retry() -> None:
+    from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+
+    row = stub_row()
+    row.gdelt_seen_at = None
+    session = FakeSession([[(row, "example.vn", "VN")]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+    assert repository.stubs_awaiting_retrieval(max_attempts=3, limit=10) == ()
+
+
+def test_promotion_replaces_the_stub_content_and_counts_the_attempt() -> None:
+    from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+
+    row = stub_row()
+    session = FakeSession([], stored={row.id: row})
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    assert repository.promote(row.id, discovered()) is True
+    assert row.raw_text == "Eighteen students were admitted."
+    assert row.published_at == NOW
+    assert row.processing_status is ProcessingStatus.FETCHED
+    assert row.retrieval_attempts == 2
+
+
+def test_a_promotion_conflict_leaves_the_stub_intact() -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+
+    row = stub_row()
+    session = FakeSession(
+        [],
+        stored={row.id: row},
+        flush_error=IntegrityError("duplicate", None, Exception("duplicate")),
+    )
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    # A redundant stub is left alone rather than deleted on a guess.
+    assert repository.promote(row.id, discovered()) is False
+    assert session.rollbacks == 1
+
+
+def test_a_failed_attempt_is_recorded_without_touching_content() -> None:
+    from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+
+    row = stub_row()
+    session = FakeSession([None], stored={row.id: row})
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+    repository.record_failed_attempt(row.id)
+
+    assert len(session.executed) == 1
+    assert row.raw_text is None
+
+
 def test_seen_urls_asks_nothing_when_given_nothing() -> None:
     from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
 
@@ -3474,7 +3638,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import CredibilityTier, DiscoveryMethod, SourceType
-from episignal_backend.ingestion.documents import DiscoveredSignal, NormalizedSignal, Publisher, QueryRule
+from episignal_backend.ingestion.documents import (
+    DiscoveredArticle,
+    DiscoveredSignal,
+    NormalizedSignal,
+    Publisher,
+    QueryRule,
+    StubRetrieval,
+)
 from episignal_backend.models import GdeltQueryRule, Signal, Source
 ```
 
@@ -3576,6 +3747,75 @@ class SqlAlchemyDiscoveryRepository:
         self._session.add(build_discovered_signal(signal, source_id))
         self._session.flush()
 
+    def stubs_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int
+    ) -> Sequence[StubRetrieval]:
+        rows = self._session.execute(
+            select(Signal, Source.domain, Source.country_code)
+            .join(Source, Signal.source_id == Source.id)
+            .where(
+                Signal.discovered_via == DiscoveryMethod.GDELT,
+                Signal.raw_text.is_(None),
+                Signal.retrieval_attempts < max_attempts,
+                Source.domain.is_not(None),
+            )
+            .order_by(Signal.retrieval_attempts, Signal.first_seen_at)
+            .limit(limit)
+        ).all()
+
+        stubs: list[StubRetrieval] = []
+        for signal, domain, country_code in rows:
+            if signal.gdelt_seen_at is None:
+                continue
+            stubs.append(
+                StubRetrieval(
+                    signal_id=signal.id,
+                    article=DiscoveredArticle(
+                        url=signal.url,
+                        canonical_url=signal.canonical_url or signal.url,
+                        title=signal.title,
+                        domain=domain,
+                        gdelt_seen_at=signal.gdelt_seen_at,
+                        language=signal.language,
+                        country_code=country_code,
+                        query_rule_id=signal.query_rule_id,
+                    ),
+                    first_seen_at=signal.first_seen_at,
+                    attempts=signal.retrieval_attempts,
+                )
+            )
+        return tuple(stubs)
+
+    def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
+        stub = self._session.get(Signal, signal_id)
+        if stub is None:
+            return False
+
+        stub.title = signal.title
+        stub.raw_text = signal.raw_text
+        stub.published_at = signal.published_at
+        stub.published_at_offset_minutes = signal.published_at_offset_minutes
+        stub.retrieved_at = signal.retrieved_at
+        stub.content_hash = signal.content_hash
+        stub.processing_status = signal.processing_status
+        stub.retrieval_attempts = stub.retrieval_attempts + 1
+        try:
+            self._session.flush()
+        except IntegrityError:
+            # A full version of this URL already carries that hash, so the stub
+            # is redundant rather than promotable. It is left exactly as it was:
+            # a spare row costs less than deleting one on a guess.
+            self._session.rollback()
+            return False
+        return True
+
+    def record_failed_attempt(self, signal_id: UUID) -> None:
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == signal_id)
+            .values(retrieval_attempts=Signal.retrieval_attempts + 1)
+        )
+
     def commit(self) -> None:
         self._session.commit()
 
@@ -3587,7 +3827,7 @@ class SqlAlchemyDiscoveryRepository:
 
 Run: `uv run pytest packages/backend/tests/test_discovery_repository.py -v`
 
-Expected: PASS, 7 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Confirm the repository satisfies the Protocol**
 
@@ -3616,7 +3856,7 @@ from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
 
 Run: `uv run pytest packages/backend/tests/test_discovery_repository.py -v`
 
-Expected: PASS, 8 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -3627,7 +3867,312 @@ git commit -m "feat: store discovered signals and register publishers"
 
 ---
 
-### Task 15: Add the configuration and the runner command
+### Task 15: Retry the stubs whose pages could not be read
+
+A failed page fetch stores a stub: GDELT metadata, no body, no publication time.
+Retry cannot come from re-discovery, because the same article discovered again
+hashes identically and is dropped by the seen-URL check. It has to read the stub
+rows back.
+
+Promotion updates the stub in place. That is not overwriting evidence: a stub
+holds none, so this is the first time the row acquires any.
+
+**Files:**
+- Modify: `packages/backend/src/episignal_backend/ingestion/discovery.py`
+- Test: `packages/backend/tests/test_discovery_retry.py`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `packages/backend/tests/test_discovery_retry.py`:
+
+```python
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from episignal_backend.db.types import ProcessingStatus
+from episignal_backend.ingestion.discovery import RetryResult, run_retry
+from episignal_backend.ingestion.documents import (
+    DiscoveredArticle,
+    DiscoveredSignal,
+    Publisher,
+    StubRetrieval,
+)
+from episignal_backend.ingestion.protocol import RetrievalFailed
+
+NOW = datetime(2026, 8, 26, 9, 0, tzinfo=UTC)
+SEEN = datetime(2026, 8, 26, 7, 45, tzinfo=UTC)
+FIRST = datetime(2026, 8, 20, 6, 0, tzinfo=UTC)
+
+
+def article(path: str = "/a") -> DiscoveredArticle:
+    return DiscoveredArticle(
+        url=f"https://example.vn{path}",
+        canonical_url=f"https://example.vn{path}",
+        title=f"Report {path}",
+        domain="example.vn",
+        gdelt_seen_at=SEEN,
+        language="vi",
+        country_code="VN",
+    )
+
+
+def stub(signal_id: UUID, attempts: int = 0, path: str = "/a") -> StubRetrieval:
+    return StubRetrieval(
+        signal_id=signal_id, article=article(path), first_seen_at=FIRST, attempts=attempts
+    )
+
+
+class FakeRepository:
+    def __init__(self, stubs: tuple[StubRetrieval, ...], conflicting: bool = False) -> None:
+        self.stubs = stubs
+        self.conflicting = conflicting
+        self.promoted: list[tuple[UUID, DiscoveredSignal]] = []
+        self.failed_attempts: list[UUID] = []
+        self.commits = 0
+        self.rollbacks = 0
+        self.selection: list[tuple[int, int]] = []
+
+    def stubs_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int
+    ) -> Sequence[StubRetrieval]:
+        self.selection.append((max_attempts, limit))
+        return self.stubs
+
+    def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
+        self.promoted.append((signal_id, signal))
+        return not self.conflicting
+
+    def record_failed_attempt(self, signal_id: UUID) -> None:
+        self.failed_attempts.append(signal_id)
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+class FakeConnector:
+    discovery_name = "GDELT"
+
+    def __init__(self, failing: frozenset[str] = frozenset()) -> None:
+        self.failing = failing
+        self.retrieved: list[str] = []
+
+    def retrieve(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:
+        self.retrieved.append(article.canonical_url)
+        if article.canonical_url in self.failing:
+            raise RetrievalFailed("still blocked")
+        return DiscoveredSignal(
+            url=article.url,
+            canonical_url=article.canonical_url,
+            title=article.title,
+            raw_text="The article text.",
+            published_at=NOW,
+            published_at_offset_minutes=420,
+            retrieved_at=NOW,
+            first_seen_at=first_seen_at,
+            gdelt_seen_at=article.gdelt_seen_at,
+            language=article.language,
+            content_hash="e" * 64,
+            publisher=Publisher(
+                domain=article.domain, name=article.domain, language="vi", country_code="VN"
+            ),
+            processing_status=ProcessingStatus.FETCHED,
+        )
+
+
+def run(repository: FakeRepository, connector: FakeConnector, **kwargs: object) -> RetryResult:
+    return run_retry(repository, connector, **kwargs)  # type: ignore[arg-type]
+
+
+def test_a_successful_retry_promotes_the_stub_in_place() -> None:
+    signal_id = uuid4()
+    repository = FakeRepository((stub(signal_id),))
+    result = run(repository, FakeConnector())
+
+    assert result.promoted == 1
+    assert repository.promoted[0][0] == signal_id
+    assert repository.promoted[0][1].raw_text == "The article text."
+
+
+def test_a_retry_keeps_the_original_first_seen_time() -> None:
+    repository = FakeRepository((stub(uuid4()),))
+    run(repository, FakeConnector())
+    # Resetting this would silently destroy the detection-lead-time metric.
+    assert repository.promoted[0][1].first_seen_at == FIRST
+
+
+def test_a_repeated_failure_counts_the_attempt_without_promoting() -> None:
+    signal_id = uuid4()
+    repository = FakeRepository((stub(signal_id),))
+    connector = FakeConnector(failing=frozenset({"https://example.vn/a"}))
+    result = run(repository, connector)
+
+    assert result.promoted == 0
+    assert result.still_failing == 1
+    assert repository.promoted == []
+    assert repository.failed_attempts == [signal_id]
+
+
+def test_a_promotion_conflict_counts_the_attempt_and_keeps_going() -> None:
+    repository = FakeRepository((stub(uuid4()), stub(uuid4(), path="/b")), conflicting=True)
+    result = run(repository, FakeConnector())
+
+    assert result.promoted == 0
+    assert result.redundant == 2
+    assert len(repository.promoted) == 2
+
+
+def test_the_attempt_budget_and_batch_size_are_passed_to_the_selection() -> None:
+    repository = FakeRepository(())
+    run(repository, FakeConnector(), max_attempts=5, batch_size=25)
+    # The budget is enforced in the query, so an exhausted stub is never fetched.
+    assert repository.selection == [(5, 25)]
+
+
+def test_a_run_with_no_stubs_does_nothing() -> None:
+    repository = FakeRepository(())
+    connector = FakeConnector()
+    result = run(repository, connector)
+
+    assert result == RetryResult()
+    assert connector.retrieved == []
+
+
+def test_a_storage_failure_rolls_back_and_continues() -> None:
+    class Failing(FakeRepository):
+        def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
+            if signal.canonical_url.endswith("/a"):
+                raise RuntimeError("connection lost")
+            return super().promote(signal_id, signal)
+
+    repository = Failing((stub(uuid4()), stub(uuid4(), path="/b")))
+    result = run(repository, FakeConnector())
+
+    assert result.failed == 1
+    assert result.promoted == 1
+    assert repository.rollbacks == 1
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest packages/backend/tests/test_discovery_retry.py -v`
+
+Expected: FAIL with `ImportError: cannot import name 'run_retry'`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Append to `packages/backend/src/episignal_backend/ingestion/discovery.py`:
+
+```python
+DEFAULT_MAX_ATTEMPTS = 3
+DEFAULT_RETRY_BATCH = 50
+
+
+@dataclass(frozen=True)
+class RetryResult:
+    attempted: int = 0
+    promoted: int = 0
+    still_failing: int = 0
+    redundant: int = 0
+    failed: int = 0
+
+
+def run_retry(
+    repository: DiscoveryRepository,
+    connector: DiscoveryConnector,
+    *,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    batch_size: int = DEFAULT_RETRY_BATCH,
+) -> RetryResult:
+    """Give stubs another chance at their pages.
+
+    Retry cannot come from re-discovery: the same article found again hashes
+    identically and is dropped by the seen-URL check, so the stub rows have to
+    be read back. The attempt budget is enforced in the selection query, which
+    is what stops an unreachable page being fetched forever.
+    """
+    stubs = repository.stubs_awaiting_retrieval(max_attempts=max_attempts, limit=batch_size)
+
+    promoted = 0
+    still_failing = 0
+    redundant = 0
+    failed = 0
+
+    for waiting in stubs:
+        try:
+            signal = connector.retrieve(waiting.article, waiting.first_seen_at)
+        except RetrievalFailed as reason:
+            try:
+                repository.record_failed_attempt(waiting.signal_id)
+                repository.commit()
+            except Exception as error:
+                repository.rollback()
+                failed += 1
+                logger.error(
+                    "Could not record a failed attempt for %s (%s)",
+                    waiting.article.canonical_url,
+                    type(error).__name__,
+                )
+            else:
+                still_failing += 1
+                logger.info(
+                    "Retry of %s still failing (%s)",
+                    waiting.article.canonical_url,
+                    reason,
+                )
+            continue
+
+        try:
+            if repository.promote(waiting.signal_id, signal):
+                promoted += 1
+            else:
+                # The URL already carries this content under another row, so the
+                # stub is redundant rather than promotable. It is left in place.
+                redundant += 1
+            repository.commit()
+        except Exception as error:
+            repository.rollback()
+            failed += 1
+            logger.error(
+                "Could not promote %s (%s)",
+                waiting.article.canonical_url,
+                type(error).__name__,
+            )
+
+    return RetryResult(
+        attempted=len(stubs),
+        promoted=promoted,
+        still_failing=still_failing,
+        redundant=redundant,
+        failed=failed,
+    )
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `uv run pytest packages/backend/tests/test_discovery_retry.py -v`
+
+Expected: PASS, 7 tests.
+
+- [ ] **Step 5: Run the whole suite**
+
+Run: `uv run pytest`
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/backend/src/episignal_backend/ingestion/discovery.py packages/backend/tests/test_discovery_retry.py
+git commit -m "feat: retry the stubs whose pages could not be read"
+```
+
+---
+
+### Task 16: Add the configuration and the runner command
 
 **Files:**
 - Modify: `packages/backend/src/episignal_backend/config.py`
@@ -3651,6 +4196,8 @@ def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -
     assert settings.gdelt_max_articles_per_run == 200
     assert settings.gdelt_request_delay_seconds == 5.0
     assert settings.gdelt_article_delay_seconds == 1.0
+    assert settings.gdelt_max_retrieval_attempts == 3
+    assert settings.gdelt_retry_batch_size == 50
 
 
 def test_the_query_window_must_cover_the_poll_interval(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3691,6 +4238,8 @@ Add these fields to `Settings`, after `log_level`:
     gdelt_request_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
     gdelt_article_delay_seconds: float = Field(default=1.0, ge=0.0, le=60.0)
     gdelt_article_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+    gdelt_max_retrieval_attempts: int = Field(default=3, ge=1, le=20)
+    gdelt_retry_batch_size: int = Field(default=50, ge=0, le=1000)
     gdelt_user_agent: str = "EpiSignal/0.1 (+https://episignal.org)"
 ```
 
@@ -3737,6 +4286,16 @@ def test_defaults_come_from_configuration() -> None:
     arguments = parse_arguments([])
     assert arguments.window_minutes is None
     assert arguments.max_articles is None
+
+
+def test_retry_runs_before_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    from episignal_backend.ingestion.discovery import DiscoveryResult, RetryResult
+
+    monkeypatch.setattr(
+        "episignal_backend.discover_runner._run",
+        lambda _: (RetryResult(attempted=2, promoted=1), DiscoveryResult(rules_run=3)),
+    )
+    assert main([]) == 0
 
 
 def test_a_failure_prints_no_detail(
@@ -3813,7 +4372,7 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
     return Arguments(window_minutes=parsed.window_minutes, max_articles=parsed.max_articles)
 
 
-def _run(arguments: Arguments) -> DiscoveryResult:
+def _run(arguments: Arguments) -> tuple[RetryResult, DiscoveryResult]:
     settings = get_settings()
     connector = GdeltConnector(
         search=GdeltDocClient(),
@@ -3824,19 +4383,29 @@ def _run(arguments: Arguments) -> DiscoveryResult:
         ),
     )
     with session_scope() as session:
-        return run_discovery(
-            SqlAlchemyDiscoveryRepository(session),
+        repository = SqlAlchemyDiscoveryRepository(session)
+        # Retry first: a stub is a page already known to be wanted, so it has a
+        # better claim on the run budget than an article not yet seen.
+        retried = run_retry(
+            repository,
+            connector,
+            max_attempts=settings.gdelt_max_retrieval_attempts,
+            batch_size=settings.gdelt_retry_batch_size,
+        )
+        discovered = run_discovery(
+            repository,
             connector,
             window_minutes=arguments.window_minutes or settings.gdelt_query_window_minutes,
             max_articles=arguments.max_articles or settings.gdelt_max_articles_per_run,
         )
+        return retried, discovered
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
 
     try:
-        result = _run(arguments)
+        retried, result = _run(arguments)
     except Exception:
         print(
             "Discovery failed before completing. Check GDELT and the database.",
@@ -3848,6 +4417,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("No active query rules. Run pnpm db:seed first.", file=sys.stderr)
         return 1
 
+    print(
+        f"retried={retried.attempted} promoted={retried.promoted} "
+        f"still_failing={retried.still_failing} redundant={retried.redundant}"
+    )
     print(
         f"rules={result.rules_run} rules_failed={result.rules_failed} "
         f"discovered={result.discovered} duplicate={result.duplicate} "
@@ -3880,6 +4453,8 @@ EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN=200
 EPISIGNAL_GDELT_REQUEST_DELAY_SECONDS=5.0
 EPISIGNAL_GDELT_ARTICLE_DELAY_SECONDS=1.0
 EPISIGNAL_GDELT_ARTICLE_TIMEOUT_SECONDS=15.0
+EPISIGNAL_GDELT_MAX_RETRIEVAL_ATTEMPTS=3
+EPISIGNAL_GDELT_RETRY_BATCH_SIZE=50
 EPISIGNAL_GDELT_USER_AGENT=EpiSignal/0.1 (+https://episignal.org)
 ```
 
@@ -3905,7 +4480,7 @@ git commit -m "feat: add the GDELT discovery command and its configuration"
 
 ---
 
-### Task 16: Verify against the live API and the live database
+### Task 17: Verify against the live API and the live database
 
 Everything before this ran against fixtures. This task confirms the two
 assumptions the design flagged as unverified, and proves the vertical slice end
@@ -4015,7 +4590,27 @@ Confirm every one of these, and record the result:
 - `discovered_via` is `gdelt`;
 - `query_rule` names the rule that found it.
 
-- [ ] **Step 6: Confirm official ingestion is unharmed**
+- [ ] **Step 6: Confirm the retry pass is wired**
+
+Run the discovery command a second time and confirm the first printed line
+reports the retry counts:
+
+```bash
+npx --yes pnpm@11.19.0 discover:gdelt -- --max-articles 5
+```
+
+Expected: a line beginning `retried=`. If the first run produced stubs, confirm
+their counters moved:
+
+```sql
+SELECT processing_status, retrieval_attempts, count(*)
+FROM signals
+WHERE discovered_via = 'gdelt'
+GROUP BY processing_status, retrieval_attempts
+ORDER BY processing_status, retrieval_attempts;
+```
+
+- [ ] **Step 7: Confirm official ingestion is unharmed**
 
 ```bash
 npx --yes pnpm@11.19.0 ingest:who
@@ -4027,7 +4622,7 @@ Expected: it still runs, and every WHO signal keeps `discovered_via = 'direct'`:
 SELECT discovered_via, count(*) FROM signals GROUP BY discovered_via;
 ```
 
-- [ ] **Step 7: Record the passing gate**
+- [ ] **Step 8: Record the passing gate**
 
 Append a "Verification" section to
 `docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md` recording the
@@ -4038,7 +4633,7 @@ Update the "Current scope" section of `README.md` to say that GDELT discovery
 runs, that discovered signals keep their publisher and original URL, and that
 they are early signals rather than confirmed events.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md README.md database/seeds/gdelt_queries.json
@@ -4058,13 +4653,15 @@ Check each against the design document before declaring the slice complete.
 - [ ] A missing publication time is NULL, not a guess.
 - [ ] Already-seen URLs cost no page fetch.
 - [ ] A failed page fetch is stored as `needs_review`, never dropped silently.
+- [ ] A stub is retried on later runs and promoted in place when its page finally reads.
+- [ ] A stub that exhausts its attempt budget stops being retried and stays visible.
+- [ ] A retry never resets `first_seen_at`.
 - [ ] No GDELT signal is marked `officially_confirmed`.
 - [ ] WHO and ECDC ingestion is unchanged and still passes its tests.
 - [ ] `uv run pytest`, `uv run ruff check .`, and `uv run mypy apps/api/src packages/backend/src` all pass.
 
 ## Known follow-on work, deliberately not in this plan
 
-- **Retrying `needs_review` stubs** is designed in the spec under "Signals awaiting retrieval" but has no task here. It needs a reader of stub rows and an in-place promotion path, which is a self-contained slice best done once real stubs exist to measure. Open it as the first task of sub-project B.
 - **Syndication deduplication** is sub-project B. The `gdelt_artlist.json` fixture deliberately keeps four copies of one story as its test material.
 - **The Prettier line-ending failure** on `main` blocks `pnpm verify` and predates this work.
 

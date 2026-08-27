@@ -92,7 +92,7 @@ until it does.
 | Publisher identity | One `sources` row per domain, auto-registered on first sighting | The publisher is the source. Per-domain rows give per-publisher credibility somewhere to live when sub-project D computes `evidence_score`, and keep every article from reading as "Source: GDELT". |
 | Article body | Fetched from the publisher page | GDELT returns no body text, so there would otherwise be nothing for sub-project C to classify. The fetch is required regardless of the timestamp question. |
 | Missing publication time | Store the signal with `published_at` NULL | Guessing from `seendate` would present crawler time as publication time and would silently corrupt the detection-lead-time metric. Dropping the article would discard exactly the local-language reporting with the worst metadata, which is what the radar exists to catch. |
-| Failed page fetch | Store with `needs_review` for a later retry pass | The discovery itself is evidence and must not be lost. A user can still open the original URL, and the failure stays countable in the admin view. |
+| Failed page fetch | Store with `needs_review`, retry with a bounded attempt budget | The discovery itself is evidence and must not be lost. A user can still open the original URL, and the failure stays countable in the admin view. |
 | Title | Prefer the publisher page `og:title`, fall back to the GDELT title | GDELT titles carry site names and numeric furniture. The publisher's own metadata is the better headline, but a signal must never be blocked for lack of it. |
 | Query rules | A table seeded idempotently from JSON | Rules are editable in the database without a deployment, reviewable in Git, and give `signals.query_rule_id` a real row to reference. |
 | Trigger | A CLI command an external scheduler calls | The same shape as `pnpm ingest:who`. An in-process daemon is deployment infrastructure that does not exist yet. |
@@ -107,6 +107,7 @@ signals    + discovered_via              vocabulary(direct | gdelt) not null def
            + gdelt_seen_at               timestamptz null
            + first_seen_at               timestamptz not null
            + published_at_offset_minutes smallint null
+           + retrieval_attempts          smallint not null default 0
            + query_rule_id               uuid null fk -> gdelt_query_rules(id) on delete set null
            index on (discovered_via)
            index on (first_seen_at)
@@ -252,13 +253,18 @@ retrieved title, body, and `published_at`, and its status advances to `fetched`.
 This is not overwriting evidence, because a stub holds none; it is the first
 time the row acquires any.
 
-**The retry pass itself is deferred to sub-project B.** This slice stores stubs
-correctly and leaves them queryable by `processing_status`, which is what a
-retry pass needs, but implements no reader for them. Building the promotion path
-before any real stub exists would mean guessing which failures actually recur;
-the stubs this slice produces are the evidence that decides the retry budget and
-the backoff. A stub therefore stays `needs_review` until sub-project B, and
-remains visible in the admin view of sub-project E.
+`retrieval_attempts` bounds the effort. A stub is selected for retry only while
+its count is below `EPISIGNAL_GDELT_MAX_RETRIEVAL_ATTEMPTS`; once the budget is
+spent it stops being selected and stays `needs_review`, visible in the admin
+view of sub-project E. No separate exhausted status is needed, because the
+counter already says why the row stopped moving.
+
+Promotion can collide: the retrieved content hash might already exist for that
+URL, if a full version of the article was stored by another path first. The
+collision is not an error to recover from but a statement that the stub is
+redundant, so the attempt is rolled back, the counter is incremented, and the
+stub is left exactly as it was. Nothing is deleted, because a stub costs one row
+and guessing wrong costs evidence.
 
 ## Data flow
 
@@ -296,7 +302,7 @@ cannot discard a run's work.
 | GDELT refuses or times out | Retry with exponential backoff up to a bounded attempt count. On exhaustion, record the rule as failed for this run and continue to the next rule. A single failing rule does not fail the run. |
 | GDELT returns malformed JSON | Treated as a failure of that rule, counted, and logged without the payload body. |
 | robots.txt disallows the path | The article is skipped and counted as disallowed. This is routine, not a failure. |
-| Publisher page fetch fails | The signal is stored from GDELT metadata alone with `processing_status` `needs_review` and no body text, and left for the retry pass in sub-project B. |
+| Publisher page fetch fails | The signal is stored from GDELT metadata alone with `processing_status` `needs_review` and no body text, then retried by the retry pass on later runs until the attempt budget is spent. |
 | Page fetched, no publication date | The signal is stored normally with `published_at` NULL. |
 | Page fetched, no usable body text | Treated as a failed fetch: `needs_review`, because sub-project C would have nothing to read. |
 | Unmapped language or country | Stored NULL and counted, so a gap in the mapping table is visible rather than silent. |
@@ -323,6 +329,10 @@ existing suite.
   retrieval, the per-run cap holds, publisher registration is idempotent,
   `first_seen_at` is carried across a revision, a failed retrieval yields
   `needs_review` without aborting the run.
+- `run_retry` against in-memory fakes: a stub is promoted in place on success,
+  a repeated failure increments the attempt counter, a stub at the attempt
+  budget is never selected again, and a promotion that collides on
+  `(url, content_hash)` leaves the stub intact.
 - Publisher registration for the `og:site_name` collision case, proving it falls
   back to the domain rather than raising.
 - A migration test that the revision applies and reverses, matching
@@ -340,6 +350,8 @@ EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN      200
 EPISIGNAL_GDELT_REQUEST_DELAY_SECONDS     5.0
 EPISIGNAL_GDELT_ARTICLE_DELAY_SECONDS     1.0
 EPISIGNAL_GDELT_ARTICLE_TIMEOUT_SECONDS   15.0
+EPISIGNAL_GDELT_MAX_RETRIEVAL_ATTEMPTS    3
+EPISIGNAL_GDELT_RETRY_BATCH_SIZE          50
 EPISIGNAL_GDELT_USER_AGENT                EpiSignal/0.1 (+https://episignal.org)
 ```
 
