@@ -61,6 +61,21 @@ class ProcessingStatus(StrEnum):
     NEEDS_REVIEW = "needs_review"
 
 
+class AiPurpose(StrEnum):
+    CLASSIFICATION = "classification"
+    EXTRACTION = "extraction"
+
+
+class AiOutcome(StrEnum):
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    # The provider never answered: refused, timed out, or out of quota. Kept
+    # apart from REJECTED because nothing was learned about the signal, so the
+    # signal must stay selectable rather than be sent for review.
+    UNAVAILABLE = "unavailable"
+
+
+
 class EventType(StrEnum):
     OUTBREAK = "outbreak"
     CLUSTER = "cluster"

@@ -171,3 +171,19 @@ def test_signal_points_at_its_primary_when_duplicate() -> None:
     assert column.nullable is True
     foreign_key = next(iter(column.foreign_keys))
     assert foreign_key.column.table.name == "signals"
+
+
+def test_ai_purposes_are_stored_as_their_values() -> None:
+    from episignal_backend.db.types import AiPurpose
+
+    assert AiPurpose.CLASSIFICATION.value == "classification"
+    assert AiPurpose.EXTRACTION.value == "extraction"
+
+
+def test_ai_outcomes_separate_a_refusal_from_a_bad_answer() -> None:
+    from episignal_backend.db.types import AiOutcome
+
+    assert AiOutcome.ACCEPTED.value == "accepted"
+    assert AiOutcome.REJECTED.value == "rejected"
+    assert AiOutcome.UNAVAILABLE.value == "unavailable"
+
