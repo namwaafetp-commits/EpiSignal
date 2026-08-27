@@ -4,8 +4,6 @@ One rule governs the whole module: ambiguity coarsens and never tie-breaks. No
 step chooses among surviving candidates by population, by feature class, or by
 any other property. A province centroid is a less precise true statement; the
 most populous Springfield is a guess wearing a coordinate.
-
-This module imports neither SQLAlchemy nor httpx.
 """
 
 from episignal_backend.db.types import Precision

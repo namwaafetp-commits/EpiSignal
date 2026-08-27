@@ -200,8 +200,36 @@ def test_it_reads_every_row_of_the_artifact(tmp_path: Path) -> None:
     write_gazetteer(
         target,
         [
-            ("2332459", "Lagos", "lagos", "lagos", "eko", "PPLA", "place", "NG", "05", "", "6.45407", "3.39467", "1536000"),
-            ("2328926", "Nigeria", "nigeria", "nigeria", "", "PCLI", "country", "NG", "", "", "9.08333", "8.67500", ""),
+            (
+                "2332459",
+                "Lagos",
+                "lagos",
+                "lagos",
+                "eko",
+                "PPLA",
+                "place",
+                "NG",
+                "05",
+                "",
+                "6.45407",
+                "3.39467",
+                "1536000",
+            ),
+            (
+                "2328926",
+                "Nigeria",
+                "nigeria",
+                "nigeria",
+                "",
+                "PCLI",
+                "country",
+                "NG",
+                "",
+                "",
+                "9.08333",
+                "8.67500",
+                "",
+            ),
         ],
     )
     rows = list(read_gazetteer(target))
@@ -217,7 +245,23 @@ def test_an_empty_optional_column_becomes_none_not_an_empty_string(tmp_path: Pat
     target = tmp_path / "gazetteer_places.tsv.gz"
     write_gazetteer(
         target,
-        [("2328926", "Nigeria", "nigeria", "nigeria", "", "PCLI", "country", "NG", "", "", "9.0", "8.0", "")],
+        [
+            (
+                "2328926",
+                "Nigeria",
+                "nigeria",
+                "nigeria",
+                "",
+                "PCLI",
+                "country",
+                "NG",
+                "",
+                "",
+                "9.0",
+                "8.0",
+                "",
+            )
+        ],
     )
     row = next(iter(read_gazetteer(target)))
     assert row["admin1_code"] is None
@@ -241,7 +285,21 @@ def test_seeding_batches_its_upserts(tmp_path: Path) -> None:
     write_gazetteer(
         target,
         [
-            (str(index), f"Place{index}", f"place{index}", f"place{index}", "", "PPL", "place", "NG", "05", "", "1.0", "2.0", "")
+            (
+                str(index),
+                f"Place{index}",
+                f"place{index}",
+                f"place{index}",
+                "",
+                "PPL",
+                "place",
+                "NG",
+                "05",
+                "",
+                "1.0",
+                "2.0",
+                "",
+            )
             for index in range(1, GAZETTEER_BATCH_SIZE + 3)
         ],
     )

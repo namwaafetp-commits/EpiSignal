@@ -253,8 +253,7 @@ def test_the_gazetteer_indexes_both_name_forms() -> None:
     from episignal_backend.models import GazetteerPlace
 
     indexed = {
-        tuple(column.name for column in index.columns)
-        for index in GazetteerPlace.__table__.indexes
+        tuple(column.name for column in index.columns) for index in GazetteerPlace.__table__.indexes
     }
     assert ("normalized_name",) in indexed
     assert ("ascii_name",) in indexed
@@ -284,8 +283,7 @@ def test_signal_locations_are_indexed_for_spatial_matching() -> None:
     from episignal_backend.models import SignalLocation
 
     indexed = {
-        tuple(column.name for column in index.columns)
-        for index in SignalLocation.__table__.indexes
+        tuple(column.name for column in index.columns) for index in SignalLocation.__table__.indexes
     }
     assert ("geometry",) in indexed
     assert ("signal_id",) in indexed

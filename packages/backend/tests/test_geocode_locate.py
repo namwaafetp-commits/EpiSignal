@@ -49,7 +49,9 @@ class Gazetteer:
 
 
 class Storage:
-    def __init__(self, signals: Sequence[GeocodableSignal] = (), stale: Sequence[GeocodableSignal] = ()) -> None:
+    def __init__(
+        self, signals: Sequence[GeocodableSignal] = (), stale: Sequence[GeocodableSignal] = ()
+    ) -> None:
         self._signals = signals
         self._stale = stale
         self.written: dict[UUID, tuple[ResolvedLocation, ...]] = {}
@@ -82,9 +84,7 @@ def signal_named(place_name: str | None, country: str | None = "Nigeria") -> Geo
     return GeocodableSignal(
         id=uuid4(),
         locations=(
-            ExtractedPlace(
-                role=LocationRole.PRIMARY, country_name=country, place_name=place_name
-            ),
+            ExtractedPlace(role=LocationRole.PRIMARY, country_name=country, place_name=place_name),
         ),
     )
 

@@ -236,31 +236,33 @@ def write_artifact(rows: list[GazetteerRow], target: Path) -> int:
     """Write the artifact, sorted by id so a rebuild is byte-identical."""
     ordered = sorted(rows, key=lambda row: row.geonames_id)
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("wb") as raw_file:
-        with gzip.GzipFile(filename="", mode="wb", fileobj=raw_file, mtime=0.0) as gz_file:
-            with io.TextIOWrapper(gz_file, encoding="utf-8", newline="\n") as handle:
-                handle.write("\t".join(COLUMNS) + "\n")
-                for row in ordered:
-                    handle.write(
-                        "\t".join(
-                            (
-                                str(row.geonames_id),
-                                row.name,
-                                row.normalized_name,
-                                row.ascii_name,
-                                ",".join(row.alternate_names),
-                                row.feature_code,
-                                row.precision,
-                                row.country_code,
-                                row.admin1_code or "",
-                                row.admin2_code or "",
-                                f"{row.latitude:.5f}",
-                                f"{row.longitude:.5f}",
-                                "" if row.population is None else str(row.population),
-                            )
-                        )
-                        + "\n"
+    with (
+        target.open("wb") as raw_file,
+        gzip.GzipFile(filename="", mode="wb", fileobj=raw_file, mtime=0.0) as gz_file,
+        io.TextIOWrapper(gz_file, encoding="utf-8", newline="\n") as handle,
+    ):
+        handle.write("\t".join(COLUMNS) + "\n")
+        for row in ordered:
+            handle.write(
+                "\t".join(
+                    (
+                        str(row.geonames_id),
+                        row.name,
+                        row.normalized_name,
+                        row.ascii_name,
+                        ",".join(row.alternate_names),
+                        row.feature_code,
+                        row.precision,
+                        row.country_code,
+                        row.admin1_code or "",
+                        row.admin2_code or "",
+                        f"{row.latitude:.5f}",
+                        f"{row.longitude:.5f}",
+                        "" if row.population is None else str(row.population),
                     )
+                )
+                + "\n"
+            )
     return len(ordered)
 
 

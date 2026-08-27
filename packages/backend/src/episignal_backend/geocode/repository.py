@@ -57,7 +57,10 @@ class SqlAlchemyGazetteerRepository:
         return _aliases()
 
     def _scoped(
-        self, statement: Select[tuple[GazetteerPlace]], country_code: str | None, admin1_code: str | None
+        self,
+        statement: Select[tuple[GazetteerPlace]],
+        country_code: str | None,
+        admin1_code: str | None,
     ) -> Select[tuple[GazetteerPlace]]:
         if country_code is not None:
             statement = statement.where(GazetteerPlace.country_code == country_code)
@@ -78,8 +81,8 @@ class SqlAlchemyGazetteerRepository:
         elif form is MatchForm.ASCII:
             predicate = GazetteerPlace.ascii_name == ascii_form(name)
         else:
-            predicate = GazetteerPlace.alternate_names.any(  # type: ignore[assignment]
-                normalized_form(name)
+            predicate = GazetteerPlace.alternate_names.any(
+                normalized_form(name)  # type: ignore[arg-type]
             )
         statement = self._scoped(
             select(GazetteerPlace).where(predicate), country_code, admin1_code
@@ -186,9 +189,7 @@ class SqlAlchemyGeocodeRepository:
         # Delete then insert rather than upsert. The extraction is the sole
         # input, so the current answer is the whole answer and there is no
         # partial state worth reconciling.
-        self._session.execute(
-            delete(SignalLocation).where(SignalLocation.signal_id == signal_id)
-        )
+        self._session.execute(delete(SignalLocation).where(SignalLocation.signal_id == signal_id))
         for resolved in locations:
             self._session.add(
                 SignalLocation(

@@ -5,8 +5,6 @@ A `ResolvedLocation` deliberately carries both sides of the answer. The
 `admin*`, and coordinate fields hold what the gazetteer answered. A coarsened
 result is therefore never mistakable for a place-level hit, and "why this
 coordinate" is answerable from one row.
-
-This module imports neither SQLAlchemy nor httpx.
 """
 
 from enum import StrEnum

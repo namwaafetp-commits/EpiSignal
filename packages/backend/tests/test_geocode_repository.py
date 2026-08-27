@@ -137,9 +137,7 @@ def test_candidate_queries_are_bounded() -> None:
 
 def test_it_resolves_an_admin1_code_by_either_name_form() -> None:
     session = FakeSession([FakeResult("05")])
-    code = SqlAlchemyGazetteerRepository(session).admin1_code(
-        country_code="NG", name="Lagos State"
-    )
+    code = SqlAlchemyGazetteerRepository(session).admin1_code(country_code="NG", name="Lagos State")
     assert code == "05"
     rendered = str(session.executed[0])
     assert "normalized_name" in rendered
@@ -149,9 +147,7 @@ def test_it_resolves_an_admin1_code_by_either_name_form() -> None:
 def test_an_admin1_centroid_is_returned_as_a_candidate() -> None:
     row = place_row(geonames_id=2332453, name="Lagos", precision="admin1")
     session = FakeSession([FakeResult(row)])
-    centre = SqlAlchemyGazetteerRepository(session).centroid(
-        country_code="NG", admin1_code="05"
-    )
+    centre = SqlAlchemyGazetteerRepository(session).centroid(country_code="NG", admin1_code="05")
     assert centre is not None
     assert centre.precision == "admin1"
 
@@ -159,8 +155,7 @@ def test_an_admin1_centroid_is_returned_as_a_candidate() -> None:
 def test_a_missing_centroid_is_none_rather_than_an_error() -> None:
     session = FakeSession([FakeResult(None)])
     assert (
-        SqlAlchemyGazetteerRepository(session).centroid(country_code="ZZ", admin1_code=None)
-        is None
+        SqlAlchemyGazetteerRepository(session).centroid(country_code="ZZ", admin1_code=None) is None
     )
 
 
@@ -250,8 +245,6 @@ def test_marking_geocoded_advances_only_the_processing_status() -> None:
 
 def test_stale_selection_asks_for_a_source_other_than_the_current_one() -> None:
     session = FakeSession([FakeResult([])])
-    SqlAlchemyGeocodeRepository(session).stale_geocoding(
-        limit=10, source="geonames-2026-08-27"
-    )
+    SqlAlchemyGeocodeRepository(session).stale_geocoding(limit=10, source="geonames-2026-08-27")
     rendered = str(session.executed[0])
     assert "geocoding_source" in rendered

@@ -49,8 +49,7 @@ def test_an_administrative_unit_with_no_known_place_is_dropped(tmp_path: Path) -
     for row in build_rows(SAMPLE):
         if row.precision == "admin1":
             assert any(
-                place.country_code == row.country_code
-                and place.admin1_code == row.admin1_code
+                place.country_code == row.country_code and place.admin1_code == row.admin1_code
                 for place in places
             )
 
@@ -117,4 +116,4 @@ def test_rows_are_written_in_a_stable_order(tmp_path: Path, rows: list[Gazetteer
     other = tmp_path / "two.tsv.gz"
     write_artifact(rows, target)
     write_artifact(build_rows(SAMPLE), other)
-    assert gzip.open(target, "rb").read() == gzip.open(other, "rb").read()
+    assert target.read_bytes() == other.read_bytes()

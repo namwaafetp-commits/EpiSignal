@@ -92,9 +92,7 @@ def test_a_place_precision_without_a_form_is_a_programming_error() -> None:
 
 
 def test_a_single_exact_match_inside_a_country_is_accepted_at_place_precision() -> None:
-    gazetteer = StubGazetteer(
-        by_form={("Lagos", "exact", "NG"): (candidate(2332459, "Lagos"),)}
-    )
+    gazetteer = StubGazetteer(by_form={("Lagos", "exact", "NG"): (candidate(2332459, "Lagos"),)})
     resolved = resolve_place(
         ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Lagos"),
         gazetteer,
@@ -107,9 +105,7 @@ def test_a_single_exact_match_inside_a_country_is_accepted_at_place_precision() 
 
 
 def test_the_extraction_strings_survive_resolution_unmodified() -> None:
-    gazetteer = StubGazetteer(
-        by_form={("Lagos", "exact", "NG"): (candidate(2332459, "Lagos"),)}
-    )
+    gazetteer = StubGazetteer(by_form={("Lagos", "exact", "NG"): (candidate(2332459, "Lagos"),)})
     resolved = resolve_place(
         ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Lagos"),
         gazetteer,
@@ -120,9 +116,7 @@ def test_the_extraction_strings_survive_resolution_unmodified() -> None:
 
 
 def test_a_folded_match_is_used_only_when_the_exact_form_found_nothing() -> None:
-    gazetteer = StubGazetteer(
-        by_form={("Krakow", "ascii", "NG"): (candidate(3094802, "Kraków"),)}
-    )
+    gazetteer = StubGazetteer(by_form={("Krakow", "ascii", "NG"): (candidate(3094802, "Kraków"),)})
     resolved = resolve_place(
         ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Krakow"),
         gazetteer,
@@ -266,7 +260,9 @@ def test_a_name_absent_from_the_gazetteer_coarsens_the_same_way() -> None:
         }
     )
     resolved = resolve_place(
-        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Nowheresville"),
+        ExtractedPlace(
+            role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Nowheresville"
+        ),
         gazetteer,
     )
     assert resolved.precision == Precision.COUNTRY
@@ -359,9 +355,7 @@ def test_the_worldwide_search_ignores_the_extracted_admin1() -> None:
         by_form={("Kinshasa", "exact", None): (candidate(2314302, "Kinshasa", country_code="CD"),)}
     )
     resolve_place(
-        ExtractedPlace(
-            role=LocationRole.PRIMARY, admin1_name="Somewhere", place_name="Kinshasa"
-        ),
+        ExtractedPlace(role=LocationRole.PRIMARY, admin1_name="Somewhere", place_name="Kinshasa"),
         gazetteer,
     )
     assert gazetteer.calls[0] == ("Kinshasa", "exact", None, None)

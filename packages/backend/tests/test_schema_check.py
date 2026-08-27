@@ -13,6 +13,8 @@ def test_missing_tables_are_reported_in_declaration_order() -> None:
         "event_signals",
         "event_observations",
         "event_locations",
+        "gazetteer_places",
+        "signal_locations",
     ]
 
 
@@ -29,3 +31,10 @@ def test_signal_counts_preserve_each_source_total() -> None:
         "WHO Disease Outbreak News": 42,
         "ECDC": 0,
     }
+
+
+def test_the_expected_tables_include_the_geocoding_tables() -> None:
+    from episignal_backend.schema_check import EXPECTED_TABLES
+
+    assert "gazetteer_places" in EXPECTED_TABLES
+    assert "signal_locations" in EXPECTED_TABLES

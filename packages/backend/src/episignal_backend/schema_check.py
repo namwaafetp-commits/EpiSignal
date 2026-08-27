@@ -24,6 +24,8 @@ EXPECTED_TABLES = (
     "event_signals",
     "event_observations",
     "event_locations",
+    "gazetteer_places",
+    "signal_locations",
 )
 
 
