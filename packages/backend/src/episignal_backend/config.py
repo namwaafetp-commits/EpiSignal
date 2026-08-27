@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     gdelt_retry_batch_size: int = Field(default=50, ge=0, le=1000)
     gdelt_user_agent: str = "EpiSignal/0.1 (+https://episignal.org)"
 
+    # The two thresholds are configuration because they are the numbers most
+    # likely to need tuning against real traffic, and because the architecture
+    # requires matching thresholds to stay configurable rather than compiled in.
+    stage0_title_similarity: float = Field(default=0.90, ge=0.0, le=1.0)
+    stage0_body_similarity: float = Field(default=0.80, ge=0.0, le=1.0)
+    stage0_shingle_size: int = Field(default=5, ge=1, le=20)
+    stage0_candidate_window_hours: int = Field(default=72, ge=1, le=720)
+    stage0_batch_size: int = Field(default=200, ge=1, le=5000)
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:

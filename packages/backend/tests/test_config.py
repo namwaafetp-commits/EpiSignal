@@ -119,3 +119,25 @@ def test_the_query_window_must_cover_the_poll_interval(monkeypatch: pytest.Monke
     # A window narrower than the interval opens a gap no later run ever revisits.
     with pytest.raises(ValidationError, match="window"):
         Settings()  # type: ignore[call-arg]
+
+
+DATABASE_URL = "postgresql://user:secret@host/db"
+
+
+def test_stage0_defaults_are_strict() -> None:
+    settings = Settings(database_url=DATABASE_URL, _env_file=None)  # type: ignore[call-arg, arg-type]
+
+    assert settings.stage0_title_similarity == 0.90
+    assert settings.stage0_body_similarity == 0.80
+    assert settings.stage0_shingle_size == 5
+    assert settings.stage0_candidate_window_hours == 72
+    assert settings.stage0_batch_size == 200
+
+
+def test_a_similarity_threshold_above_one_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(  # type: ignore[call-arg, arg-type]
+            database_url=DATABASE_URL,
+            stage0_title_similarity=1.5,
+            _env_file=None,
+        )
