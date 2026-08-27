@@ -5,7 +5,9 @@ re-running never duplicates an identity and never rewrites generated keys or
 creation timestamps.
 """
 
+import gzip
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -19,6 +21,7 @@ from episignal_backend.db.types import CredibilityTier, FilterRuleGroup, SourceT
 from episignal_backend.models import (
     AiModel,
     Disease,
+    GazetteerPlace,
     GdeltQueryRule,
     SignalFilterRule,
     Source,
@@ -102,6 +105,16 @@ class SeedResult:
     query_rules: int
     filter_rules: int
     ai_models: int
+    country_aliases: int
+    gazetteer_places: int
+
+
+GAZETTEER_BATCH_SIZE = 5000
+GAZETTEER_ARTIFACT = "gazetteer_places.tsv.gz"
+
+
+def gazetteer_path() -> Path:
+    return Path(__file__).parents[4] / "database" / "seeds" / GAZETTEER_ARTIFACT
 
 
 def _read_seed(name: str) -> object:
@@ -135,6 +148,63 @@ def load_country_aliases() -> tuple[CountryAliasSeed, ...]:
     )
 
 
+def read_gazetteer(path: Path) -> Iterator[dict[str, Any]]:
+    """Stream the artifact rather than loading it.
+
+    The full artifact holds roughly 190,000 rows. Reading it into a list would
+    cost nothing this machine cannot afford and would still be the wrong shape:
+    the loader below never needs more than one batch at a time.
+    """
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        columns = handle.readline().rstrip("\n").split("\t")
+        for line in handle:
+            if not line.strip():
+                continue
+            values = dict(zip(columns, line.rstrip("\n").split("\t"), strict=True))
+            yield {
+                "geonames_id": int(values["geonames_id"]),
+                "name": values["name"],
+                "normalized_name": values["normalized_name"],
+                "ascii_name": values["ascii_name"],
+                "alternate_names": [
+                    part for part in values["alternate_names"].split(",") if part
+                ],
+                "feature_code": values["feature_code"],
+                "precision": values["precision"],
+                "country_code": values["country_code"],
+                "admin1_code": values["admin1_code"] or None,
+                "admin2_code": values["admin2_code"] or None,
+                "latitude": float(values["latitude"]),
+                "longitude": float(values["longitude"]),
+                "population": int(values["population"]) if values["population"] else None,
+            }
+
+
+def seed_gazetteer(session: Any, path: Path | None = None) -> int:
+    """Upsert the gazetteer in batches, keyed on the stable GeoNames id.
+
+    A missing artifact is not an error. The artifact is large enough to be
+    generated rather than hand-written, and a clone that has not generated it
+    should still be able to seed everything else.
+    """
+    target = gazetteer_path() if path is None else path
+    if not target.exists():
+        return 0
+
+    written = 0
+    batch: list[dict[str, Any]] = []
+    for row in read_gazetteer(target):
+        batch.append(row)
+        if len(batch) >= GAZETTEER_BATCH_SIZE:
+            _upsert(session, GazetteerPlace, batch, ("geonames_id",))
+            written += len(batch)
+            batch = []
+    if batch:
+        _upsert(session, GazetteerPlace, batch, ("geonames_id",))
+        written += len(batch)
+    return written
+
+
 def _upsert(
     session: Session,
     model: type[Any],
@@ -161,6 +231,8 @@ def seed_database(session: Session) -> SeedResult:
     query_rules = load_query_rules()
     filter_rules = load_filter_rules()
     ai_models = load_ai_models()
+    country_aliases = load_country_aliases()
+    gazetteer_places = seed_gazetteer(session)
     _upsert(session, Disease, [item.model_dump() for item in diseases], ("slug",))
     _upsert(session, Source, [item.model_dump() for item in sources], ("name",))
     _upsert(
@@ -187,4 +259,6 @@ def seed_database(session: Session) -> SeedResult:
         query_rules=len(query_rules),
         filter_rules=len(filter_rules),
         ai_models=len(ai_models),
+        country_aliases=len(country_aliases),
+        gazetteer_places=gazetteer_places,
     )

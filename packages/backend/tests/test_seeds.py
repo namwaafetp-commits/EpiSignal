@@ -1,4 +1,7 @@
+import gzip
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 from episignal_backend.seeds import load_diseases, load_sources
 
@@ -167,3 +170,82 @@ def test_the_country_alias_seed_separates_niger_from_nigeria() -> None:
     codes = {alias.name: alias.country_code for alias in load_country_aliases()}
     assert codes["niger"] == "NE"
     assert codes["nigeria"] == "NG"
+
+
+class RecordingSession:
+    def __init__(self) -> None:
+        self.executed: list[Any] = []
+
+    def execute(self, statement: Any) -> Any:
+        self.executed.append(statement)
+        return None
+
+
+def write_gazetteer(target: Path, rows: list[tuple[str, ...]]) -> None:
+    header = (
+        "geonames_id\tname\tnormalized_name\tascii_name\talternate_names\t"
+        "feature_code\tprecision\tcountry_code\tadmin1_code\tadmin2_code\t"
+        "latitude\tlongitude\tpopulation\n"
+    )
+    with gzip.open(target, "wt", encoding="utf-8", newline="\n") as handle:
+        handle.write(header)
+        for row in rows:
+            handle.write("\t".join(row) + "\n")
+
+
+def test_it_reads_every_row_of_the_artifact(tmp_path: Path) -> None:
+    from episignal_backend.seeds import read_gazetteer
+
+    target = tmp_path / "gazetteer_places.tsv.gz"
+    write_gazetteer(
+        target,
+        [
+            ("2332459", "Lagos", "lagos", "lagos", "eko", "PPLA", "place", "NG", "05", "", "6.45407", "3.39467", "1536000"),
+            ("2328926", "Nigeria", "nigeria", "nigeria", "", "PCLI", "country", "NG", "", "", "9.08333", "8.67500", ""),
+        ],
+    )
+    rows = list(read_gazetteer(target))
+    assert len(rows) == 2
+    assert rows[0]["geonames_id"] == 2332459
+    assert rows[0]["alternate_names"] == ["eko"]
+    assert rows[0]["population"] == 1536000
+
+
+def test_an_empty_optional_column_becomes_none_not_an_empty_string(tmp_path: Path) -> None:
+    from episignal_backend.seeds import read_gazetteer
+
+    target = tmp_path / "gazetteer_places.tsv.gz"
+    write_gazetteer(
+        target,
+        [("2328926", "Nigeria", "nigeria", "nigeria", "", "PCLI", "country", "NG", "", "", "9.0", "8.0", "")],
+    )
+    row = next(iter(read_gazetteer(target)))
+    assert row["admin1_code"] is None
+    assert row["admin2_code"] is None
+    assert row["population"] is None
+    assert row["alternate_names"] == []
+
+
+def test_seeding_a_missing_artifact_reports_zero_rather_than_failing(tmp_path: Path) -> None:
+    from episignal_backend.seeds import seed_gazetteer
+
+    session = RecordingSession()
+    assert seed_gazetteer(session, tmp_path / "absent.tsv.gz") == 0
+    assert session.executed == []
+
+
+def test_seeding_batches_its_upserts(tmp_path: Path) -> None:
+    from episignal_backend.seeds import GAZETTEER_BATCH_SIZE, seed_gazetteer
+
+    target = tmp_path / "gazetteer_places.tsv.gz"
+    write_gazetteer(
+        target,
+        [
+            (str(index), f"Place{index}", f"place{index}", f"place{index}", "", "PPL", "place", "NG", "05", "", "1.0", "2.0", "")
+            for index in range(1, GAZETTEER_BATCH_SIZE + 3)
+        ],
+    )
+    session = RecordingSession()
+    written = seed_gazetteer(session, target)
+    assert written == GAZETTEER_BATCH_SIZE + 2
+    assert len(session.executed) == 2
