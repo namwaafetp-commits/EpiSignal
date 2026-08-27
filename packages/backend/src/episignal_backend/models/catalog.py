@@ -18,6 +18,7 @@ class Source(IdentityMixin, TimestampMixin, Base):
     country_code: Mapped[str | None] = mapped_column(String(2))
     base_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     feed_url: Mapped[str | None] = mapped_column(Text, unique=True)
+    domain: Mapped[str | None] = mapped_column(Text, unique=True)
     credibility_tier: Mapped[CredibilityTier] = mapped_column(
         vocabulary(CredibilityTier, "credibility_tier_values"),
         nullable=False,

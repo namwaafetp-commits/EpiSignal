@@ -22,6 +22,11 @@ class CredibilityTier(StrEnum):
     UNKNOWN = "unknown"
 
 
+class DiscoveryMethod(StrEnum):
+    DIRECT = "direct"
+    GDELT = "gdelt"
+
+
 class SignalType(StrEnum):
     OUTBREAK_REPORT = "outbreak_report"
     SURVEILLANCE_UPDATE = "surveillance_update"

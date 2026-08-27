@@ -17,7 +17,8 @@ def main() -> int:
     except Exception:
         print("Seeding failed. Check EPISIGNAL_DATABASE_URL and migration state.", file=sys.stderr)
         return 1
-    print(f"diseases={result.diseases} sources={result.sources}")
+    print(f"diseases={result.diseases} sources={result.sources} query_rules={result.query_rules}")
+
     return 0
 
 

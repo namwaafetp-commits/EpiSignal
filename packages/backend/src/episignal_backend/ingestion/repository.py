@@ -5,13 +5,24 @@ and answers existence questions. All ingestion decisions live in `pipeline.py`,
 which never imports this module.
 """
 
+from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from episignal_backend.ingestion.documents import NormalizedSignal
-from episignal_backend.models import Signal, Source
+from episignal_backend.db.types import CredibilityTier, DiscoveryMethod, SourceType
+from episignal_backend.ingestion.documents import (
+    DiscoveredArticle,
+    DiscoveredSignal,
+    NormalizedSignal,
+    Publisher,
+    QueryRule,
+    StubRetrieval,
+)
+from episignal_backend.models import GdeltQueryRule, Signal, Source
 
 
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
@@ -24,9 +35,32 @@ def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
         raw_text=signal.raw_text,
         published_at=signal.published_at,
         retrieved_at=signal.retrieved_at,
+        # An official document's first sighting is the retrieval that produced
+        # this version; there is no earlier discovery step to inherit from.
+        first_seen_at=signal.retrieved_at,
         language=signal.language,
         content_hash=signal.content_hash,
         signal_type=signal.signal_type,
+        processing_status=signal.processing_status,
+    )
+
+
+def build_discovered_signal(signal: DiscoveredSignal, source_id: UUID) -> Signal:
+    return Signal(
+        source_id=source_id,
+        url=signal.url,
+        canonical_url=signal.canonical_url,
+        title=signal.title,
+        raw_text=signal.raw_text,
+        published_at=signal.published_at,
+        published_at_offset_minutes=signal.published_at_offset_minutes,
+        retrieved_at=signal.retrieved_at,
+        first_seen_at=signal.first_seen_at,
+        gdelt_seen_at=signal.gdelt_seen_at,
+        language=signal.language,
+        content_hash=signal.content_hash,
+        discovered_via=DiscoveryMethod.GDELT,
+        query_rule_id=signal.query_rule_id,
         processing_status=signal.processing_status,
     )
 
@@ -52,6 +86,155 @@ class SqlAlchemySignalRepository:
 
     def activate(self, source_id: UUID) -> None:
         self._session.execute(update(Source).where(Source.id == source_id).values(active=True))
+
+    def commit(self) -> None:
+        self._session.commit()
+
+    def rollback(self) -> None:
+        self._session.rollback()
+
+
+class SqlAlchemyDiscoveryRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def active_rules(self) -> Sequence[QueryRule]:
+        rows = self._session.execute(
+            select(GdeltQueryRule)
+            .where(GdeltQueryRule.active.is_(True))
+            .order_by(GdeltQueryRule.rule_group, GdeltQueryRule.label)
+        ).scalars()
+        return tuple(
+            QueryRule(
+                id=row.id,
+                rule_group=row.rule_group,
+                query=row.query,
+                label=row.label,
+                language=row.language,
+            )
+            for row in rows
+        )
+
+    def seen_urls(self, canonical_urls: Sequence[str]) -> frozenset[str]:
+        if not canonical_urls:
+            return frozenset()
+        found = self._session.execute(
+            select(Signal.canonical_url).where(Signal.canonical_url.in_(tuple(canonical_urls)))
+        ).scalars()
+        return frozenset(url for url in found if url is not None)
+
+    def first_seen_at(self, canonical_url: str) -> datetime | None:
+        return self._session.execute(
+            select(func.min(Signal.first_seen_at)).where(Signal.canonical_url == canonical_url)
+        ).scalar_one_or_none()
+
+    def publisher_source_id(self, publisher: Publisher) -> UUID:
+        existing = self._session.execute(
+            select(Source.id).where(Source.domain == publisher.domain)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
+        taken = self._session.execute(
+            select(Source.id).where(Source.name == publisher.name)
+        ).scalar_one_or_none()
+        # A display name shared with another outlet is cosmetic; refusing to
+        # register the publisher would lose the discovery entirely.
+        name = publisher.domain if taken is not None else publisher.name
+
+        source = Source(
+            name=name,
+            source_type=SourceType.LOCAL_MEDIA,
+            country_code=publisher.country_code,
+            base_url=f"https://{publisher.domain}",
+            domain=publisher.domain,
+            credibility_tier=CredibilityTier.UNKNOWN,
+            is_official=False,
+            language=publisher.language or "en",
+            active=True,
+        )
+        self._session.add(source)
+        try:
+            self._session.flush()
+        except IntegrityError:
+            # A concurrent run registered the same domain first. Its row is as
+            # good as ours.
+            self._session.rollback()
+            return self._session.execute(
+                select(Source.id).where(Source.domain == publisher.domain)
+            ).scalar_one()
+        return source.id
+
+    def add(self, signal: DiscoveredSignal, source_id: UUID) -> None:
+        self._session.add(build_discovered_signal(signal, source_id))
+        self._session.flush()
+
+    def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
+        rows = self._session.execute(
+            select(Signal, Source.domain, Source.country_code)
+            .join(Source, Signal.source_id == Source.id)
+            .where(
+                Signal.discovered_via == DiscoveryMethod.GDELT,
+                Signal.raw_text.is_(None),
+                Signal.retrieval_attempts < max_attempts,
+                Source.domain.is_not(None),
+            )
+            .order_by(Signal.retrieval_attempts, Signal.first_seen_at)
+            .limit(limit)
+        ).all()
+
+        stubs: list[StubRetrieval] = []
+        for signal, domain, country_code in rows:
+            if signal.gdelt_seen_at is None:
+                continue
+            stubs.append(
+                StubRetrieval(
+                    signal_id=signal.id,
+                    article=DiscoveredArticle(
+                        url=signal.url,
+                        canonical_url=signal.canonical_url or signal.url,
+                        title=signal.title,
+                        domain=domain,
+                        gdelt_seen_at=signal.gdelt_seen_at,
+                        language=signal.language,
+                        country_code=country_code,
+                        query_rule_id=signal.query_rule_id,
+                    ),
+                    first_seen_at=signal.first_seen_at,
+                    attempts=signal.retrieval_attempts,
+                )
+            )
+        return tuple(stubs)
+
+    def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
+        stub = self._session.get(Signal, signal_id)
+        if stub is None:
+            return False
+
+        stub.title = signal.title
+        stub.raw_text = signal.raw_text
+        stub.published_at = signal.published_at
+        stub.published_at_offset_minutes = signal.published_at_offset_minutes
+        stub.retrieved_at = signal.retrieved_at
+        stub.content_hash = signal.content_hash
+        stub.processing_status = signal.processing_status
+        stub.retrieval_attempts = stub.retrieval_attempts + 1
+        try:
+            self._session.flush()
+        except IntegrityError:
+            # A full version of this URL already carries that hash, so the stub
+            # is redundant rather than promotable. It is left exactly as it was:
+            # a spare row costs less than deleting one on a guess.
+            self._session.rollback()
+            return False
+        return True
+
+    def record_failed_attempt(self, signal_id: UUID) -> None:
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == signal_id)
+            .values(retrieval_attempts=Signal.retrieval_attempts + 1)
+        )
 
     def commit(self) -> None:
         self._session.commit()

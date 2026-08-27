@@ -1,0 +1,34 @@
+{
+  "articles": [
+    {
+      "url": "https://www.telemundodallas.com/noticias/eeuu/pensilvania-muerte-dos-pacientes-sarampion-no-vacunados/2599658/",
+      "url_mobile": "https://www.telemundodallas.com/noticias/eeuu/pensilvania-muerte-dos-pacientes-sarampion-no-vacunados/2599658/?amp=1",
+      "title": "Dos residentes no vacunados mueren de sarampion en Pensilvania - Telemundo Dallas ( 39 ) ",
+      "seendate": "20260825T190000Z",
+      "socialimage": "https://media.telemundodallas.com/2025/04/GettyImages-1358974423.jpg",
+      "domain": "telemundodallas.com",
+      "language": "Spanish",
+      "sourcecountry": "United States"
+    },
+    {
+      "url": "https://www.telemundo47.com/noticias/eeuu/pensilvania-muerte-dos-pacientes-sarampion-no-vacunados/2650887/",
+      "url_mobile": "",
+      "title": "Dos residentes no vacunados mueren de sarampion en Pensilvania - Telemundo New York ( 47 ) ",
+      "seendate": "20260825T190000Z",
+      "socialimage": "",
+      "domain": "telemundo47.com",
+      "language": "Spanish",
+      "sourcecountry": "United States"
+    },
+    {
+      "url": "https://www.thenational.scot/news/26487146.near-fatal-illness-inspired-highlanders-musical-voyage/",
+      "url_mobile": "",
+      "title": "How a near - fatal illness inspired a Highlander musical voyage",
+      "seendate": "20260823T073000Z",
+      "socialimage": "",
+      "domain": "thenational.scot",
+      "language": "English",
+      "sourcecountry": "United Kingdom"
+    }
+  ]
+}

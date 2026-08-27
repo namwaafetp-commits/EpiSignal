@@ -39,8 +39,15 @@ def sqlite_session() -> Session:
                 ai_extraction JSON,
                 ai_model TEXT,
                 ai_processed_at DATETIME,
-                processing_status VARCHAR(32) NOT NULL
+                processing_status VARCHAR(32) NOT NULL,
+                discovered_via VARCHAR(32) NOT NULL DEFAULT 'direct',
+                first_seen_at DATETIME,
+                gdelt_seen_at DATETIME,
+                published_at_offset_minutes SMALLINT,
+                retrieval_attempts SMALLINT NOT NULL DEFAULT 0,
+                query_rule_id CHAR(32)
             )
+
             """
         )
         connection.execute(

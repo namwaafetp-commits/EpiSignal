@@ -11,6 +11,7 @@ EXPECTED_TABLES = {
     "event_signals",
     "event_observations",
     "event_locations",
+    "gdelt_query_rules",
 }
 
 
@@ -73,8 +74,54 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 9
+    assert len(enum_columns) == 10
+
     for column in enum_columns:
         enum_class = column.type.enum_class
         assert enum_class is not None
         assert column.type.enums == [member.value for member in enum_class]
+
+
+def test_discovery_method_stores_lowercase_values() -> None:
+    from episignal_backend.db.types import DiscoveryMethod
+
+    assert DiscoveryMethod.DIRECT.value == "direct"
+    assert DiscoveryMethod.GDELT.value == "gdelt"
+    assert [member.value for member in DiscoveryMethod] == ["direct", "gdelt"]
+
+
+def test_gdelt_query_rule_table_shape() -> None:
+    from episignal_backend.models import GdeltQueryRule
+
+    table = GdeltQueryRule.__table__
+    assert table.name == "gdelt_query_rules"
+    assert not table.c.rule_group.nullable
+    assert not table.c.query.nullable
+    assert not table.c.label.nullable
+    assert not table.c.language.nullable
+    assert not table.c.active.nullable
+    constraint_columns = {
+        tuple(sorted(column.name for column in constraint.columns))
+        for constraint in table.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    assert ("language", "query") in constraint_columns
+
+
+def test_signal_records_discovery_provenance() -> None:
+    from episignal_backend.models import Signal
+
+    columns = Signal.__table__.c
+    assert not columns.discovered_via.nullable
+    assert not columns.first_seen_at.nullable
+    assert columns.gdelt_seen_at.nullable
+    assert columns.published_at_offset_minutes.nullable
+    assert not columns.retrieval_attempts.nullable
+    assert columns.query_rule_id.nullable
+
+
+def test_source_records_its_domain() -> None:
+    from episignal_backend.models import Source
+
+    assert Source.__table__.c.domain.nullable
+    assert Source.__table__.c.domain.unique
