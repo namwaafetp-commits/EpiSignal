@@ -1,8 +1,8 @@
-"""The two boundaries the pipeline depends on.
+"""The boundaries the pipeline depends on.
 
-`pipeline.py` imports these Protocols and nothing else, so every ingestion
-decision is testable with in-memory fakes: no database, no network, no
-credentials.
+`pipeline.py` and `discovery.py` import these Protocols and nothing else, so
+every ingestion decision is testable with in-memory fakes: no database, no
+network, no credentials.
 """
 
 from collections.abc import Sequence
@@ -10,7 +10,16 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
+from episignal_backend.ingestion.documents import (
+    DiscoveredArticle,
+    DiscoveredSignal,
+    NormalizedSignal,
+    Publisher,
+    QueryRule,
+    RawDocument,
+    StubRetrieval,
+    TimeWindow,
+)
 
 
 @runtime_checkable
@@ -37,6 +46,52 @@ class SignalRepository(Protocol):
     def rollback(self) -> None: ...
 
 
+@runtime_checkable
+class DiscoveryConnector(Protocol):
+    """A radar: it finds articles other people published.
+
+    Distinct from `SourceConnector`, which speaks for exactly one known
+    publisher. `discover` returns metadata only and opens no publisher
+    connection, so the pipeline can drop already-seen URLs before paying for a
+    page fetch.
+    """
+
+    discovery_name: str
+
+    def discover(
+        self, rule: QueryRule, window: TimeWindow
+    ) -> Sequence[DiscoveredArticle]: ...
+
+    def retrieve(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal: ...
+
+    def stub(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal: ...
+
+
+@runtime_checkable
+class DiscoveryRepository(Protocol):
+    def active_rules(self) -> Sequence[QueryRule]: ...
+
+    def seen_urls(self, canonical_urls: Sequence[str]) -> frozenset[str]: ...
+
+    def first_seen_at(self, canonical_url: str) -> datetime | None: ...
+
+    def publisher_source_id(self, publisher: Publisher) -> UUID: ...
+
+    def add(self, signal: DiscoveredSignal, source_id: UUID) -> None: ...
+
+    def stubs_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int
+    ) -> Sequence[StubRetrieval]: ...
+
+    def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool: ...
+
+    def record_failed_attempt(self, signal_id: UUID) -> None: ...
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
+
+
 class UnsupportedDocument(Exception):
     """The source returned a document this connector does not ingest.
 
@@ -44,4 +99,12 @@ class UnsupportedDocument(Exception):
     it, but the document carries no evidence this connector can store. Raising
     it keeps the document visible in the run's counts without turning a normal
     run into an error.
+    """
+
+
+class RetrievalFailed(Exception):
+    """The publisher's page could not be turned into evidence.
+
+    Distinct from `UnsupportedDocument`: the article is wanted, and the
+    discovery is kept as a stub for retry, rather than rejected outright.
     """
