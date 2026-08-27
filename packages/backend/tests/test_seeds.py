@@ -47,4 +47,3 @@ def test_no_query_rule_is_a_bare_generic_term() -> None:
     # A single generic query returns mostly noise and defeats grouping.
     banned = {"outbreak", "disease", "virus", "illness"}
     assert all(rule.query.strip().casefold() not in banned for rule in load_query_rules())
-

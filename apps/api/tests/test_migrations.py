@@ -13,7 +13,6 @@ def test_migrations_have_one_linear_head() -> None:
     assert scripts.get_heads() == ["20260827_0003"]
 
 
-
 def render_offline(*arguments: str) -> str:
     root = Path(__file__).parents[3]
     result = subprocess.run(
@@ -139,4 +138,3 @@ def test_third_revision_backfills_first_seen_at_before_enforcing_it() -> None:
     assert sql.index("set first_seen_at = retrieved_at") < sql.index(
         "alter column first_seen_at set not null"
     )
-

@@ -58,9 +58,7 @@ class DiscoveryConnector(Protocol):
 
     discovery_name: str
 
-    def discover(
-        self, rule: QueryRule, window: TimeWindow
-    ) -> Sequence[DiscoveredArticle]: ...
+    def discover(self, rule: QueryRule, window: TimeWindow) -> Sequence[DiscoveredArticle]: ...
 
     def retrieve(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal: ...
 

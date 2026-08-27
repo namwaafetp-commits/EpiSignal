@@ -15,7 +15,6 @@ EXPECTED_TABLES = {
 }
 
 
-
 def test_metadata_contains_phase_one_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
 
@@ -126,6 +125,3 @@ def test_source_records_its_domain() -> None:
 
     assert Source.__table__.c.domain.nullable
     assert Source.__table__.c.domain.unique
-
-
-

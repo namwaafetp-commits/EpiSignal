@@ -4,7 +4,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-
 from episignal_backend.ingestion.documents import QueryRule, TimeWindow
 from episignal_backend.ingestion.gdelt.api import API_URL, GdeltDocClient, GdeltUnavailable
 

@@ -100,9 +100,9 @@ class SqlAlchemyDiscoveryRepository:
 
     def active_rules(self) -> Sequence[QueryRule]:
         rows = self._session.execute(
-            select(GdeltQueryRule).where(GdeltQueryRule.active.is_(True)).order_by(
-                GdeltQueryRule.rule_group, GdeltQueryRule.label
-            )
+            select(GdeltQueryRule)
+            .where(GdeltQueryRule.active.is_(True))
+            .order_by(GdeltQueryRule.rule_group, GdeltQueryRule.label)
         ).scalars()
         return tuple(
             QueryRule(
@@ -169,9 +169,7 @@ class SqlAlchemyDiscoveryRepository:
         self._session.add(build_discovered_signal(signal, source_id))
         self._session.flush()
 
-    def stubs_awaiting_retrieval(
-        self, *, max_attempts: int, limit: int
-    ) -> Sequence[StubRetrieval]:
+    def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
         rows = self._session.execute(
             select(Signal, Source.domain, Source.country_code)
             .join(Source, Signal.source_id == Source.id)

@@ -5,8 +5,10 @@ from uuid import UUID, uuid4
 from episignal_backend.db.types import DiscoveryMethod, ProcessingStatus
 from episignal_backend.ingestion.documents import DiscoveredSignal, Publisher
 from episignal_backend.ingestion.protocol import DiscoveryRepository
-from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository, build_discovered_signal
-
+from episignal_backend.ingestion.repository import (
+    SqlAlchemyDiscoveryRepository,
+    build_discovered_signal,
+)
 
 NOW = datetime(2026, 8, 26, 8, 0, tzinfo=UTC)
 SEEN = datetime(2026, 8, 26, 7, 45, tzinfo=UTC)
@@ -228,9 +230,8 @@ def test_promotion_replaces_the_stub_content_and_counts_the_attempt() -> None:
 
 
 def test_a_promotion_conflict_leaves_the_stub_intact() -> None:
-    from sqlalchemy.exc import IntegrityError
-
     from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+    from sqlalchemy.exc import IntegrityError
 
     row = stub_row()
     session = FakeSession(
@@ -276,4 +277,3 @@ def test_repository_satisfies_the_protocol() -> None:
     repository = SqlAlchemyDiscoveryRepository(session=None)  # type: ignore[arg-type]
     assert isinstance(repository, DiscoveryRepository)
     assert _conforms(repository) is repository
-

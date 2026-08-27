@@ -87,4 +87,3 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     query_rule_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("gdelt_query_rules.id", ondelete="SET NULL")
     )
-

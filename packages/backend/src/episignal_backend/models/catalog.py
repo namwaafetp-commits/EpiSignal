@@ -20,7 +20,6 @@ class Source(IdentityMixin, TimestampMixin, Base):
     feed_url: Mapped[str | None] = mapped_column(Text, unique=True)
     domain: Mapped[str | None] = mapped_column(Text, unique=True)
     credibility_tier: Mapped[CredibilityTier] = mapped_column(
-
         vocabulary(CredibilityTier, "credibility_tier_values"),
         nullable=False,
         default=CredibilityTier.UNKNOWN,

@@ -27,7 +27,6 @@ class DiscoveryMethod(StrEnum):
     GDELT = "gdelt"
 
 
-
 class SignalType(StrEnum):
     OUTBREAK_REPORT = "outbreak_report"
     SURVEILLANCE_UPDATE = "surveillance_update"

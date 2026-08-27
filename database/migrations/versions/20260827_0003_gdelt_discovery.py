@@ -33,10 +33,16 @@ def upgrade() -> None:
         sa.Column("language", sa.Text(), server_default="any", nullable=False),
         sa.Column("active", sa.Boolean(), server_default="true", nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.PrimaryKeyConstraint("id", name="pk_gdelt_query_rules"),
         sa.UniqueConstraint("query", "language", name="uq_gdelt_query_rules_query"),

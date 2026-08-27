@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, SecretStr, field_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -53,6 +53,16 @@ class Settings(BaseSettings):
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
+    gdelt_poll_interval_minutes: int = Field(default=15, ge=1, le=1440)
+    gdelt_query_window_minutes: int = Field(default=20, ge=1, le=10080)
+    gdelt_max_articles_per_run: int = Field(default=200, ge=1, le=5000)
+    gdelt_request_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
+    gdelt_article_delay_seconds: float = Field(default=1.0, ge=0.0, le=60.0)
+    gdelt_article_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+    gdelt_max_retrieval_attempts: int = Field(default=3, ge=1, le=20)
+    gdelt_retry_batch_size: int = Field(default=50, ge=0, le=1000)
+    gdelt_user_agent: str = "EpiSignal/0.1 (+https://episignal.org)"
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
@@ -67,6 +77,17 @@ class Settings(BaseSettings):
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise ValueError("EPISIGNAL_CORS_ORIGINS must contain HTTP(S) origins")
         return values
+
+    @model_validator(mode="after")
+    def window_covers_the_interval(self) -> "Settings":
+        # A window narrower than the polling interval leaves articles published
+        # in the gap undiscovered by every run, which no retry ever repairs.
+        if self.gdelt_query_window_minutes < self.gdelt_poll_interval_minutes:
+            raise ValueError(
+                "EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES must cover "
+                "EPISIGNAL_GDELT_POLL_INTERVAL_MINUTES"
+            )
+        return self
 
     @property
     def sqlalchemy_database_url(self) -> str:

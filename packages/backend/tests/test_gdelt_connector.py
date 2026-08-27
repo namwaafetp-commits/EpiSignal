@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-
 from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.ingestion.documents import DiscoveredArticle, QueryRule, TimeWindow
 from episignal_backend.ingestion.gdelt.article import Disallowed, Unfetchable
@@ -83,9 +82,7 @@ def test_retrieve_falls_back_to_the_gdelt_title() -> None:
 
 def test_retrieve_keeps_the_stated_publication_offset() -> None:
     signal = connector(FULL_PAGE).retrieve(article(), FIRST)
-    assert signal.published_at == datetime(
-        2026, 8, 26, 7, 42, tzinfo=timezone(timedelta(hours=7))
-    )
+    assert signal.published_at == datetime(2026, 8, 26, 7, 42, tzinfo=timezone(timedelta(hours=7)))
     assert signal.published_at_offset_minutes == 420
 
 

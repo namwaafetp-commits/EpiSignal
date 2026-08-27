@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-
 from episignal_backend.ingestion.gdelt.extract import extract_page, parse_timestamp
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -14,9 +13,7 @@ def fixture(name: str) -> str:
 
 def test_reads_the_open_graph_publication_time_and_offset() -> None:
     page = extract_page(fixture("article_og_time.html"))
-    assert page.published_at == datetime(
-        2026, 8, 26, 7, 42, tzinfo=timezone(timedelta(hours=7))
-    )
+    assert page.published_at == datetime(2026, 8, 26, 7, 42, tzinfo=timezone(timedelta(hours=7)))
     assert page.published_at_offset_minutes == 420
 
 
@@ -35,16 +32,14 @@ def test_excludes_navigation_and_footer_from_the_body() -> None:
 
 def test_reads_json_ld_date_published() -> None:
     page = extract_page(fixture("article_jsonld.html"))
-    assert page.published_at == datetime(2026, 8, 25, 18, 30, tzinfo=timezone.utc)
+    assert page.published_at == datetime(2026, 8, 25, 18, 30, tzinfo=UTC)
     assert page.published_at_offset_minutes == 0
     assert page.title == "Cholera cases rise in the delta"
 
 
 def test_reads_a_time_element_datetime() -> None:
     page = extract_page(fixture("article_time_tag.html"))
-    assert page.published_at == datetime(
-        2026, 8, 24, 9, 15, tzinfo=timezone(timedelta(hours=2))
-    )
+    assert page.published_at == datetime(2026, 8, 24, 9, 15, tzinfo=timezone(timedelta(hours=2)))
     assert page.published_at_offset_minutes == 120
 
 

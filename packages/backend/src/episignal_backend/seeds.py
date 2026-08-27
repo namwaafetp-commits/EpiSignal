@@ -74,9 +74,7 @@ def load_sources() -> tuple[SourceSeed, ...]:
 
 
 def load_query_rules() -> tuple[QueryRuleSeed, ...]:
-    return tuple(
-        TypeAdapter(list[QueryRuleSeed]).validate_python(_read_seed("gdelt_queries.json"))
-    )
+    return tuple(TypeAdapter(list[QueryRuleSeed]).validate_python(_read_seed("gdelt_queries.json")))
 
 
 def _upsert(
@@ -111,6 +109,4 @@ def seed_database(session: Session) -> SeedResult:
         [item.model_dump() for item in query_rules],
         ("query", "language"),
     )
-    return SeedResult(
-        diseases=len(diseases), sources=len(sources), query_rules=len(query_rules)
-    )
+    return SeedResult(diseases=len(diseases), sources=len(sources), query_rules=len(query_rules))

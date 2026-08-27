@@ -1,8 +1,6 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-from pydantic import ValidationError
-
 from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,
@@ -11,6 +9,7 @@ from episignal_backend.ingestion.documents import (
     QueryRule,
     TimeWindow,
 )
+from pydantic import ValidationError
 
 SEEN = datetime(2026, 8, 26, 7, 45, tzinfo=UTC)
 ICT = timezone(timedelta(hours=7))
@@ -82,7 +81,9 @@ def test_signal_preserves_the_publisher_offset() -> None:
 
 
 def test_query_rule_and_window_are_frozen() -> None:
-    rule = QueryRule(id=None, rule_group="syndromic", query='"unknown fever"', label="Unknown fever")
+    rule = QueryRule(
+        id=None, rule_group="syndromic", query='"unknown fever"', label="Unknown fever"
+    )
     window = TimeWindow(start=SEEN, end=SEEN)
     with pytest.raises(ValidationError):
         rule.query = "other"  # type: ignore[misc]

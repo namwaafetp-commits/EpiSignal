@@ -1,6 +1,5 @@
 import httpx
 import pytest
-
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher, Disallowed, Unfetchable
 
 ROBOTS_ALLOW = "User-agent: *\nAllow: /\n"

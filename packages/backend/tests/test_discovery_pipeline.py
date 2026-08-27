@@ -5,9 +5,7 @@ from uuid import UUID, uuid4
 from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.ingestion.discovery import (
     DiscoveryResult,
-    RetryResult,
     run_discovery,
-    run_retry,
 )
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,

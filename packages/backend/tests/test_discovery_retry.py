@@ -45,9 +45,7 @@ class FakeRepository:
         self.rollbacks = 0
         self.selection: list[tuple[int, int]] = []
 
-    def stubs_awaiting_retrieval(
-        self, *, max_attempts: int, limit: int
-    ) -> Sequence[StubRetrieval]:
+    def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
         self.selection.append((max_attempts, limit))
         return self.stubs
 

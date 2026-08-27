@@ -94,3 +94,28 @@ def test_settings_parse_comma_separated_cors_origins_from_the_environment(monkey
         "http://localhost:3000",
         "https://episignal.example",
     )
+
+
+def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/database"
+    )
+    settings = Settings()  # type: ignore[call-arg]
+    assert settings.gdelt_poll_interval_minutes == 15
+    assert settings.gdelt_query_window_minutes == 20
+    assert settings.gdelt_max_articles_per_run == 200
+    assert settings.gdelt_request_delay_seconds == 5.0
+    assert settings.gdelt_article_delay_seconds == 1.0
+    assert settings.gdelt_max_retrieval_attempts == 3
+    assert settings.gdelt_retry_batch_size == 50
+
+
+def test_the_query_window_must_cover_the_poll_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/database"
+    )
+    monkeypatch.setenv("EPISIGNAL_GDELT_POLL_INTERVAL_MINUTES", "30")
+    monkeypatch.setenv("EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES", "20")
+    # A window narrower than the interval opens a gap no later run ever revisits.
+    with pytest.raises(ValidationError, match="window"):
+        Settings()  # type: ignore[call-arg]

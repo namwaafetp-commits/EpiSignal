@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from episignal_backend.db.types import ProcessingStatus, SignalType
 
 
-
 def _require_aware(value: datetime) -> datetime:
     # Reject naive timestamps at the boundary: the columns are timestamptz, and a
     # naive value would otherwise fail far from where it entered. The source's
@@ -244,4 +243,3 @@ class StubRetrieval(BaseModel):
     @classmethod
     def timestamp_is_aware(cls, value: datetime) -> datetime:
         return _require_aware(value)
-

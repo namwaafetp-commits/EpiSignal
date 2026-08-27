@@ -1,5 +1,4 @@
 import pytest
-
 from episignal_backend.ingestion.gdelt.locale import country_code, language_code
 
 
