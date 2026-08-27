@@ -92,7 +92,7 @@ until it does.
 | Publisher identity | One `sources` row per domain, auto-registered on first sighting | The publisher is the source. Per-domain rows give per-publisher credibility somewhere to live when sub-project D computes `evidence_score`, and keep every article from reading as "Source: GDELT". |
 | Article body | Fetched from the publisher page | GDELT returns no body text, so there would otherwise be nothing for sub-project C to classify. The fetch is required regardless of the timestamp question. |
 | Missing publication time | Store the signal with `published_at` NULL | Guessing from `seendate` would present crawler time as publication time and would silently corrupt the detection-lead-time metric. Dropping the article would discard exactly the local-language reporting with the worst metadata, which is what the radar exists to catch. |
-| Failed page fetch | Store with `needs_review`, retry with bounded backoff | The discovery itself is evidence and must not be lost. A user can still open the original URL, and the failure stays countable in the admin view. |
+| Failed page fetch | Store with `needs_review` for a later retry pass | The discovery itself is evidence and must not be lost. A user can still open the original URL, and the failure stays countable in the admin view. |
 | Title | Prefer the publisher page `og:title`, fall back to the GDELT title | GDELT titles carry site names and numeric furniture. The publisher's own metadata is the better headline, but a signal must never be blocked for lack of it. |
 | Query rules | A table seeded idempotently from JSON | Rules are editable in the database without a deployment, reviewable in Git, and give `signals.query_rule_id` a real row to reference. |
 | Trigger | A CLI command an external scheduler calls | The same shape as `pnpm ingest:who`. An in-process daemon is deployment infrastructure that does not exist yet. |
@@ -103,10 +103,11 @@ until it does.
 Revision `20260827_0003`:
 
 ```text
-signals    + discovered_via   vocabulary(direct | gdelt) not null default 'direct'
-           + gdelt_seen_at    timestamptz null
-           + first_seen_at    timestamptz not null
-           + query_rule_id    uuid null fk -> gdelt_query_rules(id) on delete set null
+signals    + discovered_via              vocabulary(direct | gdelt) not null default 'direct'
+           + gdelt_seen_at               timestamptz null
+           + first_seen_at               timestamptz not null
+           + published_at_offset_minutes smallint null
+           + query_rule_id               uuid null fk -> gdelt_query_rules(id) on delete set null
            index on (discovered_via)
            index on (first_seen_at)
 
@@ -117,12 +118,17 @@ new table  gdelt_query_rules
              rule_group   text not null
              query        text not null
              label        text not null
-             language     text null
+             language     text not null default 'any'
              active       boolean not null default true
              created_at   timestamptz not null
              updated_at   timestamptz not null
              unique (query, language)
 ```
+
+`gdelt_query_rules.language` is not null and carries the sentinel `any` rather
+than being nullable. PostgreSQL treats NULLs as distinct in a unique
+constraint, so a nullable column would let the same unrestricted query be
+seeded without limit, and idempotent seeding is the point of the constraint.
 
 `discovered_via` defaults to `direct` so every existing WHO and ECDC signal
 keeps its meaning without a data migration.
@@ -133,6 +139,13 @@ first saw that URL in any version and is carried forward across revisions. The
 detection-lead-time metric in section 21 of the requirement document depends on
 that distinction. For existing rows the migration backfills `first_seen_at` from
 `retrieved_at`, which is the earliest true sighting time already recorded.
+
+`published_at_offset_minutes` exists because `timestamptz` normalizes to UTC and
+discards the offset the publisher wrote. Section 20 of the requirement document
+requires showing a local publication time, and "26 Aug 2026, 07:42 ICT" cannot
+be reconstructed from a UTC instant alone: the offset is a property of the
+document, not of the reader. It is NULL whenever `published_at` is NULL or the
+source stated a date with no time zone.
 
 `sources.domain` is nullable because the seeded official sources have no single
 domain identity, and unique because a domain resolves to exactly one publisher.
@@ -153,7 +166,6 @@ packages/backend/src/episignal_backend/ingestion/
     article.py          publisher page fetch, robots.txt, throttling
     extract.py          pure: HTML -> published_at, title, body text
     locale.py           pure: GDELT language and country names -> codes
-    queries.py          query rule loading from the database
     connector.py        GdeltConnector
 packages/backend/src/episignal_backend/discover_runner.py
 database/seeds/gdelt_queries.json
@@ -233,15 +245,20 @@ A signal stored after a failed page fetch has no body text, but `content_hash`
 is not null and `raw_text` may be. For these rows the hash is computed over the
 title alone, which stays deterministic and keeps `(url, content_hash)` valid.
 
-Retry is driven by re-reading `needs_review` signals, not by re-discovery: the
-same article discovered again would hash identically and be skipped as already
-seen. When a retry succeeds, the stub row is updated in place with the retrieved
-title, body, and `published_at`, and its status advances to `fetched`. This is
-not overwriting evidence, because a stub holds none; it is the first time the
-row acquires any.
+Retry must be driven by re-reading `needs_review` signals, not by re-discovery:
+the same article discovered again would hash identically and be skipped as
+already seen. When a retry succeeds, the stub row is updated in place with the
+retrieved title, body, and `published_at`, and its status advances to `fetched`.
+This is not overwriting evidence, because a stub holds none; it is the first
+time the row acquires any.
 
-A stub that exhausts its retry budget stays `needs_review` and remains visible
-in the admin view of sub-project E.
+**The retry pass itself is deferred to sub-project B.** This slice stores stubs
+correctly and leaves them queryable by `processing_status`, which is what a
+retry pass needs, but implements no reader for them. Building the promotion path
+before any real stub exists would mean guessing which failures actually recur;
+the stubs this slice produces are the evidence that decides the retry budget and
+the backoff. A stub therefore stays `needs_review` until sub-project B, and
+remains visible in the admin view of sub-project E.
 
 ## Data flow
 
@@ -258,9 +275,8 @@ in the admin view of sub-project E.
    Drop those. This happens before any publisher connection is opened.
 5. Cap the survivors at `EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN`, oldest
    `seendate` first so that a burst never starves earlier discoveries.
-6. Fetch each remaining page with bounded concurrency, honouring robots.txt per
-   domain with a cached fetch, a per-domain delay, and a descriptive
-   User-Agent.
+6. Fetch each remaining page sequentially, honouring robots.txt per domain with
+   a cached fetch, a per-domain delay, and a descriptive User-Agent.
 7. Extract `published_at`, `og:title`, and body text from the HTML. Map
    `language` and `sourcecountry` through `locale.py`.
 8. Resolve the publisher by domain, registering a new `sources` row when it is
@@ -280,7 +296,7 @@ cannot discard a run's work.
 | GDELT refuses or times out | Retry with exponential backoff up to a bounded attempt count. On exhaustion, record the rule as failed for this run and continue to the next rule. A single failing rule does not fail the run. |
 | GDELT returns malformed JSON | Treated as a failure of that rule, counted, and logged without the payload body. |
 | robots.txt disallows the path | The article is skipped and counted as disallowed. This is routine, not a failure. |
-| Publisher page fetch fails | The signal is stored from GDELT metadata alone with `processing_status` `needs_review` and no body text, then retried on later runs with backoff. |
+| Publisher page fetch fails | The signal is stored from GDELT metadata alone with `processing_status` `needs_review` and no body text, and left for the retry pass in sub-project B. |
 | Page fetched, no publication date | The signal is stored normally with `published_at` NULL. |
 | Page fetched, no usable body text | Treated as a failed fetch: `needs_review`, because sub-project C would have nothing to read. |
 | Unmapped language or country | Stored NULL and counted, so a gap in the mapping table is visible rather than silent. |
@@ -306,8 +322,7 @@ existing suite.
 - `discovery.py` against in-memory fakes: the seen-URL check runs before any
   retrieval, the per-run cap holds, publisher registration is idempotent,
   `first_seen_at` is carried across a revision, a failed retrieval yields
-  `needs_review` without aborting the run, and a later successful retry promotes
-  that stub to `fetched` in place.
+  `needs_review` without aborting the run.
 - Publisher registration for the `og:site_name` collision case, proving it falls
   back to the domain rather than raising.
 - A migration test that the revision applies and reverses, matching
@@ -321,15 +336,22 @@ so sub-project B has real evidence to develop against.
 ```text
 EPISIGNAL_GDELT_POLL_INTERVAL_MINUTES     15
 EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES      20
-EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN      500
+EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN      200
 EPISIGNAL_GDELT_REQUEST_DELAY_SECONDS     5.0
-EPISIGNAL_GDELT_ARTICLE_CONCURRENCY       4
+EPISIGNAL_GDELT_ARTICLE_DELAY_SECONDS     1.0
 EPISIGNAL_GDELT_ARTICLE_TIMEOUT_SECONDS   15.0
 EPISIGNAL_GDELT_USER_AGENT                EpiSignal/0.1 (+https://episignal.org)
 ```
 
 The poll interval is configuration rather than code because the scheduler that
 reads it lives outside this repository.
+
+Page fetching is sequential rather than concurrent. The whole codebase is
+synchronous, and introducing a thread pool or an async client to save minutes in
+a fifteen-minute window would buy speed with a class of concurrency bug that is
+expensive to find. The per-run cap of 200 keeps a sequential run inside its
+window at the observed page latencies. Concurrency is deferred until the cap is
+measured to be the binding constraint.
 
 ## Commands
 
