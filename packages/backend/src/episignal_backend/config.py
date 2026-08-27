@@ -145,8 +145,7 @@ class Settings(BaseSettings):
     def geocode_batch_fits_the_run(self) -> "Settings":
         if self.geocode_batch_size > self.geocode_max_signals_per_run:
             raise ValueError(
-                "EPISIGNAL_GEOCODE_BATCH_SIZE must not exceed "
-                "EPISIGNAL_GEOCODE_MAX_SIGNALS_PER_RUN"
+                "EPISIGNAL_GEOCODE_BATCH_SIZE must not exceed EPISIGNAL_GEOCODE_MAX_SIGNALS_PER_RUN"
             )
         return self
 

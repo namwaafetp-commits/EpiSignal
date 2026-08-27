@@ -166,9 +166,7 @@ def read_gazetteer(path: Path) -> Iterator[dict[str, Any]]:
                 "name": values["name"],
                 "normalized_name": values["normalized_name"],
                 "ascii_name": values["ascii_name"],
-                "alternate_names": [
-                    part for part in values["alternate_names"].split(",") if part
-                ],
+                "alternate_names": [part for part in values["alternate_names"].split(",") if part],
                 "feature_code": values["feature_code"],
                 "precision": values["precision"],
                 "country_code": values["country_code"],
