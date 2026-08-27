@@ -16,6 +16,8 @@ EXPECTED_TABLES = {
     "rejected_sightings",
     "ai_models",
     "ai_requests",
+    "gazetteer_places",
+    "signal_locations",
 }
 
 
@@ -78,7 +80,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 13
+    assert len(enum_columns) == 16
 
     for column in enum_columns:
         enum_class = column.type.enum_class
@@ -237,3 +239,53 @@ def test_a_signal_links_to_the_disease_it_resolved_to() -> None:
 
     assert "disease_id" in Signal.__table__.columns
     assert Signal.__table__.columns["disease_id"].nullable is True
+
+
+def test_the_gazetteer_is_keyed_on_its_geonames_id() -> None:
+    from episignal_backend.models import GazetteerPlace
+
+    assert GazetteerPlace.__tablename__ == "gazetteer_places"
+    primary_key = [column.name for column in GazetteerPlace.__table__.primary_key]
+    assert primary_key == ["geonames_id"]
+
+
+def test_the_gazetteer_indexes_both_name_forms() -> None:
+    from episignal_backend.models import GazetteerPlace
+
+    indexed = {
+        tuple(column.name for column in index.columns)
+        for index in GazetteerPlace.__table__.indexes
+    }
+    assert ("normalized_name",) in indexed
+    assert ("ascii_name",) in indexed
+    assert ("country_code", "admin1_code", "normalized_name") in indexed
+
+
+def test_a_signal_location_may_hold_no_coordinate() -> None:
+    from episignal_backend.models import SignalLocation
+
+    columns = SignalLocation.__table__.columns
+    assert columns["latitude"].nullable
+    assert columns["longitude"].nullable
+    assert columns["geocoding_confidence"].nullable
+    assert not columns["precision"].nullable
+
+
+def test_a_signal_location_keeps_the_extraction_strings_and_the_resolution() -> None:
+    from episignal_backend.models import SignalLocation
+
+    names = set(SignalLocation.__table__.columns.keys())
+    assert {"country_name", "admin1_name", "place_name"} <= names
+    assert {"resolved_name", "geonames_id", "country_code", "admin1", "admin2"} <= names
+    assert {"geocoding_source", "geocoding_confidence", "precision"} <= names
+
+
+def test_signal_locations_are_indexed_for_spatial_matching() -> None:
+    from episignal_backend.models import SignalLocation
+
+    indexed = {
+        tuple(column.name for column in index.columns)
+        for index in SignalLocation.__table__.indexes
+    }
+    assert ("geometry",) in indexed
+    assert ("signal_id",) in indexed

@@ -11,6 +11,7 @@ from episignal_backend.models.event import (
     EventObservation,
     EventSignal,
 )
+from episignal_backend.models.geography import GazetteerPlace, SignalLocation
 from episignal_backend.models.signal import Signal
 
 __all__ = [
@@ -21,10 +22,12 @@ __all__ = [
     "EventLocation",
     "EventObservation",
     "EventSignal",
+    "GazetteerPlace",
     "GdeltQueryRule",
     "Pathogen",
     "RejectedSighting",
     "Signal",
     "SignalFilterRule",
+    "SignalLocation",
     "Source",
 ]
