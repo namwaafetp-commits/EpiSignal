@@ -125,3 +125,8 @@ Nothing is overwritten in place: new reporting arrives as new observations.
 - GDELT discovery design: [docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md)
 - GDELT layer architecture: [docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md](docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md)
 
+## Attribution
+
+Place names are resolved against a GeoNames extract. See
+`database/seeds/gazetteer/ATTRIBUTION.md` for the CC BY 4.0 attribution.
+

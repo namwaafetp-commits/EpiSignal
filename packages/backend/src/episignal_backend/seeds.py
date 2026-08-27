@@ -82,6 +82,19 @@ class AiModelSeed(BaseModel):
     active: bool = True
 
 
+class CountryAliasSeed(BaseModel):
+    """One accepted spelling of a country, already in normalized form.
+
+    Normalization happens here rather than at lookup time so that a reviewer
+    reading the file sees exactly the key the resolver will look up.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1)
+    country_code: str = Field(min_length=2, max_length=2, pattern=r"^[A-Z]{2}$")
+
+
 @dataclass(frozen=True)
 class SeedResult:
     diseases: int
@@ -114,6 +127,12 @@ def load_filter_rules() -> tuple[FilterRuleSeed, ...]:
 
 def load_ai_models() -> tuple[AiModelSeed, ...]:
     return tuple(TypeAdapter(list[AiModelSeed]).validate_python(_read_seed("ai_models.json")))
+
+
+def load_country_aliases() -> tuple[CountryAliasSeed, ...]:
+    return tuple(
+        TypeAdapter(list[CountryAliasSeed]).validate_python(_read_seed("country_aliases.json"))
+    )
 
 
 def _upsert(

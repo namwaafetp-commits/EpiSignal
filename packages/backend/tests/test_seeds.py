@@ -134,3 +134,36 @@ def test_the_tiers_do_not_all_come_from_one_vendor() -> None:
     vendors = {model.model_id.split("/")[0] for model in load_ai_models()}
 
     assert len(vendors) > 1
+
+
+def test_the_country_alias_seed_maps_names_to_two_letter_codes() -> None:
+    from episignal_backend.seeds import load_country_aliases
+
+    aliases = load_country_aliases()
+    assert len(aliases) >= 3
+    for alias in aliases:
+        assert len(alias.country_code) == 2
+        assert alias.country_code == alias.country_code.upper()
+
+
+def test_the_country_alias_seed_is_already_normalized() -> None:
+    from episignal_backend.geocode.normalize import normalized_form
+    from episignal_backend.seeds import load_country_aliases
+
+    for alias in load_country_aliases():
+        assert alias.name == normalized_form(alias.name)
+
+
+def test_the_country_alias_seed_holds_no_duplicate_names() -> None:
+    from episignal_backend.seeds import load_country_aliases
+
+    names = [alias.name for alias in load_country_aliases()]
+    assert len(names) == len(set(names))
+
+
+def test_the_country_alias_seed_separates_niger_from_nigeria() -> None:
+    from episignal_backend.seeds import load_country_aliases
+
+    codes = {alias.name: alias.country_code for alias in load_country_aliases()}
+    assert codes["niger"] == "NE"
+    assert codes["nigeria"] == "NG"
