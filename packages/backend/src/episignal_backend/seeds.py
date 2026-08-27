@@ -7,6 +7,7 @@ creation timestamps.
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import CredibilityTier, FilterRuleGroup, SourceType
 from episignal_backend.models import (
+    AiModel,
     Disease,
     GdeltQueryRule,
     SignalFilterRule,
@@ -67,12 +69,26 @@ class FilterRuleSeed(BaseModel):
     active: bool = True
 
 
+class AiModelSeed(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tier: int = Field(ge=1, le=3)
+    model_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    # Strings in the JSON, parsed as Decimal: a price written as a float would
+    # be stored as the nearest binary approximation of itself.
+    prompt_price_per_million: Decimal = Field(ge=0)
+    completion_price_per_million: Decimal = Field(ge=0)
+    active: bool = True
+
+
 @dataclass(frozen=True)
 class SeedResult:
     diseases: int
     sources: int
     query_rules: int
     filter_rules: int
+    ai_models: int
 
 
 def _read_seed(name: str) -> object:
@@ -96,9 +112,13 @@ def load_filter_rules() -> tuple[FilterRuleSeed, ...]:
     return tuple(TypeAdapter(list[FilterRuleSeed]).validate_python(_read_seed("filter_rules.json")))
 
 
+def load_ai_models() -> tuple[AiModelSeed, ...]:
+    return tuple(TypeAdapter(list[AiModelSeed]).validate_python(_read_seed("ai_models.json")))
+
+
 def _upsert(
     session: Session,
-    model: type[Disease] | type[Source] | type[GdeltQueryRule] | type[SignalFilterRule],
+    model: type[Any],
     rows: list[dict[str, Any]],
     natural_key: tuple[str, ...],
 ) -> None:
@@ -121,6 +141,7 @@ def seed_database(session: Session) -> SeedResult:
     sources = load_sources()
     query_rules = load_query_rules()
     filter_rules = load_filter_rules()
+    ai_models = load_ai_models()
     _upsert(session, Disease, [item.model_dump() for item in diseases], ("slug",))
     _upsert(session, Source, [item.model_dump() for item in sources], ("name",))
     _upsert(
@@ -135,9 +156,17 @@ def seed_database(session: Session) -> SeedResult:
         [item.model_dump() for item in filter_rules],
         ("rule_group", "pattern"),
     )
+    _upsert(
+        session,
+        AiModel,
+        [item.model_dump() for item in ai_models],
+        ("model_id",),
+    )
     return SeedResult(
         diseases=len(diseases),
         sources=len(sources),
         query_rules=len(query_rules),
         filter_rules=len(filter_rules),
+        ai_models=len(ai_models),
     )
+

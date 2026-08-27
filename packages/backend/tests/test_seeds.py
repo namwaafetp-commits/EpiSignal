@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from episignal_backend.seeds import load_diseases, load_sources
 
 
@@ -100,3 +102,36 @@ def test_no_seeded_rule_would_reject_a_real_outbreak_headline() -> None:
             gdelt_seen_at=datetime(2026, 8, 27, 7, 45, tzinfo=UTC),
         )
         assert evaluate(article, rules) is None, headline
+
+
+def test_the_seeded_roster_covers_all_three_tiers() -> None:
+    from episignal_backend.seeds import load_ai_models
+
+    models = load_ai_models()
+
+    assert {model.tier for model in models} == {1, 2, 3}
+
+
+def test_every_seeded_model_is_free() -> None:
+    from episignal_backend.seeds import load_ai_models
+
+    for model in load_ai_models():
+        assert model.prompt_price_per_million == Decimal("0")
+        assert model.completion_price_per_million == Decimal("0")
+
+
+def test_no_two_seeded_models_share_an_identifier() -> None:
+    from episignal_backend.seeds import load_ai_models
+
+    identifiers = [model.model_id for model in load_ai_models()]
+
+    assert len(identifiers) == len(set(identifiers))
+
+
+def test_the_tiers_do_not_all_come_from_one_vendor() -> None:
+    from episignal_backend.seeds import load_ai_models
+
+    vendors = {model.model_id.split("/")[0] for model in load_ai_models()}
+
+    assert len(vendors) > 1
+
