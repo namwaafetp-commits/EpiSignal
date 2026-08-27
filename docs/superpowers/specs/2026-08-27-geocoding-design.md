@@ -269,6 +269,21 @@ single normalized `database/seeds/gazetteer_places.tsv.gz`. The artifact is
 committed; the script is committed beside it so the artifact is reproducible and
 its provenance is auditable.
 
+**Where a centroid comes from.** None of those four files publishes a coordinate
+for a country or an administrative unit, and the available substitutes are all
+worse: a capital is not the centre of its country, and an arbitrary seat is not
+the centre of its district. A unit's centroid is therefore the mean of the
+places `cities1000` puts inside it. That point is at least inside the unit, and
+it is deterministic, which matters because the artifact is committed and a
+rebuild must not surface as a diff of noise.
+
+A unit containing no place from `cities1000` is **dropped from the gazetteer**
+rather than written at latitude 0, longitude 0. Null island sits in the Gulf of
+Guinea, which is both a real place and a plausible one for an outbreak, so that
+error would be invisible on a map. A dropped unit simply has no centroid to
+coarsen into, and the ladder falls through to the next rung, which is the
+behaviour it already has for any centroid it cannot find.
+
 `database/seeds/country_aliases.json` maps country names to ISO-3166 alpha-2
 codes, in the same reviewable shape `filter_rules.json` uses. It covers the
 short forms, historical names, and common model spellings that `countryInfo.txt`
@@ -296,7 +311,7 @@ No key, no rate limit, and no cost cap, because there is no provider to limit.
 ## Testing
 
 Every test in this sub-project runs with no network and no database, except the
-repository tests and the single live verification task.
+single live verification task.
 
 - `normalize.py` and `resolve.py` are tested as pure functions over tuples,
   including each rung of the ladder, each coarsening path, and each confidence
@@ -305,8 +320,9 @@ repository tests and the single live verification task.
   in the same admin1 must coarsen, and must not return either candidate,
   regardless of population.
 - `locate.py` is tested against in-memory fakes of both protocols.
-- `repository.py` is tested against the same PostgreSQL fixtures the existing
-  repository tests use.
+- `repository.py` is tested against a fake `Session` that records the statements
+  it was handed, the same pattern `test_ai_repository.py` already uses. No live
+  database is involved.
 - Fixtures cover the named hard cases: Springfield with no country, Kinshasa with
   no country, Niger against Nigeria, a diacritic name matched by fold, a district
   name that exists only at admin2, and a village absent from the gazetteer.
@@ -333,7 +349,7 @@ repository tests and the single live verification task.
 11. `grep` finds no import of SQLAlchemy outside `geocode/repository.py`, and no
     import of httpx anywhere in `geocode/`.
 12. The whole suite runs with no socket opened and no live database, apart from
-    the repository tests and the live verification task.
+    the live verification task.
 13. `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
     `uv run mypy apps/api/src packages/backend/src`, and `corepack pnpm verify`
     all pass.
