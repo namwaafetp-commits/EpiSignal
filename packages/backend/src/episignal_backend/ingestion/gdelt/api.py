@@ -20,7 +20,7 @@ from episignal_backend.ingestion.documents import DiscoveredArticle, QueryRule, 
 from episignal_backend.ingestion.gdelt.locale import country_code, language_code
 from episignal_backend.ingestion.urls import canonicalize_url
 
-API_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+API_URL = "http://api.gdeltproject.org/api/v2/doc/doc"
 MAX_RECORDS = 250
 TIMEOUT_SECONDS = 30.0
 MAX_ATTEMPTS = 3

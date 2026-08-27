@@ -84,6 +84,10 @@ pnpm test              # web and Python tests
 pnpm typecheck         # tsc and mypy
 pnpm contracts:check   # regenerate contracts and fail on drift
 pnpm db:check          # readiness probe against the configured database
+pnpm db:seed           # seed canonical diseases, sources, and GDELT query rules
+pnpm discover:gdelt    # discover local media signals through GDELT DOC 2.0
+pnpm ingest:who        # ingest WHO Disease Outbreak News
+pnpm ingest:ecdc       # ingest ECDC Epidemiological Updates
 ```
 
 `pnpm verify` needs no credentials.
@@ -115,5 +119,7 @@ Nothing is overwritten in place: new reporting arrives as new observations.
 
 ## Design
 
-The approved foundation design lives in
-[docs/superpowers/specs/2026-08-26-foundation-design.md](docs/superpowers/specs/2026-08-26-foundation-design.md).
+- Foundation design: [docs/superpowers/specs/2026-08-26-foundation-design.md](docs/superpowers/specs/2026-08-26-foundation-design.md)
+- GDELT discovery design: [docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md)
+- GDELT layer architecture: [docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md](docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md)
+

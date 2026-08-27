@@ -48,7 +48,8 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
         default=None,
         help="Pages to retrieve this run. Defaults to EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN.",
     )
-    parsed = parser.parse_args(list(argv))
+    clean_argv = [arg for arg in argv if arg != "--"]
+    parsed = parser.parse_args(clean_argv)
     return Arguments(window_minutes=parsed.window_minutes, max_articles=parsed.max_articles)
 
 

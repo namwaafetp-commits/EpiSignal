@@ -48,7 +48,8 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
         default=None,
         help="Inclusive UTC start date, YYYY-MM-DD. Defaults to the last 90 days.",
     )
-    parsed = parser.parse_args(list(argv))
+    clean_argv = [arg for arg in argv if arg != "--"]
+    parsed = parser.parse_args(clean_argv)
     return Arguments(connector=parsed.connector, since=parsed.since)
 
 
