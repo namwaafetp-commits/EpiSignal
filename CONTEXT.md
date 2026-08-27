@@ -102,6 +102,33 @@ where it was diagnosed, where travel led, who reported it, or what area is
 affected. A place with no role is not usable.
 _Avoid_: geo, region, tag.
 
+### Places
+
+**Gazetteer**:
+The reference list of places the system can recognize, with their coordinates
+and their administrative hierarchy. Seeded and reviewed, never written by a
+pass, and never extended by a model.
+_Avoid_: geo database, lookup table.
+
+**Precision**:
+How specific a resolved location actually is: a place, a district, a province,
+a country, or nothing. Recorded on every resolution, because a province centroid
+and a town centre are both coordinates and only the precision tells them apart.
+_Avoid_: accuracy, granularity, zoom.
+
+**Coarsening**:
+Answering at a less specific precision when the specific answer is ambiguous.
+A province centroid is a true statement about a smaller place inside it; the
+most populous candidate is a guess. Coarsening is the system's only response to
+ambiguity.
+_Avoid_: fallback, approximation, best guess.
+
+**Unresolved**:
+A place the article named that the gazetteer could not match. The location is
+still recorded, with the words the article used and no coordinate, because a
+place that cannot be found is different from a place that was never mentioned.
+_Avoid_: not found, failed, null island.
+
 **Early signal score**:
 How interesting a signal is for surveillance.
 
