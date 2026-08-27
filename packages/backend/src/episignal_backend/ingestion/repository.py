@@ -24,7 +24,11 @@ def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
         raw_text=signal.raw_text,
         published_at=signal.published_at,
         retrieved_at=signal.retrieved_at,
+        # An official document's first sighting is the retrieval that produced
+        # this version; there is no earlier discovery step to inherit from.
+        first_seen_at=signal.retrieved_at,
         language=signal.language,
+
         content_hash=signal.content_hash,
         signal_type=signal.signal_type,
         processing_status=signal.processing_status,

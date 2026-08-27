@@ -75,7 +75,8 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 9
+    assert len(enum_columns) == 10
+
     for column in enum_columns:
         enum_class = column.type.enum_class
         assert enum_class is not None
@@ -106,5 +107,25 @@ def test_gdelt_query_rule_table_shape() -> None:
         if constraint.__class__.__name__ == "UniqueConstraint"
     }
     assert ("language", "query") in constraint_columns
+
+
+def test_signal_records_discovery_provenance() -> None:
+    from episignal_backend.models import Signal
+
+    columns = Signal.__table__.c
+    assert not columns.discovered_via.nullable
+    assert not columns.first_seen_at.nullable
+    assert columns.gdelt_seen_at.nullable
+    assert columns.published_at_offset_minutes.nullable
+    assert not columns.retrieval_attempts.nullable
+    assert columns.query_rule_id.nullable
+
+
+def test_source_records_its_domain() -> None:
+    from episignal_backend.models import Source
+
+    assert Source.__table__.c.domain.nullable
+    assert Source.__table__.c.domain.unique
+
 
 

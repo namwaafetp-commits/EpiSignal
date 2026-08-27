@@ -9,6 +9,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -17,7 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
-from episignal_backend.db.types import ProcessingStatus, SignalType, vocabulary
+from episignal_backend.db.types import DiscoveryMethod, ProcessingStatus, SignalType, vocabulary
 
 
 class Signal(IdentityMixin, TimestampMixin, Base):
@@ -32,6 +33,8 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         Index("ix_signals_canonical_url", "canonical_url"),
         Index("ix_signals_content_hash", "content_hash"),
         Index("ix_signals_processing_status", "processing_status"),
+        Index("ix_signals_discovered_via", "discovered_via"),
+        Index("ix_signals_first_seen_at", "first_seen_at"),
     )
 
     source_id: Mapped[UUID] = mapped_column(
@@ -62,3 +65,26 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         nullable=False,
         default=ProcessingStatus.FETCHED,
     )
+    discovered_via: Mapped[DiscoveryMethod] = mapped_column(
+        vocabulary(DiscoveryMethod, "discovery_method_values"),
+        nullable=False,
+        default=DiscoveryMethod.DIRECT,
+        server_default=DiscoveryMethod.DIRECT.value,
+    )
+    # Distinct from created_at: a revision is stored as a new row with a new
+    # created_at, but first_seen_at must survive that or detection lead time
+    # measures the revision rather than the discovery.
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    gdelt_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # timestamptz normalizes to UTC and discards the offset the publisher wrote,
+    # which is a property of the document, not of the reader.
+    published_at_offset_minutes: Mapped[int | None] = mapped_column(SmallInteger)
+    # Bounds the retry pass. A stub stops being selected once the budget is
+    # spent, so the counter is also the reason a row stopped moving.
+    retrieval_attempts: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    query_rule_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("gdelt_query_rules.id", ondelete="SET NULL")
+    )
+
