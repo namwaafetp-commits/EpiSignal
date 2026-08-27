@@ -10,11 +10,18 @@ This module imports neither SQLAlchemy nor httpx.
 
 import json
 import re
+from collections.abc import Sequence
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import ValidationError
 
-from episignal_backend.ai.schema import Epidemiology, Extraction, GroundedCount
+from episignal_backend.ai.schema import (
+    ClassificationResponse,
+    Epidemiology,
+    Extraction,
+    GroundedCount,
+)
 
 
 class RejectionReason(StrEnum):
@@ -170,4 +177,30 @@ def validate_extraction(
         raise Rejected(RejectionReason.LOW_CONFIDENCE, f"{extraction.confidence}")
 
     return extraction
+
+
+def validate_classification(
+    content: str, sent: Sequence[UUID]
+) -> ClassificationResponse:
+    """Accept a batch answer only if it answers exactly the batch that was sent.
+
+    Whole-response rejection is deliberate. A model that returns an id nobody
+    sent has lost track of which document it is describing, and there is no
+    reason to believe the entries that happen to carry the right ids describe
+    the right documents either.
+    """
+    payload = _loads(content)
+    try:
+        response = ClassificationResponse.model_validate(payload)
+    except ValidationError as error:
+        raise Rejected(RejectionReason.SHAPE, error.title) from error
+
+    returned = [result.id for result in response.results]
+    if len(returned) != len(set(returned)):
+        raise Rejected(RejectionReason.BATCH_IDENTITY, "repeated id")
+    if set(returned) != set(sent):
+        raise Rejected(RejectionReason.BATCH_IDENTITY, "id set does not match the batch")
+
+    return response
+
 

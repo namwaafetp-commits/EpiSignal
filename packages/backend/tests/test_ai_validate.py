@@ -222,3 +222,63 @@ def test_grounding_is_checked_before_confidence() -> None:
 
     assert error.value.reason is RejectionReason.UNGROUNDED
 
+
+from uuid import UUID, uuid4
+
+from episignal_backend.ai.validate import validate_classification
+
+FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
+SECOND = UUID("b3f1c2d4-0000-4000-8000-000000000002")
+
+
+def verdict(identifier: UUID, relevant: bool = True) -> dict[str, object]:
+    return {
+        "id": str(identifier),
+        "is_public_health_relevant": relevant,
+        "signal_type": "outbreak_report" if relevant else "unknown",
+        "relevance": 0.88 if relevant else 0.04,
+    }
+
+
+def test_a_response_covering_exactly_the_batch_is_accepted() -> None:
+    content = json.dumps({"results": [verdict(FIRST), verdict(SECOND, relevant=False)]})
+
+    response = validate_classification(content, (FIRST, SECOND))
+
+    assert {result.id for result in response.results} == {FIRST, SECOND}
+
+
+def test_an_id_that_was_never_sent_rejects_the_whole_response() -> None:
+    content = json.dumps({"results": [verdict(FIRST), verdict(uuid4())]})
+
+    with pytest.raises(Rejected) as error:
+        validate_classification(content, (FIRST, SECOND))
+
+    assert error.value.reason is RejectionReason.BATCH_IDENTITY
+
+
+def test_a_missing_id_rejects_the_whole_response() -> None:
+    content = json.dumps({"results": [verdict(FIRST)]})
+
+    with pytest.raises(Rejected) as error:
+        validate_classification(content, (FIRST, SECOND))
+
+    assert error.value.reason is RejectionReason.BATCH_IDENTITY
+
+
+def test_a_repeated_id_rejects_the_whole_response() -> None:
+    content = json.dumps({"results": [verdict(FIRST), verdict(FIRST)]})
+
+    with pytest.raises(Rejected) as error:
+        validate_classification(content, (FIRST, SECOND))
+
+    assert error.value.reason is RejectionReason.BATCH_IDENTITY
+
+
+def test_a_malformed_classification_body_is_rejected_before_identity() -> None:
+    with pytest.raises(Rejected) as error:
+        validate_classification("not json at all", (FIRST,))
+
+    assert error.value.reason is RejectionReason.NOT_JSON
+
+
