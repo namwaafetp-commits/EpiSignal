@@ -11,7 +11,9 @@ EXPECTED_TABLES = {
     "event_signals",
     "event_observations",
     "event_locations",
+    "gdelt_query_rules",
 }
+
 
 
 def test_metadata_contains_phase_one_tables() -> None:
@@ -86,4 +88,23 @@ def test_discovery_method_stores_lowercase_values() -> None:
     assert DiscoveryMethod.DIRECT.value == "direct"
     assert DiscoveryMethod.GDELT.value == "gdelt"
     assert [member.value for member in DiscoveryMethod] == ["direct", "gdelt"]
+
+
+def test_gdelt_query_rule_table_shape() -> None:
+    from episignal_backend.models import GdeltQueryRule
+
+    table = GdeltQueryRule.__table__
+    assert table.name == "gdelt_query_rules"
+    assert not table.c.rule_group.nullable
+    assert not table.c.query.nullable
+    assert not table.c.label.nullable
+    assert not table.c.language.nullable
+    assert not table.c.active.nullable
+    constraint_columns = {
+        tuple(sorted(column.name for column in constraint.columns))
+        for constraint in table.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    assert ("language", "query") in constraint_columns
+
 
