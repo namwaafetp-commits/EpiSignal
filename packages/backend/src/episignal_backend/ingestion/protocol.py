@@ -11,6 +11,7 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from episignal_backend.ingestion.documents import (
+    ComparableSignal,
     DiscoveredArticle,
     DiscoveredSignal,
     FilterRule,
@@ -90,6 +91,33 @@ class DiscoveryRepository(Protocol):
     def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool: ...
 
     def record_failed_attempt(self, signal_id: UUID) -> None: ...
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
+
+
+@runtime_checkable
+class DedupeRepository(Protocol):
+    """The storage boundary for Stage 0's second gate.
+
+    Separate from `DiscoveryRepository` because this pass never discovers, never
+    fetches, and never registers a publisher. A pass that reads stored signals
+    and writes their status has no business holding a handle that can open a
+    GDELT query.
+    """
+
+    def pending(self, *, limit: int) -> Sequence[ComparableSignal]: ...
+
+    def candidates(
+        self, signal: ComparableSignal, *, window_hours: int
+    ) -> Sequence[ComparableSignal]: ...
+
+    def primary_of(self, signal_id: UUID) -> UUID: ...
+
+    def mark_duplicate(self, signal_id: UUID, primary_id: UUID) -> None: ...
+
+    def mark_normalized(self, signal_id: UUID) -> None: ...
 
     def commit(self) -> None: ...
 
