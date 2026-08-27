@@ -78,3 +78,12 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         enum_class = column.type.enum_class
         assert enum_class is not None
         assert column.type.enums == [member.value for member in enum_class]
+
+
+def test_discovery_method_stores_lowercase_values() -> None:
+    from episignal_backend.db.types import DiscoveryMethod
+
+    assert DiscoveryMethod.DIRECT.value == "direct"
+    assert DiscoveryMethod.GDELT.value == "gdelt"
+    assert [member.value for member in DiscoveryMethod] == ["direct", "gdelt"]
+
