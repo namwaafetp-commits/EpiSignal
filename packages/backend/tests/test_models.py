@@ -14,6 +14,8 @@ EXPECTED_TABLES = {
     "gdelt_query_rules",
     "filter_rules",
     "rejected_sightings",
+    "ai_models",
+    "ai_requests",
 }
 
 
@@ -76,7 +78,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 11
+    assert len(enum_columns) == 13
 
     for column in enum_columns:
         enum_class = column.type.enum_class
@@ -186,4 +188,58 @@ def test_ai_outcomes_separate_a_refusal_from_a_bad_answer() -> None:
     assert AiOutcome.ACCEPTED.value == "accepted"
     assert AiOutcome.REJECTED.value == "rejected"
     assert AiOutcome.UNAVAILABLE.value == "unavailable"
+
+
+def test_the_model_roster_orders_the_ladder_by_tier() -> None:
+    from episignal_backend.models import AiModel
+
+    assert AiModel.__tablename__ == "ai_models"
+    assert {"tier", "model_id", "prompt_price_per_million"} <= set(
+        AiModel.__table__.columns.keys()
+    )
+    assert AiModel.__table__.columns["model_id"].unique is True
+
+
+def test_a_cost_row_keeps_the_price_that_was_charged() -> None:
+    from episignal_backend.models import AiRequest
+
+    columns = set(AiRequest.__table__.columns.keys())
+
+    assert {
+        "model_id",
+        "tier",
+        "purpose",
+        "signal_id",
+        "batch_size",
+        "prompt_tokens",
+        "completion_tokens",
+        "latency_ms",
+        "http_status",
+        "outcome",
+        "rejection_reason",
+        "prompt_price_per_million",
+        "completion_price_per_million",
+        "cost_usd",
+        "requested_at",
+    } <= columns
+
+
+def test_retiring_a_model_does_not_delete_its_spend() -> None:
+    from episignal_backend.models import AiRequest
+
+    foreign_key = next(
+        key
+        for key in AiRequest.__table__.foreign_keys
+        if key.column.table.name == "ai_models"
+    )
+
+    assert foreign_key.ondelete == "SET NULL"
+
+
+def test_a_signal_links_to_the_disease_it_resolved_to() -> None:
+    from episignal_backend.models import Signal
+
+    assert "disease_id" in Signal.__table__.columns
+    assert Signal.__table__.columns["disease_id"].nullable is True
+
 

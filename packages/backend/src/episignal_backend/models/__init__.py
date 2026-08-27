@@ -1,3 +1,4 @@
+from episignal_backend.models.ai import AiModel, AiRequest
 from episignal_backend.models.catalog import Disease, Pathogen, Source
 from episignal_backend.models.discovery import (
     GdeltQueryRule,
@@ -13,6 +14,8 @@ from episignal_backend.models.event import (
 from episignal_backend.models.signal import Signal
 
 __all__ = [
+    "AiModel",
+    "AiRequest",
     "Disease",
     "Event",
     "EventLocation",
@@ -25,3 +28,4 @@ __all__ = [
     "SignalFilterRule",
     "Source",
 ]
+
