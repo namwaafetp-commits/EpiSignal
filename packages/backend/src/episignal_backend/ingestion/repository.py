@@ -6,16 +6,22 @@ which never imports this module.
 """
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from episignal_backend.db.types import CredibilityTier, DiscoveryMethod, SourceType
+from episignal_backend.db.types import (
+    CredibilityTier,
+    DiscoveryMethod,
+    ProcessingStatus,
+    SourceType,
+)
 from episignal_backend.ingestion.documents import (
+    ComparableSignal,
     DiscoveredArticle,
     DiscoveredSignal,
     FilterRule,
@@ -71,6 +77,21 @@ def build_discovered_signal(signal: DiscoveredSignal, source_id: UUID) -> Signal
         discovered_via=DiscoveryMethod.GDELT,
         query_rule_id=signal.query_rule_id,
         processing_status=signal.processing_status,
+    )
+
+
+def build_comparable(signal: Signal) -> ComparableSignal:
+    return ComparableSignal(
+        id=signal.id,
+        canonical_url=signal.canonical_url or signal.url,
+        title=signal.title,
+        # Callers only ever select rows where this is not null; the assertion
+        # documents that rather than silently substituting an empty string.
+        raw_text=signal.raw_text or "",
+        content_hash=signal.content_hash,
+        first_seen_at=signal.first_seen_at,
+        published_at=signal.published_at,
+        duplicate_of_signal_id=signal.duplicate_of_signal_id,
     )
 
 
@@ -278,6 +299,93 @@ class SqlAlchemyDiscoveryRepository:
             update(Signal)
             .where(Signal.id == signal_id)
             .values(retrieval_attempts=Signal.retrieval_attempts + 1)
+        )
+
+    def commit(self) -> None:
+        self._session.commit()
+
+    def rollback(self) -> None:
+        self._session.rollback()
+
+
+class SqlAlchemyDedupeRepository:
+    """Storage for Stage 0's second gate.
+
+    Deliberately unable to discover or fetch: this pass reads stored signals and
+    writes their status, and nothing else.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def pending(self, *, limit: int) -> Sequence[ComparableSignal]:
+        rows = self._session.execute(
+            select(Signal)
+            .where(
+                Signal.processing_status == ProcessingStatus.FETCHED,
+                # Stubs stay in the retry path: a document with no body cannot
+                # be compared on one, and comparing on the title alone is the
+                # merge this design refuses.
+                Signal.raw_text.is_not(None),
+            )
+            .order_by(Signal.first_seen_at)
+            .limit(limit)
+        ).scalars()
+        return tuple(build_comparable(row) for row in rows)
+
+    def candidates(
+        self, signal: ComparableSignal, *, window_hours: int
+    ) -> Sequence[ComparableSignal]:
+        span = timedelta(hours=window_hours)
+        rows = self._session.execute(
+            select(Signal)
+            .where(
+                Signal.id != signal.id,
+                Signal.raw_text.is_not(None),
+                or_(
+                    # An identical hash is compared regardless of age, so a late
+                    # republication of unchanged text is still caught.
+                    Signal.content_hash == signal.content_hash,
+                    and_(
+                        Signal.first_seen_at >= signal.first_seen_at - span,
+                        Signal.first_seen_at <= signal.first_seen_at + span,
+                    ),
+                ),
+            )
+            .order_by(Signal.first_seen_at)
+        ).scalars()
+        return tuple(build_comparable(row) for row in rows)
+
+    def primary_of(self, signal_id: UUID) -> UUID:
+        seen: set[UUID] = set()
+        current = signal_id
+        while current not in seen:
+            seen.add(current)
+            parent = self._session.execute(
+                select(Signal.duplicate_of_signal_id).where(Signal.id == current)
+            ).scalar_one_or_none()
+            if parent is None:
+                return current
+            current = parent
+        # Unreachable while pointers are flattened on assignment. Returning the
+        # last id rather than looping forever keeps a corrupted row survivable.
+        return current
+
+    def mark_duplicate(self, signal_id: UUID, primary_id: UUID) -> None:
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == signal_id)
+            .values(
+                processing_status=ProcessingStatus.DUPLICATE,
+                duplicate_of_signal_id=primary_id,
+            )
+        )
+
+    def mark_normalized(self, signal_id: UUID) -> None:
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == signal_id)
+            .values(processing_status=ProcessingStatus.NORMALIZED)
         )
 
     def commit(self) -> None:
