@@ -13,10 +13,12 @@ from uuid import UUID
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,
     DiscoveredSignal,
+    FilterRule,
     NormalizedSignal,
     Publisher,
     QueryRule,
     RawDocument,
+    Rejection,
     StubRetrieval,
     TimeWindow,
 )
@@ -68,6 +70,10 @@ class DiscoveryConnector(Protocol):
 @runtime_checkable
 class DiscoveryRepository(Protocol):
     def active_rules(self) -> Sequence[QueryRule]: ...
+
+    def filter_rules(self) -> Sequence[FilterRule]: ...
+
+    def record_rejection(self, rejection: Rejection) -> None: ...
 
     def seen_urls(self, canonical_urls: Sequence[str]) -> frozenset[str]: ...
 

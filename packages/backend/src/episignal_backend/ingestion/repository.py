@@ -10,6 +10,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,12 +18,20 @@ from episignal_backend.db.types import CredibilityTier, DiscoveryMethod, SourceT
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,
     DiscoveredSignal,
+    FilterRule,
     NormalizedSignal,
     Publisher,
     QueryRule,
+    Rejection,
     StubRetrieval,
 )
-from episignal_backend.models import GdeltQueryRule, Signal, Source
+from episignal_backend.models import (
+    GdeltQueryRule,
+    RejectedSighting,
+    Signal,
+    SignalFilterRule,
+    Source,
+)
 
 
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
@@ -115,7 +124,42 @@ class SqlAlchemyDiscoveryRepository:
             for row in rows
         )
 
+    def filter_rules(self) -> Sequence[FilterRule]:
+        rows = self._session.execute(
+            select(SignalFilterRule)
+            .where(SignalFilterRule.active.is_(True))
+            .order_by(SignalFilterRule.rule_group, SignalFilterRule.label)
+        ).scalars()
+        return tuple(
+            FilterRule(
+                id=row.id,
+                rule_group=row.rule_group,
+                pattern=row.pattern,
+                label=row.label,
+            )
+            for row in rows
+        )
+
+    def record_rejection(self, rejection: Rejection) -> None:
+        # Conflict-do-nothing: the same article is sighted in several
+        # consecutive windows, and one row per article is the useful record.
+        statement = (
+            pg_insert(RejectedSighting)
+            .values(
+                url=rejection.url,
+                canonical_url=rejection.canonical_url,
+                title=rejection.title,
+                domain=rejection.domain,
+                gdelt_seen_at=rejection.gdelt_seen_at,
+                rejected_at=rejection.rejected_at,
+                filter_rule_id=rejection.filter_rule_id,
+            )
+            .on_conflict_do_nothing(index_elements=[RejectedSighting.canonical_url])
+        )
+        self._session.execute(statement)
+
     def seen_urls(self, canonical_urls: Sequence[str]) -> frozenset[str]:
+
         if not canonical_urls:
             return frozenset()
         found = self._session.execute(
