@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from episignal_backend.db.types import ProcessingStatus
+from episignal_backend.db.types import FilterRuleGroup, ProcessingStatus
 from episignal_backend.ingestion.discovery import (
     DiscoveryResult,
     run_discovery,
@@ -10,8 +10,10 @@ from episignal_backend.ingestion.discovery import (
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,
     DiscoveredSignal,
+    FilterRule,
     Publisher,
     QueryRule,
+    Rejection,
     TimeWindow,
 )
 from episignal_backend.ingestion.gdelt.api import GdeltUnavailable
@@ -43,11 +45,23 @@ class FakeRepository:
         self.commits = 0
         self.rollbacks = 0
         self.first_seen: dict[str, datetime] = {}
+        self.rules: tuple[FilterRule, ...] = ()
+        self.rejections: list[Rejection] = []
+        self.rejection_fails = False
 
     def active_rules(self) -> Sequence[QueryRule]:
         return (RULE,)
 
+    def filter_rules(self) -> Sequence[FilterRule]:
+        return self.rules
+
+    def record_rejection(self, rejection: Rejection) -> None:
+        if self.rejection_fails:
+            raise RuntimeError("rejection table unavailable")
+        self.rejections.append(rejection)
+
     def seen_urls(self, canonical_urls: Sequence[str]) -> frozenset[str]:
+
         return frozenset(url for url in canonical_urls if url in self.seen)
 
     def first_seen_at(self, canonical_url: str) -> datetime | None:
@@ -248,3 +262,105 @@ def test_a_storage_failure_rolls_back_and_continues() -> None:
     assert result.failed == 1
     assert result.stored == 1
     assert repository.rollbacks == 1
+
+
+METAPHOR = FilterRule(
+    id=uuid4(),
+    rule_group=FilterRuleGroup.TITLE_EXCLUSION,
+    pattern=r"\boutbreak of violence\b",
+    label="Outbreak of violence",
+)
+
+
+def violent(path: str) -> DiscoveredArticle:
+    return DiscoveredArticle(
+        url=f"https://example.vn{path}",
+        canonical_url=f"https://example.vn{path}",
+        title="Outbreak of violence in the capital",
+        domain="example.vn",
+        gdelt_seen_at=SEEN,
+        query_rule_id=RULE.id,
+    )
+
+
+def test_a_rejected_article_is_never_fetched() -> None:
+    repository = FakeRepository()
+    repository.rules = (METAPHOR,)
+    connector = FakeConnector(articles=(violent("/a"),))
+
+    result = run_discovery(repository, connector, now=NOW)
+
+    assert connector.retrieved == []
+    assert repository.added == []
+    assert result.rejected == 1
+    assert result.stored == 0
+
+
+def test_a_rejection_names_the_rule_that_caused_it() -> None:
+    repository = FakeRepository()
+    repository.rules = (METAPHOR,)
+    connector = FakeConnector(articles=(violent("/a"),))
+
+    run_discovery(repository, connector, now=NOW)
+
+    assert len(repository.rejections) == 1
+    assert repository.rejections[0].filter_rule_id == METAPHOR.id
+    assert repository.rejections[0].canonical_url == "https://example.vn/a"
+    assert repository.rejections[0].gdelt_seen_at == SEEN
+
+
+def test_a_kept_article_is_still_fetched_and_stored() -> None:
+    repository = FakeRepository()
+    repository.rules = (METAPHOR,)
+    connector = FakeConnector(articles=(article("/a"), violent("/b")))
+
+    result = run_discovery(repository, connector, now=NOW)
+
+    assert connector.retrieved == ["https://example.vn/a"]
+    assert result.stored == 1
+    assert result.rejected == 1
+
+
+def test_filtering_runs_before_the_per_run_cap() -> None:
+    repository = FakeRepository()
+    repository.rules = (METAPHOR,)
+    connector = FakeConnector(articles=(violent("/a"), article("/b")))
+
+    result = run_discovery(repository, connector, now=NOW, max_articles=1)
+
+    # The one slot goes to the article worth having, not to the one about to be
+    # thrown away.
+    assert connector.retrieved == ["https://example.vn/b"]
+    assert result.deferred == 0
+
+
+def test_an_invalid_rule_is_counted_and_does_not_stop_the_run() -> None:
+    repository = FakeRepository()
+    repository.rules = (
+        FilterRule(
+            id=uuid4(),
+            rule_group=FilterRuleGroup.TITLE_EXCLUSION,
+            pattern=r"([unclosed",
+            label="Broken",
+        ),
+    )
+    connector = FakeConnector(articles=(article("/a"),))
+
+    result = run_discovery(repository, connector, now=NOW)
+
+    assert result.rules_invalid == 1
+    assert result.stored == 1
+
+
+def test_an_article_survives_when_its_rejection_cannot_be_recorded() -> None:
+    repository = FakeRepository()
+    repository.rules = (METAPHOR,)
+    repository.rejection_fails = True
+    connector = FakeConnector(articles=(violent("/a"),))
+
+    result = run_discovery(repository, connector, now=NOW)
+
+    # A lost audit row must not also lose the article.
+    assert connector.retrieved == ["https://example.vn/a"]
+    assert result.failed == 1
+    assert result.rejected == 0
