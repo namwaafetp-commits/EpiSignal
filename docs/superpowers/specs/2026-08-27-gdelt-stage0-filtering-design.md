@@ -13,8 +13,12 @@ that are plausibly about a real public health event and that no other row
 already represents.
 
 This slice ends when a discovery run stops fetching pages it can rule out from
-metadata alone, and when the four syndicated copies of one measles story in
-`gdelt_artlist.json` resolve to one primary signal and three linked duplicates.
+metadata alone, and when the two syndicated copies of one measles story in
+`gdelt_artlist.json` resolve to one primary signal and one linked duplicate.
+
+The live GDELT response recorded in sub-project A carried four copies of that
+story; two were committed to the fixture. The fixture is the contract the tests
+assert against.
 
 ## Out of scope
 
@@ -180,6 +184,19 @@ carry the same fields; only the query that produces them differs.
 never registers a publisher. A pass that reads stored signals and writes their
 status has no business holding a handle that can open a GDELT query.
 
+### Normalization
+
+`normalize_title` applies NFC, casefolds, drops publisher furniture following a
+spaced dash — hyphen, en dash, or em dash — strips punctuation, and returns a
+token set. The furniture rule is what makes the two fixture headlines compare
+equal: GDELT titles carry the affiliate name and a bracketed channel number, and
+sub-project A recorded exactly that.
+
+Body normalization collapses whitespace and casefolds, then yields the set of
+overlapping word 5-shingles. Similarity is Jaccard in both cases: the size of
+the intersection over the size of the union, with two empty sets treated as no
+match rather than a perfect one.
+
 ## Data flow
 
 ### Gate 1, inside `run_discovery`
@@ -247,8 +264,12 @@ Test-driven throughout, per `AGENTS.md`.
 metaphorical titles are rejected, a title naming a disease is kept, a
 blocklisted domain is rejected as an exact host and as a subdomain, a lookalike
 domain is not, and an uncompilable pattern is skipped without failing the run.
-`similarity.py` is tested on the committed `gdelt_artlist.json` fixture, whose
-four Telemundo copies of one measles story were kept for exactly this purpose.
+`similarity.py` is tested for title normalization on the committed
+`gdelt_artlist.json` fixture, whose two Telemundo copies of one measles story
+were kept for exactly this purpose: their headlines are identical up to the
+affiliate furniture, `- Telemundo Dallas ( 39 )` against
+`- Telemundo New York ( 47 )`. GDELT returns no body text, so body similarity is
+tested against its own committed text fixtures rather than that file.
 
 **The decisive negative test.** Two independent outlets, same headline,
 different bodies, must remain two signals. This is the case that protects
@@ -280,8 +301,8 @@ The thresholds are configuration because they are the two numbers most likely to
 need tuning against real traffic, and because the architecture requires matching
 weights and thresholds to stay configurable rather than compiled in.
 
-The candidate window is 72 hours because syndication is immediate: the four
-copies observed in sub-project A shared a `seendate` to the quarter hour. An
+The candidate window is 72 hours because syndication is immediate: the copies
+in sub-project A's live response shared a `seendate` to the quarter hour. An
 exact `content_hash` match is compared regardless of age, so a late
 republication of unchanged text is still caught.
 
@@ -303,8 +324,8 @@ pnpm dedupe:signals      # one dedup pass over fetched signals
 - Every rejection is recorded with the rule that caused it and is queryable.
 - A retuned rule admits a previously rejected URL on its next sighting without
   manual cleanup.
-- The four syndicated copies in the fixture resolve to one primary and three
-  duplicates, each keeping its own publisher and original URL.
+- The two syndicated copies in the fixture resolve to one primary and one
+  duplicate, each keeping its own publisher and original URL.
 - Two independent articles sharing a headline but not a body remain two signals.
 - The primary is the earliest sighting, and no `duplicate_of_signal_id` points
   at a row that is itself a duplicate.
