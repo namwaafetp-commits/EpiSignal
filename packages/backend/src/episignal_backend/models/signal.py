@@ -35,6 +35,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         Index("ix_signals_processing_status", "processing_status"),
         Index("ix_signals_discovered_via", "discovered_via"),
         Index("ix_signals_first_seen_at", "first_seen_at"),
+        Index("ix_signals_duplicate_of_signal_id", "duplicate_of_signal_id"),
     )
 
     source_id: Mapped[UUID] = mapped_column(
@@ -86,4 +87,10 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     )
     query_rule_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("gdelt_query_rules.id", ondelete="SET NULL")
+    )
+    # Self-referencing: a syndicated copy keeps its own row and its own
+    # publisher, and points at the copy that was seen first. Flattened on
+    # assignment, so this never leads to another duplicate.
+    duplicate_of_signal_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("signals.id", ondelete="SET NULL")
     )

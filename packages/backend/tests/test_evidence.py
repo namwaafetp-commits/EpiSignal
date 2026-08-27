@@ -45,8 +45,10 @@ def sqlite_session() -> Session:
                 gdelt_seen_at DATETIME,
                 published_at_offset_minutes SMALLINT,
                 retrieval_attempts SMALLINT NOT NULL DEFAULT 0,
-                query_rule_id CHAR(32)
+                query_rule_id CHAR(32),
+                duplicate_of_signal_id CHAR(32)
             )
+
 
             """
         )
