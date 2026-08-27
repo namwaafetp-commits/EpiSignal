@@ -1,3 +1,4 @@
+import type { EvidenceFeedState } from "@/lib/api-signals";
 import Link from "next/link";
 
 export type ApiShellStatus = "loading" | "ready" | "unavailable";
@@ -8,8 +9,87 @@ const STATUS_LABELS: Record<ApiShellStatus, string> = {
   unavailable: "API unavailable",
 };
 
-export function HomeShell({ apiStatus }: { apiStatus: ApiShellStatus }) {
+function countLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function dateLabel(value: string | null) {
+  if (!value) return "Publication date unavailable";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
+function CoverageNotice({ evidenceFeed }: { evidenceFeed: EvidenceFeedState }) {
+  if (evidenceFeed.status === "loading") {
+    return (
+      <aside
+        className="coverage-card"
+        aria-label="Coverage notice"
+        data-mobile-role="bottom-sheet"
+      >
+        <p className="eyebrow">Loading evidence</p>
+        <h2>Checking stored reports.</h2>
+      </aside>
+    );
+  }
+
+  if (evidenceFeed.status === "unavailable") {
+    return (
+      <aside
+        className="coverage-card coverage-card--unavailable"
+        aria-label="Coverage notice"
+        data-mobile-role="bottom-sheet"
+      >
+        <p className="eyebrow">Coverage unavailable</p>
+        <h2>Evidence feed unavailable.</h2>
+        <p>
+          The API could not load stored reports. No substitute data is shown.
+        </p>
+      </aside>
+    );
+  }
+
+  const { total, source_count: sourceCount } = evidenceFeed.data;
+  const shownSources = [
+    ...new Set(evidenceFeed.data.items.map((item) => item.source_name)),
+  ];
+  return (
+    <aside
+      className="coverage-card"
+      aria-label="Coverage notice"
+      data-mobile-role="bottom-sheet"
+    >
+      <p className="eyebrow">Limited coverage</p>
+      <h2>
+        {countLabel(total, "report", "reports")} from{" "}
+        {countLabel(sourceCount, "source", "sources")}
+      </h2>
+      <p>
+        This is an ingestion proof, not comprehensive global surveillance. More
+        official regional and national sources are required.
+      </p>
+      {shownSources.length > 0 ? (
+        <p className="components">
+          Sources on this page · {shownSources.join(" · ")}
+        </p>
+      ) : null}
+    </aside>
+  );
+}
+
+export function HomeShell({
+  apiStatus,
+  evidenceFeed,
+}: {
+  apiStatus: ApiShellStatus;
+  evidenceFeed: EvidenceFeedState;
+}) {
   const statusLabel = STATUS_LABELS[apiStatus];
+  const items = evidenceFeed.status === "ready" ? evidenceFeed.data.items : [];
 
   return (
     <>
@@ -18,8 +98,8 @@ export function HomeShell({ apiStatus }: { apiStatus: ApiShellStatus }) {
           EpiSignal
         </Link>
         <nav aria-label="Primary navigation">
-          <a href="#explore">Explore</a>
-          <a href="#data">Data</a>
+          <a href="#explore">Evidence</a>
+          <a href="#coverage">Coverage</a>
           <a href="#about">About</a>
         </nav>
         <span className={`system-pill system-pill--${apiStatus}`}>
@@ -28,10 +108,12 @@ export function HomeShell({ apiStatus }: { apiStatus: ApiShellStatus }) {
       </header>
       <main>
         <section className="hero" aria-labelledby="hero-title">
-          <p className="eyebrow">Open global outbreak intelligence</p>
-          <h1 id="hero-title">
-            What is happening in infectious disease right now?
-          </h1>
+          <p className="eyebrow">Traceable outbreak evidence</p>
+          <h1 id="hero-title">What are official health sources reporting?</h1>
+          <p className="hero-intro">
+            Browse source documents exactly as collected. EpiSignal does not yet
+            interpret, score, or merge them into outbreak events.
+          </p>
           <form
             className="search-preview"
             role="search"
@@ -47,34 +129,88 @@ export function HomeShell({ apiStatus }: { apiStatus: ApiShellStatus }) {
             </button>
           </form>
           <p className="preview-note">
-            Search becomes available when the first evidence source is
-            connected.
+            Search unlocks after evidence extraction and event matching are
+            implemented.
           </p>
         </section>
+
         <section
           id="explore"
-          className="explore-grid"
-          aria-label="Global activity"
+          className="evidence-section"
+          aria-labelledby="evidence-title"
         >
-          <div className="map-placeholder">
-            <p className="map-label">Global activity map</p>
-            <p>
-              Event records will appear after source ingestion is connected.
-            </p>
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Source evidence</p>
+              <h2 id="evidence-title">Latest outbreak reports</h2>
+            </div>
+            <p>Newest publication first · exact stored text</p>
           </div>
-          <aside
-            className="readiness-card"
-            aria-label="Foundation status"
-            data-mobile-role="bottom-sheet"
-          >
-            <p className="eyebrow">System status</p>
-            <h2>Ready for evidence.</h2>
-            <p>
-              The public shell is online. Connect the first source to begin
-              building traceable events.
-            </p>
-            <p className="components">Database · PostGIS · API</p>
-          </aside>
+
+          <div className="evidence-layout">
+            <div className="evidence-list" aria-live="polite">
+              {evidenceFeed.status === "loading" ? (
+                <p className="empty-state">Loading stored reports…</p>
+              ) : evidenceFeed.status === "unavailable" ? (
+                <p className="empty-state">Reports could not be loaded.</p>
+              ) : items.length === 0 ? (
+                <p className="empty-state">
+                  No source evidence has been ingested yet.
+                </p>
+              ) : (
+                items.map((item) => (
+                  <article className="evidence-card" key={item.id}>
+                    <div className="evidence-meta">
+                      <span>{item.source_name}</span>
+                      <div className="evidence-dates">
+                        <time dateTime={item.published_at ?? undefined}>
+                          Published {dateLabel(item.published_at)}
+                        </time>
+                        <time dateTime={item.retrieved_at}>
+                          Collected {dateLabel(item.retrieved_at)}
+                        </time>
+                      </div>
+                    </div>
+                    <h3>{item.title}</h3>
+                    {item.raw_text ? (
+                      <details className="evidence-text">
+                        <summary>Read stored evidence</summary>
+                        <p>{item.raw_text}</p>
+                      </details>
+                    ) : (
+                      <p className="evidence-missing">
+                        This source record contains no text body.
+                      </p>
+                    )}
+                    <a
+                      className="source-link"
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View original source <span aria-hidden="true">↗</span>
+                    </a>
+                  </article>
+                ))
+              )}
+            </div>
+            <div id="coverage">
+              <CoverageNotice evidenceFeed={evidenceFeed} />
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="about"
+          className="about-strip"
+          aria-label="About EpiSignal"
+        >
+          <p className="eyebrow">Evidence before claims</p>
+          <p>
+            EpiSignal never shows a number without the source text behind it.
+            Classification, event matching, and extracted metrics remain absent
+            until they can preserve that chain of evidence.
+          </p>
         </section>
       </main>
     </>

@@ -48,7 +48,7 @@ A revised WHO document keeps its URL, so URL alone can no longer be the identity
 - Modify: `apps/api/tests/test_migrations.py`
 - Create: `database/migrations/versions/20260826_0002_signal_versions.py`
 
-- [ ] **Step 1: Replace the URL uniqueness test**
+- [x] **Step 1: Replace the URL uniqueness test**
 
 In `packages/backend/tests/test_models.py`, delete this test entirely:
 
@@ -74,13 +74,13 @@ def test_signal_versions_are_unique_by_url_and_content_hash() -> None:
     assert [column.name for column in constraint.columns] == ["url", "content_hash"]
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest packages/backend/tests/test_models.py -k versions -v`
 
 Expected: FAIL with `StopIteration`, because no constraint is named `uq_signals_url_content_hash` yet.
 
-- [ ] **Step 3: Change the model**
+- [x] **Step 3: Change the model**
 
 In `packages/backend/src/episignal_backend/models/signal.py`, add `UniqueConstraint` to the existing `sqlalchemy` import list, so it reads:
 
@@ -124,13 +124,13 @@ The constraint carries an explicit name because the metadata naming convention
 would otherwise derive `uq_signals_url` from the first column and collide with
 the constraint this migration drops.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run pytest packages/backend/tests/test_models.py -v`
 
 Expected: PASS, 9 tests.
 
-- [ ] **Step 5: Update the migration head test**
+- [x] **Step 5: Update the migration head test**
 
 In `apps/api/tests/test_migrations.py`, change the head assertion:
 
@@ -151,13 +151,13 @@ def test_second_revision_versions_signals_by_content_hash() -> None:
     assert "drop constraint uq_signals_url" in sql
 ```
 
-- [ ] **Step 6: Run the migration tests to verify they fail**
+- [x] **Step 6: Run the migration tests to verify they fail**
 
 Run: `uv run pytest apps/api/tests/test_migrations.py -v`
 
 Expected: FAIL. `test_migrations_have_one_linear_head` reports `['20260826_0001'] != ['20260826_0002']` because the second revision does not exist yet.
 
-- [ ] **Step 7: Write the migration**
+- [x] **Step 7: Write the migration**
 
 Create `database/migrations/versions/20260826_0002_signal_versions.py`:
 
@@ -199,13 +199,13 @@ def downgrade() -> None:
     op.create_unique_constraint("uq_signals_url", "signals", ["url"])
 ```
 
-- [ ] **Step 8: Run the migration tests to verify they pass**
+- [x] **Step 8: Run the migration tests to verify they pass**
 
 Run: `uv run pytest apps/api/tests/test_migrations.py -v`
 
 Expected: PASS, 4 tests.
 
-- [ ] **Step 9: Run every check**
+- [x] **Step 9: Run every check**
 
 ```powershell
 uv run pytest -q
@@ -216,7 +216,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: every test passes; Ruff and mypy clean.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add packages/backend database/migrations apps/api/tests/test_migrations.py
@@ -232,7 +232,7 @@ git commit -m "feat: version signals by content hash"
 - Create: `packages/backend/tests/test_ingestion_urls.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/urls.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_urls.py`:
 
@@ -250,6 +250,7 @@ ITEM = "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON615"
         (f"{ITEM}#summary", ITEM),
         (f"{ITEM}/", ITEM),
         (f"{ITEM}?utm_source=newsletter&utm_campaign=x", ITEM),
+        (f"{ITEM}?UTM_creative_format=card&utm_id=42", ITEM),
         (f"{ITEM}?gclid=abc&fbclid=def", ITEM),
         ("HTTPS://WWW.WHO.INT/emergencies", "https://www.who.int/emergencies"),
         (f"{ITEM}?b=2&a=1", f"{ITEM}?a=1&b=2"),
@@ -275,13 +276,13 @@ def test_canonicalize_url_is_idempotent() -> None:
     assert canonicalize_url(once) == once
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_urls.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion'`.
 
-- [ ] **Step 3: Create the package marker**
+- [x] **Step 3: Create the package marker**
 
 Create `packages/backend/src/episignal_backend/ingestion/__init__.py` containing exactly one line:
 
@@ -289,7 +290,7 @@ Create `packages/backend/src/episignal_backend/ingestion/__init__.py` containing
 """Source ingestion: fetch documents, normalize them, store them once."""
 ```
 
-- [ ] **Step 4: Implement canonicalize_url**
+- [x] **Step 4: Implement canonicalize_url**
 
 Create `packages/backend/src/episignal_backend/ingestion/urls.py`:
 
@@ -305,11 +306,6 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 TRACKING_PARAMETERS = frozenset(
     {
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
         "gclid",
         "fbclid",
     }
@@ -321,7 +317,8 @@ def canonicalize_url(url: str) -> str:
     parameters = sorted(
         (name, value)
         for name, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if name.lower() not in TRACKING_PARAMETERS
+        if not name.lower().startswith("utm_")
+        and name.lower() not in TRACKING_PARAMETERS
     )
     path = parsed.path if parsed.path == "/" else parsed.path.rstrip("/")
     return urlunsplit(
@@ -335,13 +332,13 @@ def canonicalize_url(url: str) -> str:
     )
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_urls.py -v`
 
 Expected: PASS, 11 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/backend
@@ -356,7 +353,7 @@ git commit -m "feat: canonicalize source document URLs"
 - Create: `packages/backend/tests/test_ingestion_fingerprint.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/fingerprint.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_fingerprint.py`:
 
@@ -390,13 +387,13 @@ def test_content_hash_does_not_confuse_title_and_body_boundaries() -> None:
     assert content_hash("a", "b") != content_hash("a b", "")
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_fingerprint.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.fingerprint'`.
 
-- [ ] **Step 3: Implement content_hash**
+- [x] **Step 3: Implement content_hash**
 
 Create `packages/backend/src/episignal_backend/ingestion/fingerprint.py`:
 
@@ -427,13 +424,13 @@ The unit separator keeps the title and body fields distinct, so a title ending
 in a word the body begins with cannot collide with a different split of the same
 characters.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_fingerprint.py -v`
 
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/backend
@@ -449,7 +446,7 @@ git commit -m "feat: fingerprint document content"
 - Create: `packages/backend/src/episignal_backend/ingestion/documents.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/protocol.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_documents.py`:
 
@@ -510,18 +507,23 @@ def test_normalized_signal_is_frozen() -> None:
 
 
 def test_raw_document_keeps_the_untouched_source_payload() -> None:
-    document = RawDocument(payload={"Title": "x", "UrlName": "y"}, retrieved_at=MOMENT)
+    document = RawDocument(
+        payload={"Title": "x", "UrlName": "y"},
+        retrieved_at=MOMENT,
+        source_url="https://www.who.int/item/y",
+    )
     assert document.payload["UrlName"] == "y"
     assert document.retrieved_at == MOMENT
+    assert document.source_url == "https://www.who.int/item/y"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_documents.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.documents'`.
 
-- [ ] **Step 3: Implement the document contracts**
+- [x] **Step 3: Implement the document contracts**
 
 Create `packages/backend/src/episignal_backend/ingestion/documents.py`:
 
@@ -548,6 +550,7 @@ class RawDocument(BaseModel):
 
     payload: dict[str, Any]
     retrieved_at: datetime
+    source_url: str | None = None
 
 
 class NormalizedSignal(BaseModel):
@@ -581,13 +584,13 @@ class NormalizedSignal(BaseModel):
         return value
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_documents.py -v`
 
 Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Implement the Protocols**
+- [x] **Step 5: Implement the Protocols**
 
 Create `packages/backend/src/episignal_backend/ingestion/protocol.py`:
 
@@ -611,7 +614,9 @@ from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
 class SourceConnector(Protocol):
     source_name: str
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]: ...
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]: ...
 
     def normalize(self, document: RawDocument) -> NormalizedSignal: ...
 
@@ -619,8 +624,6 @@ class SourceConnector(Protocol):
 @runtime_checkable
 class SignalRepository(Protocol):
     def source_id(self, name: str) -> UUID | None: ...
-
-    def latest_published_at(self, source_id: UUID) -> datetime | None: ...
 
     def exists(self, url: str, content_hash: str) -> bool: ...
 
@@ -633,7 +636,7 @@ class SignalRepository(Protocol):
     def rollback(self) -> None: ...
 ```
 
-- [ ] **Step 6: Run the checks**
+- [x] **Step 6: Run the checks**
 
 ```powershell
 uv run pytest -q
@@ -643,7 +646,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: all tests pass; Ruff and mypy clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/backend
@@ -659,7 +662,7 @@ git commit -m "feat: define ingestion contracts and boundaries"
 - Create: `packages/backend/tests/test_who_don_normalize.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/who_don.py`
 
-- [ ] **Step 1: Add the fixture**
+- [x] **Step 1: Add the fixture**
 
 Create `packages/backend/tests/fixtures/who_don_sample.json`. This is a trimmed
 capture of a real WHO API response, keeping the fields the connector reads:
@@ -701,7 +704,7 @@ capture of a real WHO API response, keeping the fields the connector reads:
 }
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `packages/backend/tests/test_who_don_normalize.py`:
 
@@ -788,13 +791,13 @@ def test_connector_names_the_seeded_source() -> None:
     assert WhoDonConnector().source_name == "WHO Disease Outbreak News"
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_normalize.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.who_don'`.
 
-- [ ] **Step 4: Implement normalization**
+- [x] **Step 4: Implement normalization**
 
 Create `packages/backend/src/episignal_backend/ingestion/who_don.py`:
 
@@ -880,13 +883,13 @@ class WhoDonConnector:
         )
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_normalize.py -v`
 
 Expected: PASS, 10 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/backend
@@ -902,7 +905,7 @@ git commit -m "feat: normalize WHO outbreak news documents"
 - Create: `packages/backend/tests/test_who_don_fetch.py`
 - Modify: `packages/backend/src/episignal_backend/ingestion/who_don.py`
 
-- [ ] **Step 1: Add the HTTP dependency**
+- [x] **Step 1: Add the HTTP dependency**
 
 In `packages/backend/pyproject.toml`, add `httpx` to `dependencies` so the list reads:
 
@@ -918,7 +921,7 @@ dependencies = [
 
 Then run: `uv sync -q`
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `packages/backend/tests/test_who_don_fetch.py`:
 
@@ -960,18 +963,34 @@ def test_fetch_returns_one_raw_document_per_item() -> None:
     assert len(documents) == 2
     assert documents[0].payload["DonId"] == "2026-DON1"
     assert documents[0].retrieved_at.tzinfo is not None
+    assert documents[0].source_url == (
+        "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON1"
+    )
 
 
-def test_fetch_filters_and_orders_by_publication_time() -> None:
+def test_fetch_filters_on_recent_publication_or_modification() -> None:
     requests: list[httpx.Request] = []
     connector = connector_for(
         lambda request: httpx.Response(200, json={"value": []}), requests
     )
     connector.fetch(SINCE)
     query = requests[0].url.params
-    assert query["$filter"] == "PublicationDateAndTime gt 2026-05-28T00:00:00Z"
-    assert query["$orderby"] == "PublicationDateAndTime asc"
+    assert query["$filter"] == (
+        "PublicationDateAndTime gt 2026-05-28T00:00:00Z or "
+        "LastModified gt 2026-05-28T00:00:00Z"
+    )
+    assert query["$orderby"] == "LastModified asc"
     assert query["$top"] == str(PAGE_SIZE)
+
+
+def test_fetch_uses_an_inclusive_filter_when_requested() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={"value": []}), requests)
+    connector.fetch(SINCE, inclusive=True)
+    assert requests[0].url.params["$filter"] == (
+        "PublicationDateAndTime ge 2026-05-28T00:00:00Z or "
+        "LastModified ge 2026-05-28T00:00:00Z"
+    )
 
 
 def test_fetch_pages_until_a_short_page_arrives() -> None:
@@ -1017,23 +1036,46 @@ def test_fetch_does_not_retry_a_client_error() -> None:
     with pytest.raises(httpx.HTTPError):
         connector.fetch(SINCE)
     assert len(requests) == 1
+
+
+def test_fetch_rejects_a_response_without_value() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={}), requests)
+    with pytest.raises(ValueError, match="value"):
+        connector.fetch(SINCE)
+
+
+def test_fetch_rejects_a_non_list_value() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(lambda request: httpx.Response(200, json={"value": {}}), requests)
+    with pytest.raises(ValueError, match="value"):
+        connector.fetch(SINCE)
+
+
+def test_fetch_rejects_a_non_object_value_item() -> None:
+    requests: list[httpx.Request] = []
+    connector = connector_for(
+        lambda request: httpx.Response(200, json={"value": [item(1), "not an object"]}),
+        requests,
+    )
+    with pytest.raises(ValueError, match="items"):
+        connector.fetch(SINCE)
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_fetch.py -v`
 
 Expected: FAIL at collection with `ImportError: cannot import name 'PAGE_SIZE'`.
 
-- [ ] **Step 4: Implement fetching**
+- [x] **Step 4: Implement fetching**
 
 In `packages/backend/src/episignal_backend/ingestion/who_don.py`, extend the
 imports at the top of the file:
 
 ```python
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from html import unescape
 from html.parser import HTMLParser
 from time import sleep as default_sleep
 from typing import Any
@@ -1070,31 +1112,53 @@ class WhoDonConnector:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]:
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]:
         retrieved_at = datetime.now(UTC)
         documents: list[RawDocument] = []
         skip = 0
 
         while True:
-            items = self._page(since, skip)
+            items = self._page(since, skip, inclusive=inclusive)
             documents.extend(
-                RawDocument(payload=entry, retrieved_at=retrieved_at) for entry in items
+                RawDocument(
+                    payload=entry,
+                    retrieved_at=retrieved_at,
+                    source_url=(
+                        ITEM_URL_TEMPLATE.format(url_name=entry["UrlName"])
+                        if isinstance(entry.get("UrlName"), str)
+                        and entry["UrlName"].strip()
+                        else None
+                    ),
+                )
+                for entry in items
             )
             if len(items) < PAGE_SIZE:
                 return documents
             skip += PAGE_SIZE
 
-    def _page(self, since: datetime, skip: int) -> list[dict[str, Any]]:
+    def _page(
+        self, since: datetime, skip: int, *, inclusive: bool
+    ) -> list[dict[str, Any]]:
         moment = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        operator = "ge" if inclusive else "gt"
         parameters = {
-            "$filter": f"PublicationDateAndTime gt {moment}",
-            "$orderby": "PublicationDateAndTime asc",
+            "$filter": (
+                f"PublicationDateAndTime {operator} {moment} or "
+                f"LastModified {operator} {moment}"
+            ),
+            "$orderby": "LastModified asc",
             "$top": str(PAGE_SIZE),
             "$skip": str(skip),
         }
         payload = self._request(parameters)
-        value = payload.get("value", [])
-        return [entry for entry in value if isinstance(entry, dict)]
+        if "value" not in payload or not isinstance(payload["value"], list):
+            raise ValueError("WHO API response value must be a list")
+        value = payload["value"]
+        if not all(isinstance(entry, Mapping) for entry in value):
+            raise ValueError("WHO API response value items must be objects")
+        return [dict(entry) for entry in value]
 
     def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
         last_error: Exception | None = None
@@ -1123,16 +1187,16 @@ class WhoDonConnector:
         raise last_error if last_error else httpx.HTTPError("WHO API request failed")
 ```
 
-Note that `since` is exclusive here: the OData `gt` operator means the newest
-already-stored document is not fetched again.
+The default `inclusive=False` uses OData `gt`, so the newest already-stored
+document is not fetched again. An explicit `inclusive=True` uses `ge`.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_who_don_fetch.py -v`
 
-Expected: PASS, 6 tests.
+Expected: PASS, 10 tests.
 
-- [ ] **Step 6: Run every check**
+- [x] **Step 6: Run every check**
 
 ```powershell
 uv run pytest -q
@@ -1144,7 +1208,7 @@ uv run mypy packages/backend/src apps/api/src
 Expected: all pass. If `ruff format --check` reports a file, run
 `uv run ruff format packages database apps/api` and rerun the checks.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/backend uv.lock
@@ -1159,7 +1223,7 @@ git commit -m "feat: fetch WHO outbreak news over HTTP"
 - Create: `packages/backend/src/episignal_backend/ingestion/repository.py`
 - Create: `packages/backend/tests/test_ingestion_repository.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 The repository is a thin SQLAlchemy adapter, so the credential-free test proves
 it satisfies the Protocol and builds the right `Signal`. Behaviour against a real
@@ -1193,9 +1257,16 @@ def sample() -> NormalizedSignal:
     )
 
 
+def _conforms(repository: SignalRepository) -> SignalRepository:
+    # mypy checks this structurally, signatures included. isinstance below only
+    # checks that the member NAMES exist, so it cannot stand in for this.
+    return repository
+
+
 def test_sqlalchemy_repository_satisfies_the_protocol() -> None:
     repository = SqlAlchemySignalRepository(session=None)  # type: ignore[arg-type]
     assert isinstance(repository, SignalRepository)
+    assert _conforms(repository) is repository
 
 
 def test_build_signal_maps_every_normalized_field() -> None:
@@ -1225,13 +1296,13 @@ def test_build_signal_leaves_later_slices_columns_empty() -> None:
     assert signal.ai_processed_at is None
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_repository.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.repository'`.
 
-- [ ] **Step 3: Implement the repository**
+- [x] **Step 3: Implement the repository**
 
 Create `packages/backend/src/episignal_backend/ingestion/repository.py`:
 
@@ -1243,10 +1314,9 @@ and answers existence questions. All ingestion decisions live in `pipeline.py`,
 which never imports this module.
 """
 
-from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.ingestion.documents import NormalizedSignal
@@ -1279,11 +1349,6 @@ class SqlAlchemySignalRepository:
             select(Source.id).where(Source.name == name)
         ).scalar_one_or_none()
 
-    def latest_published_at(self, source_id: UUID) -> datetime | None:
-        return self._session.execute(
-            select(func.max(Signal.published_at)).where(Signal.source_id == source_id)
-        ).scalar_one_or_none()
-
     def exists(self, url: str, content_hash: str) -> bool:
         found = self._session.execute(
             select(Signal.id)
@@ -1308,13 +1373,13 @@ class SqlAlchemySignalRepository:
         self._session.rollback()
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_repository.py -v`
 
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/backend
@@ -1329,17 +1394,19 @@ git commit -m "feat: add the signal storage boundary"
 - Create: `packages/backend/tests/test_ingestion_pipeline.py`
 - Create: `packages/backend/src/episignal_backend/ingestion/pipeline.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `packages/backend/tests/test_ingestion_pipeline.py`:
 
 ```python
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 from episignal_backend.ingestion.documents import NormalizedSignal, RawDocument
+from episignal_backend.ingestion.fingerprint import content_hash
 from episignal_backend.ingestion.pipeline import (
     DEFAULT_WINDOW_DAYS,
     MissingSourceError,
@@ -1349,6 +1416,13 @@ from episignal_backend.ingestion.pipeline import (
 NOW = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 SOURCE = "WHO Disease Outbreak News"
 URL = "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON615"
+TITLE = "Ebola disease - Democratic Republic of the Congo"
+
+
+def digest(content: str) -> str:
+    # Real digests, not synthetic ones: NormalizedSignal requires lowercase hex,
+    # and deriving them here keeps the sentinel wording free to be anything.
+    return content_hash(TITLE, content)
 
 
 def signal(content: str = "a") -> NormalizedSignal:
@@ -1356,11 +1430,11 @@ def signal(content: str = "a") -> NormalizedSignal:
         external_id="2026-DON615",
         url=URL,
         canonical_url=URL,
-        title="Ebola disease - Democratic Republic of the Congo",
+        title=TITLE,
         raw_text=content,
         published_at=NOW - timedelta(days=1),
         retrieved_at=NOW,
-        content_hash=content[0] * 64,
+        content_hash=digest(content),
     )
 
 
@@ -1377,6 +1451,8 @@ class FakeRepository:
     def source_id(self, name: str) -> UUID | None:
         return None if self.missing else self._source
 
+    # Regression guard: the pipeline must not derive its fetch window from
+    # partially stored rows, even if an older adapter still exposes a cursor.
     def latest_published_at(self, source_id: UUID) -> datetime | None:
         return self.latest
 
@@ -1404,11 +1480,15 @@ class FakeConnector:
     def __init__(self, signals: Sequence[NormalizedSignal]) -> None:
         self._signals = signals
         self.since: datetime | None = None
+        self.inclusive: bool | None = None
 
-    def fetch(self, since: datetime) -> Sequence[RawDocument]:
+    def fetch(
+        self, since: datetime, *, inclusive: bool = False
+    ) -> Sequence[RawDocument]:
         self.since = since
+        self.inclusive = inclusive
         return [
-            RawDocument(payload={"index": index}, retrieved_at=NOW)
+            RawDocument(payload={"index": index}, retrieved_at=NOW, source_url=URL)
             for index in range(len(self._signals))
         ]
 
@@ -1423,7 +1503,7 @@ def test_an_unseen_document_is_inserted() -> None:
     repository = FakeRepository()
     result = run_ingestion(repository, FakeConnector([signal()]), now=NOW)
     assert (result.inserted, result.skipped, result.failed) == (1, 0, 0)
-    assert repository.stored == [(URL, "a" * 64)]
+    assert repository.stored == [(URL, digest("a"))]
 
 
 def test_the_same_document_is_skipped_on_a_second_run() -> None:
@@ -1448,7 +1528,7 @@ def test_one_unparseable_document_does_not_stop_the_others() -> None:
     connector = FakeConnector([signal("unparseable"), signal("c")])
     result = run_ingestion(repository, connector, now=NOW)
     assert (result.inserted, result.skipped, result.failed) == (1, 0, 1)
-    assert repository.stored == [(URL, "c" * 64)]
+    assert repository.stored == [(URL, digest("c"))]
 
 
 def test_a_storage_failure_rolls_back_only_that_document() -> None:
@@ -1473,6 +1553,7 @@ def test_a_missing_source_aborts_before_fetching() -> None:
     with pytest.raises(MissingSourceError, match=SOURCE):
         run_ingestion(repository, connector, now=NOW)
     assert connector.since is None
+    assert connector.inclusive is None
 
 
 def test_a_successful_run_activates_the_source() -> None:
@@ -1485,32 +1566,43 @@ def test_the_first_run_uses_the_default_window() -> None:
     connector = FakeConnector([])
     run_ingestion(FakeRepository(), connector, now=NOW)
     assert connector.since == NOW - timedelta(days=DEFAULT_WINDOW_DAYS)
+    assert connector.inclusive is False
 
 
-def test_a_later_run_resumes_from_the_newest_stored_document() -> None:
+def test_each_default_run_rechecks_the_activity_window() -> None:
     repository = FakeRepository()
     repository.latest = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
     connector = FakeConnector([])
     run_ingestion(repository, connector, now=NOW)
-    assert connector.since == repository.latest
+    assert connector.since == NOW - timedelta(days=DEFAULT_WINDOW_DAYS)
+    assert connector.inclusive is False
 
 
-def test_an_explicit_since_overrides_the_stored_watermark() -> None:
-    repository = FakeRepository()
-    repository.latest = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
+def test_an_explicit_since_overrides_the_default_window() -> None:
     connector = FakeConnector([])
     requested = datetime(2026, 1, 1, tzinfo=UTC)
-    run_ingestion(repository, connector, since=requested, now=NOW)
+    run_ingestion(FakeRepository(), connector, since=requested, now=NOW)
     assert connector.since == requested
+    assert connector.inclusive is True
+
+
+def test_a_document_failure_logs_its_url_without_evidence_text(caplog: pytest.LogCaptureFixture) -> None:
+    repository = FakeRepository()
+    with caplog.at_level(logging.ERROR, logger="episignal_backend.ingestion"):
+        run_ingestion(repository, FakeConnector([signal("explode")]), now=NOW)
+    assert URL in caplog.text
+    assert SOURCE in caplog.text
+    assert "explode" not in caplog.text
+    assert "cannot store this document" not in caplog.text
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_pipeline.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingestion.pipeline'`.
 
-- [ ] **Step 3: Implement the pipeline**
+- [x] **Step 3: Implement the pipeline**
 
 Create `packages/backend/src/episignal_backend/ingestion/pipeline.py`:
 
@@ -1557,15 +1649,13 @@ def run_ingestion(
     if source_id is None:
         raise MissingSourceError(connector.source_name)
 
-    window_start = since or repository.latest_published_at(source_id) or (
-        moment - timedelta(days=DEFAULT_WINDOW_DAYS)
-    )
+    window_start = since or (moment - timedelta(days=DEFAULT_WINDOW_DAYS))
 
     inserted = 0
     skipped = 0
     failed = 0
 
-    for document in connector.fetch(window_start):
+    for document in connector.fetch(window_start, inclusive=since is not None):
         try:
             signal = connector.normalize(document)
             if repository.exists(signal.url, signal.content_hash):
@@ -1574,10 +1664,15 @@ def run_ingestion(
             repository.add(signal, source_id)
             repository.commit()
             inserted += 1
-        except Exception:
+        except Exception as error:
             repository.rollback()
             failed += 1
-            logger.exception("Could not ingest a document from %s", connector.source_name)
+            logger.error(
+                "Could not ingest document %s from %s (%s)",
+                document.source_url or "<unknown URL>",
+                connector.source_name,
+                type(error).__name__,
+            )
 
     repository.activate(source_id)
     repository.commit()
@@ -1585,13 +1680,14 @@ def run_ingestion(
     return IngestionResult(inserted=inserted, skipped=skipped, failed=failed)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingestion_pipeline.py -v`
 
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests, including inclusive fetch semantics for explicit
+`--since`, rolling-window retries, and safe per-document failure logging.
 
-- [ ] **Step 5: Run every check**
+- [x] **Step 5: Run every check**
 
 ```powershell
 uv run pytest -q
@@ -1602,7 +1698,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/backend
@@ -1621,7 +1717,7 @@ git commit -m "feat: run the source ingestion pipeline"
 - Modify: `packages/backend/tests/test_schema_check.py`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write the failing argument-parsing tests**
+- [x] **Step 1: Write the failing argument-parsing tests**
 
 Create `packages/backend/tests/test_ingest_runner.py`:
 
@@ -1656,13 +1752,13 @@ def test_a_malformed_since_is_rejected() -> None:
         parse_arguments(["who-don", "--since", "last-tuesday"])
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest packages/backend/tests/test_ingest_runner.py -v`
 
 Expected: FAIL at collection with `ModuleNotFoundError: No module named 'episignal_backend.ingest_runner'`.
 
-- [ ] **Step 3: Implement the runner**
+- [x] **Step 3: Implement the runner**
 
 Create `packages/backend/src/episignal_backend/ingest_runner.py`:
 
@@ -1740,13 +1836,13 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest packages/backend/tests/test_ingest_runner.py -v`
 
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Correct the WHO source URL**
+- [x] **Step 5: Correct the WHO source URL**
 
 In `database/seeds/sources.json`, replace the WHO entry's `feed_url`. The RSS
 URL returns HTTP 404; the API endpoint is what the connector actually reads:
@@ -1771,7 +1867,7 @@ The full WHO entry then reads:
   },
 ```
 
-- [ ] **Step 6: Write the failing signal-count test**
+- [x] **Step 6: Write the failing signal-count test**
 
 Add this to `packages/backend/tests/test_schema_check.py`:
 
@@ -1793,13 +1889,13 @@ def test_signal_counts_preserve_each_source_total() -> None:
     }
 ```
 
-- [ ] **Step 7: Run the test to verify it fails**
+- [x] **Step 7: Run the test to verify it fails**
 
 Run: `uv run pytest packages/backend/tests/test_schema_check.py -v`
 
 Expected: FAIL with `ImportError: cannot import name 'signal_counts'`.
 
-- [ ] **Step 8: Report signal counts**
+- [x] **Step 8: Report signal counts**
 
 In `packages/backend/src/episignal_backend/schema_check.py`, extend the imports:
 
@@ -1837,13 +1933,13 @@ Add the key to the returned dictionary:
         "signals": signals,
 ```
 
-- [ ] **Step 9: Run the test to verify it passes**
+- [x] **Step 9: Run the test to verify it passes**
 
 Run: `uv run pytest packages/backend/tests/test_schema_check.py -v`
 
 Expected: PASS, 4 tests.
 
-- [ ] **Step 10: Add the pnpm script**
+- [x] **Step 10: Add the pnpm script**
 
 In `package.json`, add this line to `scripts`, directly after the `db:seed` entry:
 
@@ -1851,7 +1947,7 @@ In `package.json`, add this line to `scripts`, directly after the `db:seed` entr
     "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
 ```
 
-- [ ] **Step 11: Run every check**
+- [x] **Step 11: Run every check**
 
 ```powershell
 uv run pytest -q
@@ -1862,7 +1958,7 @@ uv run mypy packages/backend/src apps/api/src
 
 Expected: all pass.
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add packages/backend database/seeds/sources.json package.json
@@ -1879,7 +1975,7 @@ migrates, seeds and ingests. It creates nothing else and deletes nothing.
 **Files:**
 - Modify only files that fail a check below.
 
-- [ ] **Step 1: Apply the migration and correct the seed**
+- [x] **Step 1: Apply the migration and correct the seed**
 
 ```powershell
 uv run --package episignal-api alembic -c database/alembic.ini upgrade head
@@ -1888,7 +1984,7 @@ uv run --package episignal-backend python -m episignal_backend.seed_runner
 
 Expected: the upgrade exits 0; seeding prints `diseases=29 sources=2`.
 
-- [ ] **Step 2: Confirm the schema changed**
+- [x] **Step 2: Confirm the schema changed**
 
 ```powershell
 uv run --package episignal-backend python -m episignal_backend.schema_check
@@ -1897,7 +1993,7 @@ uv run --package episignal-backend python -m episignal_backend.schema_check
 Expected: `postgis` is `up`, `missing_tables` is empty, and `signals` reports
 `0` for both sources.
 
-- [ ] **Step 3: Ingest for the first time**
+- [x] **Step 3: Ingest for the first time**
 
 ```powershell
 uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don
@@ -1907,7 +2003,7 @@ Expected: `inserted=N skipped=0 failed=0` with N greater than zero, and exit
 code 0. If N is zero, WHO published nothing in the last 90 days; rerun with
 `--since 2026-01-01` and expect a non-zero N.
 
-- [ ] **Step 4: Prove the run is idempotent**
+- [x] **Step 4: Prove the run is idempotent**
 
 ```powershell
 uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don
@@ -1918,7 +2014,7 @@ Expected: the second ingestion prints `inserted=0`, and the signal count for
 `WHO Disease Outbreak News` is unchanged from Step 3. `active_sources` now
 contains `WHO Disease Outbreak News`.
 
-- [ ] **Step 5: Audit what was stored**
+- [x] **Step 5: Audit what was stored**
 
 ```powershell
 uv run --package episignal-backend python -c "from sqlalchemy import select; from episignal_backend.db.session import session_scope; from episignal_backend.models import Signal; s=session_scope().__enter__(); rows=s.execute(select(Signal.url, Signal.title, Signal.published_at, Signal.processing_status).limit(5)).all(); [print(r) for r in rows]"
@@ -1928,7 +2024,7 @@ Expected: real WHO item URLs, real titles, timezone-aware publication dates, and
 `processing_status` of `fetched` on every row. No row has a summary, a relevance
 score, or any AI column populated.
 
-- [ ] **Step 6: Run the full verification suite**
+- [x] **Step 6: Run the full verification suite**
 
 ```powershell
 uv run ruff format --check .
@@ -1943,7 +2039,7 @@ corepack pnpm --filter '@episignal/web' build
 
 Expected: every command exits 0.
 
-- [ ] **Step 7: Audit for leaked secrets**
+- [x] **Step 7: Audit for leaked secrets**
 
 ```powershell
 git status --short
@@ -1953,7 +2049,7 @@ git grep -n -I -E 'postgres(ql)?://[^ ]+:[^ ]+@' -- packages database apps scrip
 Expected: no `.env` file appears in `git status`; the grep returns only the
 placeholder in `apps/api/.env.example` and the test and export placeholders.
 
-- [ ] **Step 8: Commit any fixes**
+- [x] **Step 8: Commit any fixes**
 
 Run `git diff --name-only`, inspect every listed path, and stage each approved
 path individually with `git add --` followed by its literal path. Never use

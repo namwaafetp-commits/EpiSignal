@@ -10,7 +10,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260826_0001"]
+    assert scripts.get_heads() == ["20260826_0002"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -51,7 +51,6 @@ def test_offline_upgrade_declares_every_core_invariant() -> None:
         "uq_sources_name",
         "uq_sources_base_url",
         "uq_sources_feed_url",
-        "uq_signals_url",
         "uq_diseases_slug",
         "uq_pathogens_slug",
         "uq_events_public_id",
@@ -105,3 +104,9 @@ def test_offline_downgrade_drops_dependents_before_parents() -> None:
     assert sql.index("drop table event_locations") < sql.index("drop table events")
     assert sql.index("drop table event_observations") < sql.index("drop table events")
     assert "drop extension postgis" not in sql
+
+
+def test_second_revision_versions_signals_by_content_hash() -> None:
+    sql = render_offline("upgrade", "head")
+    assert "uq_signals_url_content_hash" in sql
+    assert "drop constraint uq_signals_url" in sql

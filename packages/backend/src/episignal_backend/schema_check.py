@@ -7,12 +7,13 @@ anything, and no connection detail is included in the output.
 
 import json
 import sys
+from collections.abc import Iterable
 
-from sqlalchemy import inspect, select
+from sqlalchemy import func, inspect, select
 
 from episignal_backend.db.session import get_engine, session_scope
 from episignal_backend.health import check_database
-from episignal_backend.models import Disease, Source
+from episignal_backend.models import Disease, Signal, Source
 
 EXPECTED_TABLES = (
     "sources",
@@ -30,6 +31,10 @@ def missing_tables(present: set[str]) -> list[str]:
     return [table for table in EXPECTED_TABLES if table not in present]
 
 
+def signal_counts(rows: Iterable[tuple[str, int]]) -> dict[str, int]:
+    return {name: count for name, count in rows}
+
+
 def build_report() -> dict[str, object]:
     with session_scope() as session:
         health = check_database(session.connection())
@@ -45,6 +50,16 @@ def build_report() -> dict[str, object]:
         active_sources = [
             name for name, active in session.execute(select(Source.name, Source.active)) if active
         ]
+        signals = signal_counts(
+            session.execute(
+                select(Source.name, func.count(Signal.id))
+                .select_from(Source)
+                .outerjoin(Signal, Signal.source_id == Source.id)
+                .group_by(Source.name)
+            )
+            .tuples()
+            .all()
+        )
 
     return {
         "database": health.database,
@@ -53,6 +68,7 @@ def build_report() -> dict[str, object]:
         "diseases": diseases,
         "sources": sources,
         "active_sources": active_sources,
+        "signals": signals,
     }
 
 

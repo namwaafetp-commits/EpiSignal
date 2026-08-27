@@ -135,6 +135,7 @@ version = "0.1.0"
 source = { editable = "packages/backend" }
 dependencies = [
     { name = "geoalchemy2" },
+    { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
@@ -143,6 +144,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.18,<1" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pydantic-settings", specifier = ">=2.10,<3" },
     { name = "sqlalchemy", specifier = ">=2.0,<2.1" },
