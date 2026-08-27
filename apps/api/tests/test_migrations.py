@@ -10,7 +10,8 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260826_0002"]
+    assert scripts.get_heads() == ["20260827_0003"]
+
 
 
 def render_offline(*arguments: str) -> str:
@@ -110,3 +111,32 @@ def test_second_revision_versions_signals_by_content_hash() -> None:
     sql = render_offline("upgrade", "head")
     assert "uq_signals_url_content_hash" in sql
     assert "drop constraint uq_signals_url" in sql
+
+
+def test_third_revision_adds_gdelt_discovery() -> None:
+    sql = render_offline("upgrade", "head")
+    assert "create table gdelt_query_rules" in sql
+    assert "uq_gdelt_query_rules_query" in sql
+    assert "discovery_method_values" in sql
+    assert "ix_signals_discovered_via" in sql
+    assert "ix_signals_first_seen_at" in sql
+    assert "uq_sources_domain" in sql
+    for column in (
+        "discovered_via",
+        "first_seen_at",
+        "gdelt_seen_at",
+        "published_at_offset_minutes",
+        "retrieval_attempts",
+        "query_rule_id",
+    ):
+        assert f"add column {column}" in sql
+
+
+def test_third_revision_backfills_first_seen_at_before_enforcing_it() -> None:
+    sql = render_offline("upgrade", "head")
+    # The column is added nullable, filled from retrieved_at, and only then made
+    # NOT NULL. Reordering these would fail on any database holding signals.
+    assert sql.index("set first_seen_at = retrieved_at") < sql.index(
+        "alter column first_seen_at set not null"
+    )
+
