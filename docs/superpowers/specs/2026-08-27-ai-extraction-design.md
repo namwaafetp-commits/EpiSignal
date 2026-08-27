@@ -1,7 +1,7 @@
 # AI Classification, Extraction, and Cost Accounting — Design
 
 **Date:** 2026-08-27
-**Status:** Proposed
+**Status:** Approved
 **Sub-project:** C of `docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md`
 **Depends on:** Sub-project A (GDELT discovery) and Sub-project B (Stage 0 filtering and deduplication), both merged to `main` on 2026-08-27
 
