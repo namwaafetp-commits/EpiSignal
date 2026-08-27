@@ -26,6 +26,7 @@
     "discover:gdelt": "uv run --package episignal-backend python -m episignal_backend.discover_runner",
     "dedupe:signals": "uv run --package episignal-backend python -m episignal_backend.dedupe_runner",
     "extract:signals": "uv run --package episignal-backend python -m episignal_backend.extract_runner",
+    "geocode:signals": "uv run --package episignal-backend python -m episignal_backend.geocode_runner",
     "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
 
 
