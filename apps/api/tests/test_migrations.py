@@ -10,7 +10,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260827_0004"]
+    assert scripts.get_heads() == ["20260827_0005"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -138,3 +138,50 @@ def test_third_revision_backfills_first_seen_at_before_enforcing_it() -> None:
     assert sql.index("set first_seen_at = retrieved_at") < sql.index(
         "alter column first_seen_at set not null"
     )
+
+
+def test_fifth_revision_adds_the_model_roster_and_the_request_ledger() -> None:
+    sql = render_offline("upgrade", "head")
+
+    assert "create table ai_models" in sql
+    assert "create table ai_requests" in sql
+    assert "uq_ai_models_model_id" in sql
+    assert "ck_ai_models_tier_range" in sql
+    assert "ai_purpose_values" in sql
+    assert "ai_outcome_values" in sql
+    assert "ix_ai_requests_requested_at" in sql
+    assert "add column disease_id" in sql
+    assert "ix_signals_disease_id" in sql
+
+
+def test_the_ledger_survives_retiring_a_model_or_deleting_a_signal() -> None:
+    sql = render_offline("upgrade", "head")
+
+    assert "fk_ai_requests_ai_model_id_ai_models" in sql
+    assert "fk_ai_requests_signal_id_signals" in sql
+    assert "on delete cascade" not in sql.split("create table ai_requests")[1][:2000]
+
+
+def test_the_ai_downgrade_refuses_to_discard_the_ledger() -> None:
+    root = Path(__file__).parents[3]
+    source = (
+        root
+        / "database"
+        / "migrations"
+        / "versions"
+        / "20260827_0005_ai_extraction.py"
+    ).read_text(encoding="utf-8")
+
+    assert "EPISIGNAL_ALLOW_AI_AUDIT_LOSS" in source
+    assert "select count(*) from ai_requests" in source.lower()
+
+
+def test_the_offline_downgrade_still_renders_through_the_ledger_guard() -> None:
+    # The guard reads a table, which is impossible while rendering SQL offline.
+    # If it ever runs in that mode, this test fails and so does the pre-existing
+    # downgrade-ordering test.
+    sql = render_offline("downgrade", "20260827_0005:20260827_0004")
+
+    assert "drop table ai_requests" in sql
+    assert "drop table ai_models" in sql
+
