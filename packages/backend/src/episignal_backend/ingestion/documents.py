@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from episignal_backend.db.types import ProcessingStatus, SignalType
+from episignal_backend.db.types import FilterRuleGroup, ProcessingStatus, SignalType
 
 
 def _require_aware(value: datetime) -> datetime:
@@ -243,3 +243,85 @@ class StubRetrieval(BaseModel):
     @classmethod
     def timestamp_is_aware(cls, value: datetime) -> datetime:
         return _require_aware(value)
+
+
+class FilterRule(BaseModel):
+    """One stored Stage 0 rule.
+
+    A `title_exclusion` pattern is a regular expression matched against the
+    article title. A `domain_blocklist` pattern is a host, matched exactly or as
+    a dotted suffix, never as a regular expression.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID | None = None
+    rule_group: FilterRuleGroup
+    pattern: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+
+class Rejection(BaseModel):
+    """A GDELT sighting dropped before its page was fetched.
+
+    It is not a signal: no page was retrieved, so there is no `retrieved_at` and
+    no body to hash. It is kept so that a wrongly rejected article stays
+    findable, which is the only defence against a filter rule that is too broad.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    url: str = Field(min_length=1)
+    canonical_url: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    domain: str = Field(min_length=1)
+    gdelt_seen_at: datetime | None = None
+    rejected_at: datetime
+    filter_rule_id: UUID | None = None
+
+    @field_validator("rejected_at")
+    @classmethod
+    def rejected_at_is_aware(cls, value: datetime) -> datetime:
+        return _require_aware(value)
+
+    @field_validator("gdelt_seen_at")
+    @classmethod
+    def gdelt_seen_at_is_aware(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _require_aware(value)
+
+
+class ComparableSignal(BaseModel):
+    """A stored signal with enough of itself to be compared to another.
+
+    Used both for the queue awaiting a decision and for the candidates it is
+    submitted against: the two carry the same fields and differ only in the query
+    that produced them.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    canonical_url: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    raw_text: str = Field(min_length=1)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    first_seen_at: datetime
+    published_at: datetime | None = None
+    duplicate_of_signal_id: UUID | None = None
+
+    @field_validator("raw_text")
+    @classmethod
+    def raw_text_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("raw_text must not be blank")
+        return value
+
+    @field_validator("first_seen_at")
+    @classmethod
+    def first_seen_at_is_aware(cls, value: datetime) -> datetime:
+        return _require_aware(value)
+
+    @field_validator("published_at")
+    @classmethod
+    def published_at_is_aware(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _require_aware(value)
