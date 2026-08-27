@@ -1,0 +1,4 @@
+2332459	Lagos	Lagos	Eko,Lagos,Lagos City	6.45407	3.39467	P	PPLA	NG		05				1536000		41	Africa/Lagos	2019-09-05
+2314302	Kinshasa	Kinshasa	Kinshasa,Léopoldville	-4.32758	15.31357	P	PPLC	CD		12				7785965		240	Africa/Kinshasa	2019-09-05
+217831	Bunia	Bunia	Bunia	1.55980	30.25266	P	PPLA	CD		10	1002			336654		1275	Africa/Lubumbashi	2019-09-05
+3094802	Kraków	Krakow	Cracovia,Kraków	50.06143	19.93658	P	PPLA	PL		77				755050		219	Europe/Warsaw	2019-09-05
