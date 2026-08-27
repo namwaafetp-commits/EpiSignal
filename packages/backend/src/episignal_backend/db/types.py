@@ -61,6 +61,21 @@ class ProcessingStatus(StrEnum):
     NEEDS_REVIEW = "needs_review"
 
 
+class Precision(StrEnum):
+    """How specific a resolved location actually is.
+
+    Ordered from most to least specific. `unresolved` is a real answer, not a
+    missing one: the article named a place the gazetteer could not match, which
+    is different from the article naming no place at all.
+    """
+
+    PLACE = "place"
+    ADMIN2 = "admin2"
+    ADMIN1 = "admin1"
+    COUNTRY = "country"
+    UNRESOLVED = "unresolved"
+
+
 class AiPurpose(StrEnum):
     CLASSIFICATION = "classification"
     EXTRACTION = "extraction"
