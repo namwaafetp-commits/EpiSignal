@@ -1,16 +1,32 @@
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+VERSIONS = Path(__file__).parents[3] / "database" / "migrations" / "versions"
+
+
+def _revision_source(name: str) -> str:
+    return (VERSIONS / f"{name}.py").read_text(encoding="utf-8")
+
+
+def _load_revision(name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260827_0005"]
+    assert scripts.get_heads() == ["20260827_0006"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -180,3 +196,22 @@ def test_the_offline_downgrade_still_renders_through_the_ledger_guard() -> None:
 
     assert "drop table ai_requests" in sql
     assert "drop table ai_models" in sql
+
+
+def test_the_geocoding_revision_follows_the_ai_extraction_revision() -> None:
+    module = _load_revision("20260827_0006_geocoding")
+    assert module.revision == "20260827_0006"
+    assert module.down_revision == "20260827_0005"
+
+
+def test_the_geocoding_downgrade_drops_both_tables_it_created() -> None:
+    source = _revision_source("20260827_0006_geocoding")
+    assert 'op.drop_table("signal_locations")' in source
+    assert 'op.drop_table("gazetteer_places")' in source
+
+
+def test_the_geocoding_migration_does_not_touch_the_extraction_column() -> None:
+    # `signals.ai_extraction` is Sub-project C's record of what the model said.
+    # This sub-project records its answer beside it and never edits it.
+    source = _revision_source("20260827_0006_geocoding")
+    assert "ai_extraction" not in source
