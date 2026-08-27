@@ -49,16 +49,6 @@ class RetryResult:
     failed: int = 0
 
 
-def run_retry(
-    repository: DiscoveryRepository,
-    connector: DiscoveryConnector,
-    *,
-    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-    batch_size: int = DEFAULT_RETRY_BATCH,
-) -> RetryResult:
-    return RetryResult()
-
-
 def run_discovery(
     repository: DiscoveryRepository,
     connector: DiscoveryConnector,
@@ -145,5 +135,76 @@ def run_discovery(
         deferred=len(candidates) - len(selected),
         stored=stored,
         needs_review=needs_review,
+        failed=failed,
+    )
+
+
+def run_retry(
+    repository: DiscoveryRepository,
+    connector: DiscoveryConnector,
+    *,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    batch_size: int = DEFAULT_RETRY_BATCH,
+) -> RetryResult:
+    """Give stubs another chance at their pages.
+
+    Retry cannot come from re-discovery: the same article found again hashes
+    identically and is dropped by the seen-URL check, so the stub rows have to
+    be read back. The attempt budget is enforced in the selection query, which
+    is what stops an unreachable page being fetched forever.
+    """
+    stubs = repository.stubs_awaiting_retrieval(max_attempts=max_attempts, limit=batch_size)
+
+    promoted = 0
+    still_failing = 0
+    redundant = 0
+    failed = 0
+
+    for waiting in stubs:
+        try:
+            signal = connector.retrieve(waiting.article, waiting.first_seen_at)
+        except RetrievalFailed as reason:
+            try:
+                repository.record_failed_attempt(waiting.signal_id)
+                repository.commit()
+            except Exception as error:
+                repository.rollback()
+                failed += 1
+                logger.error(
+                    "Could not record a failed attempt for %s (%s)",
+                    waiting.article.canonical_url,
+                    type(error).__name__,
+                )
+            else:
+                still_failing += 1
+                logger.info(
+                    "Retry of %s still failing (%s)",
+                    waiting.article.canonical_url,
+                    reason,
+                )
+            continue
+
+        try:
+            if repository.promote(waiting.signal_id, signal):
+                promoted += 1
+            else:
+                # The URL already carries this content under another row, so the
+                # stub is redundant rather than promotable. It is left in place.
+                redundant += 1
+            repository.commit()
+        except Exception as error:
+            repository.rollback()
+            failed += 1
+            logger.error(
+                "Could not promote %s (%s)",
+                waiting.article.canonical_url,
+                type(error).__name__,
+            )
+
+    return RetryResult(
+        attempted=len(stubs),
+        promoted=promoted,
+        still_failing=still_failing,
+        redundant=redundant,
         failed=failed,
     )
