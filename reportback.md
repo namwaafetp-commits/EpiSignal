@@ -83,9 +83,18 @@ uv run mypy apps/api/src packages/backend/src
 
 ## Next Steps for Subsequent Sub-Projects
 
-- **Sub-Project B (Signal Processing & Content Extraction):**
-  - Read signals with `processing_status='fetched'`.
+The sub-project boundaries are fixed by
+`docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md`, which is the
+authority on what each letter covers.
+
+- **Sub-Project B (Stage 0: deduplication and rule filtering):**
+  - Reject obviously irrelevant articles from GDELT metadata before any page fetch.
+  - Resolve syndicated copies to one primary signal per story, before any AI call.
+  - Designed in `docs/superpowers/specs/2026-08-27-gdelt-stage0-filtering-design.md`.
+- **Sub-Project C (AI: classification, extraction, escalation, cost logging):**
+  - Read signals with `processing_status='normalized'`.
   - Extract disease entities, locations, date ranges, and case/fatality counts from `raw_text`.
-- **Sub-Project C (Event Aggregation & Disambiguation):**
+- **Sub-Project D (Story clustering, event matching, dual scoring):**
   - Cluster multi-source signals (WHO, ECDC, GDELT local media) into deduplicated `Event` records.
   - Preserve provenance linking observations back to individual signals.
+  - Compute `early_signal_score` and `evidence_score` separately, never merged.
