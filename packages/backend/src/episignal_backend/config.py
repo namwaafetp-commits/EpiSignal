@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated, Literal
 from urllib.parse import urlparse
@@ -72,6 +73,23 @@ class Settings(BaseSettings):
     stage0_candidate_window_hours: int = Field(default=72, ge=1, le=720)
     stage0_batch_size: int = Field(default=200, ge=1, le=5000)
 
+    openrouter_api_key: SecretStr | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    ai_signal_batch_limit: int = Field(default=100, ge=1, le=5000)
+    ai_batch_size: int = Field(default=20, ge=1, le=200)
+    # The binding guard under a free ladder: free endpoints are rated per
+    # request and per day, so a run that respects a dollar cap can still burn a
+    # day's quota in a minute.
+    ai_max_requests_per_run: int = Field(default=200, ge=1, le=10000)
+    ai_max_cost_usd_per_run: Decimal = Field(default=Decimal("0.50"), ge=0)
+    ai_min_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
+    ai_max_input_characters: int = Field(default=12000, ge=500, le=200000)
+    ai_request_delay_seconds: float = Field(default=1.0, ge=0.0, le=60.0)
+    ai_request_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
+    ai_max_attempts_per_tier: int = Field(default=3, ge=1, le=10)
+    ai_max_tier: int = Field(default=3, ge=1, le=3)
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
@@ -95,6 +113,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES must cover "
                 "EPISIGNAL_GDELT_POLL_INTERVAL_MINUTES"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def batch_fits_the_run(self) -> "Settings":
+        # A batch larger than the run's queue would make the guards unreadable:
+        # the run would appear to stop early when it had simply asked for more
+        # signals than it selected.
+        if self.ai_batch_size > self.ai_signal_batch_limit:
+            raise ValueError(
+                "EPISIGNAL_AI_BATCH_SIZE must not exceed EPISIGNAL_AI_SIGNAL_BATCH_LIMIT"
             )
         return self
 

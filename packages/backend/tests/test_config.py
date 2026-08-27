@@ -141,3 +141,60 @@ def test_a_similarity_threshold_above_one_is_rejected() -> None:
             stage0_title_similarity=1.5,
             _env_file=None,
         )
+
+
+def build_settings(**overrides: str) -> Settings:
+    values: dict[str, object] = {"database_url": DATABASE_URL, "_env_file": None}
+    for k, v in overrides.items():
+        key = k[len("EPISIGNAL_") :].lower() if k.startswith("EPISIGNAL_") else k
+        values[key] = v
+    return Settings(**values)  # type: ignore[arg-type]
+
+
+def test_the_ai_defaults_describe_a_free_ladder() -> None:
+    settings = build_settings()
+
+    assert settings.ai_max_tier == 3
+    assert settings.ai_batch_size == 20
+    assert settings.ai_max_requests_per_run == 200
+    assert settings.ai_min_confidence == 0.60
+
+
+def test_the_openrouter_key_is_absent_by_default() -> None:
+    settings = build_settings()
+
+    assert settings.openrouter_api_key is None
+
+
+def test_the_openrouter_key_is_not_printed_by_repr() -> None:
+    settings = build_settings(EPISIGNAL_OPENROUTER_API_KEY="sk-secret-value")
+
+    assert "sk-secret-value" not in repr(settings)
+
+
+def test_a_batch_larger_than_the_run_limit_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(
+            EPISIGNAL_AI_BATCH_SIZE="500", EPISIGNAL_AI_SIGNAL_BATCH_LIMIT="100"
+        )
+
+
+def test_a_confidence_floor_outside_zero_to_one_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_AI_MIN_CONFIDENCE="1.5")
+
+
+def test_a_zero_request_cap_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_AI_MAX_REQUESTS_PER_RUN="0")
+
+
+def test_a_negative_cost_cap_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_AI_MAX_COST_USD_PER_RUN="-1")
+
+
+def test_a_tier_above_the_ladder_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_AI_MAX_TIER="4")
+
