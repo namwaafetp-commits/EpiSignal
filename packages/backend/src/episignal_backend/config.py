@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     ai_max_attempts_per_tier: int = Field(default=3, ge=1, le=10)
     ai_max_tier: int = Field(default=3, ge=1, le=3)
 
+    geocode_batch_size: int = Field(default=200, ge=1, le=5000)
+    geocode_max_signals_per_run: int = Field(default=2000, ge=1, le=100000)
+    # Stamped onto every row this run writes, and the value `--stale` compares
+    # against. Bump it whenever the seed artifact is regenerated, or a refreshed
+    # gazetteer reaches only signals processed after it.
+    gazetteer_source: str = Field(default="geonames-2026-08-27", min_length=1)
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
@@ -104,6 +111,13 @@ class Settings(BaseSettings):
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise ValueError("EPISIGNAL_CORS_ORIGINS must contain HTTP(S) origins")
         return values
+
+    @field_validator("gazetteer_source")
+    @classmethod
+    def gazetteer_source_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("EPISIGNAL_GAZETTEER_SOURCE must name the gazetteer in use")
+        return value
 
     @model_validator(mode="after")
     def window_covers_the_interval(self) -> "Settings":
@@ -124,6 +138,15 @@ class Settings(BaseSettings):
         if self.ai_batch_size > self.ai_signal_batch_limit:
             raise ValueError(
                 "EPISIGNAL_AI_BATCH_SIZE must not exceed EPISIGNAL_AI_SIGNAL_BATCH_LIMIT"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def geocode_batch_fits_the_run(self) -> "Settings":
+        if self.geocode_batch_size > self.geocode_max_signals_per_run:
+            raise ValueError(
+                "EPISIGNAL_GEOCODE_BATCH_SIZE must not exceed "
+                "EPISIGNAL_GEOCODE_MAX_SIGNALS_PER_RUN"
             )
         return self
 

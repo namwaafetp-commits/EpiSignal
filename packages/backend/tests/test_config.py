@@ -195,3 +195,23 @@ def test_a_negative_cost_cap_is_rejected() -> None:
 def test_a_tier_above_the_ladder_is_rejected() -> None:
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_AI_MAX_TIER="4")
+
+
+def test_geocoding_defaults_are_set() -> None:
+    settings = build_settings()
+    assert settings.geocode_batch_size == 200
+    assert settings.geocode_max_signals_per_run == 2000
+    assert settings.gazetteer_source == "geonames-2026-08-27"
+
+
+def test_the_geocoding_batch_must_fit_the_run() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(
+            EPISIGNAL_GEOCODE_BATCH_SIZE="500",
+            EPISIGNAL_GEOCODE_MAX_SIGNALS_PER_RUN="100",
+        )
+
+
+def test_the_gazetteer_source_must_not_be_blank() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_GAZETTEER_SOURCE="   ")
