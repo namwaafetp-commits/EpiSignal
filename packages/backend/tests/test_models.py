@@ -125,3 +125,16 @@ def test_source_records_its_domain() -> None:
 
     assert Source.__table__.c.domain.nullable
     assert Source.__table__.c.domain.unique
+
+
+def test_filter_rule_groups_are_stored_as_their_values() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+
+    assert FilterRuleGroup.TITLE_EXCLUSION.value == "title_exclusion"
+    assert FilterRuleGroup.DOMAIN_BLOCKLIST.value == "domain_blocklist"
+
+
+def test_duplicate_is_a_processing_status() -> None:
+    from episignal_backend.db.types import ProcessingStatus
+
+    assert ProcessingStatus.DUPLICATE.value == "duplicate"
