@@ -1,9 +1,11 @@
-# Handoff — Sub-Project C: AI Classification, Extraction, and Cost Accounting
+# Handoff — Sub-Project D: Story Clustering, Event Matching, and Dual Scoring
 
 **Date:** 2026-08-27
-**Branch:** `main` (clean, 357 passing tests)
-**Head:** `e39ab9d` — design, plan, and `CONTEXT.md` committed
-**State:** Sub-project B (Stage 0) is complete, verified, and merged. The Sub-project C **design is approved** and the implementation plan is written. **No Sub-project C code exists yet.** Your job is to execute the plan.
+**Branch:** `main` (clean, 497 passing tests)
+**Head:** `0172a5c` — Sub-project C merged; `verify` script repaired
+**State:** Sub-projects A, B, and C are complete, verified, and merged. **Sub-project
+D has no design document and no implementation plan yet.** The design cycle is the
+first piece of work, not the implementation.
 
 ---
 
@@ -13,25 +15,27 @@ Read in this exact order:
 
 1. This file (`HANDOFF.md`);
 2. `AGENTS.md` — model routing, project skills, TDD rules, token efficiency, provenance principles;
-3. `CONTEXT.md` — the naming authority. Use tier, escalation, source span, grounding, cost row, unavailable, and verdict exactly as defined there;
+3. `CONTEXT.md` — the naming authority. Use signal, primary, event, observation, location role, early signal score, evidence score, and verification status exactly as defined there;
 4. `docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md` — the umbrella architecture and its invariants;
-5. `docs/superpowers/specs/2026-08-27-ai-extraction-design.md` — **the approved design for this sub-project**;
-6. `docs/superpowers/plans/2026-08-27-ai-extraction.md` — **the 21-task implementation plan you are executing**;
+5. `docs/superpowers/specs/2026-08-27-ai-extraction-design.md` — Sub-project C's design, whose "Out of scope" section names what D inherits;
+6. `docs/reports/2026-08-27-subproject-c-report.md` — Sub-project C's completion report, including its two-axis review findings;
 7. `report.md` — the completion ledger for Sub-project B.
 
-Then begin at Task 1 of the plan. Do the tasks in order. Each is one red-green
-cycle and one commit, and each task's failing test depends only on files that
-task or an earlier task creates.
+There is no Sub-project D design document or plan to read, because none has been
+written. Produce them before writing code, in the same cycle A, B, and C each
+followed: brainstorm the scope, write the design under
+`docs/superpowers/specs/`, get it approved, write the task plan under
+`docs/superpowers/plans/`, then execute it one red-green cycle and one commit at
+a time.
 
 ---
 
 ## Windows Environment Facts
 
-- **Python:** Run all commands through `uv run`. Do not activate virtual environments manually.
-- **Node / pnpm:** `pnpm` is not on `PATH`. Always use `corepack pnpm <command>` (e.g. `corepack pnpm verify`, `corepack pnpm db:migrate`, `corepack pnpm extract:signals`).
-- **PowerShell:** Commands run under Windows PowerShell 5.1 (no `&&`, no ternary, no `??`).
-- **UTF-8 BOM:** When generating files via PowerShell scripts, strip UTF-8 BOM (`\xef\xbb\xbf`) or use standard python writers.
-- **Bare `python` is not on `PATH`.** Use `uv run python`.
+- **Python:** Run all commands through `uv run`. Do not activate virtual environments manually. Bare `python` is not on `PATH`; use `uv run python`.
+- **Node / pnpm:** `pnpm` is not on `PATH`, but `corepack` ships with Node and is. Always enter the workspace through `corepack pnpm <command>` (for example `corepack pnpm verify`, `corepack pnpm db:migrate`, `corepack pnpm extract:signals`). Composite scripts in the root `package.json` invoke their own sub-steps through `corepack` for the same reason; keep it that way when adding scripts.
+- **PowerShell:** Commands run under Windows PowerShell 5.1 (no `&&`, no ternary, no `??`). Chain with `;`.
+- **UTF-8 BOM:** When generating files via PowerShell scripts, strip the UTF-8 BOM or use standard python writers.
 
 ---
 
@@ -44,20 +48,22 @@ uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy apps/api/src packages/backend/src
+corepack pnpm verify
 ```
 
-**Expected Baseline Output:**
-- `357 passed`
+**Expected baseline output:**
+- `497 passed, 1 warning`
 - `All checks passed!`
-- `94 files already formatted`
-- `Success: no issues found in 51 source files`
+- `119 files already formatted`
+- `Success: no issues found in 64 source files`
+- `corepack pnpm verify` runs format, lint, typecheck, both test suites, the contracts diff, and the Next.js build, and exits 0
 
-Note: this repository's pytest configuration suppresses the summary line. Count
-the progress dots, or run a subset with `-v`, to confirm 357.
+The database is at migration revision `20260827_0005_ai_extraction`, with the
+three-tier free AI model roster seeded.
 
 ---
 
-## Current Architecture & Pipeline State
+## Current Architecture and Pipeline State
 
 ```text
 [GDELT 15m Poll]
@@ -69,86 +75,119 @@ the progress dots, or run a subset with `-v`, to confirm 357.
 [Polite Web Retrieval] (ArticleFetcher with robots.txt compliance & rate limiting)
        │  ↳ Failures stored as stubs (`processing_status = 'needs_review'`)
        ▼
-[Gate 2: Conservative Deduplication] (pnpm dedupe:signals / run_dedupe)
+[Gate 2: Conservative Deduplication] (corepack pnpm dedupe:signals)
        │  ↳ Syndicated copies linked via `duplicate_of_signal_id` (`processing_status = 'duplicate'`)
        │  ↳ Independent primary stories marked (`processing_status = 'normalized'`)
        ▼
-[Sub-Project C: AI Classification & Extraction] <--- (YOU ARE HERE, nothing built yet)
+[Gate 3: AI Classification & Grounded Extraction] (corepack pnpm extract:signals)
        │  ↳ Batched relevance verdict (`processing_status = 'classified'`)
-       │  ↳ Grounded extraction (`processing_status = 'extracted'`, `signals.ai_extraction`)
+       │  ↳ Grounded extraction (`processing_status = 'extracted'`, `signals.ai_extraction`, `signals.disease_id`)
        │  ↳ Every request costed in `ai_requests`
        ▼
-[Sub-Project D: Clustering, Event Matching, Dual Scoring]
+[Sub-Project D: Geocoding, Clustering, Event Matching, Dual Scoring] <--- (YOU ARE HERE, nothing built yet)
+       │  ↳ Extracted place names resolved to coordinates (`processing_status = 'geocoded'`)
+       │  ↳ Signals grouped into story clusters
+       │  ↳ Clusters matched to an existing event or creating a new one (`processing_status = 'matched'`)
+       │  ↳ `early_signal_score` and `evidence_score` computed separately
+       ▼
+[Sub-Project E: Signal Radar API, Signal Radar UI, admin monitoring]
 ```
 
 ---
 
-## What Was Decided, and What It Changed
+## What Sub-Project D Inherits
 
-The design is approved as written. Four decisions differ from what the earlier
-handoff sketched, and the plan already reflects all of them.
+**The event schema already exists.** The foundation migration created `events`,
+`event_signals`, `event_observations`, and `event_locations`, along with the
+`EventStatus`, `RelationshipType`, `LocationRole`, and `VerificationStatus`
+vocabularies. The GDELT path has never written a row to any of them. D is the
+sub-project that first fills them, so its design decides how, not whether, these
+tables are used.
 
-1. **Free OpenRouter endpoints only, on all three tiers.** No paid model is
-   seeded and expected spend is 0.00 USD. This is stricter than the umbrella
-   architecture's 0–5 USD per month budget, not in conflict with it. The price
-   table, the cost computation, and the cost cap are all still built, so adding a
-   paid rung later is a seed row and a key, never a code change.
-2. **Requests are the scarce resource, not dollars.** Free endpoints are limited
-   per minute and per day. `EPISIGNAL_AI_MAX_REQUESTS_PER_RUN` is the guard that
-   actually binds; the cost cap guards a tier that does not exist yet.
-3. **The model roster is a seeded table (`ai_models`), not configuration.** Free
-   endpoints are withdrawn without notice, so replacing one must not require a
-   deployment. The three seeded ids come from three different vendors on purpose:
-   a ladder whose rungs share a family fails the same way on the same document.
-4. **Every stored number carries a `source_span` that is checked against
-   `raw_text`.** This is the spine of the whole sub-project. An extracted count
-   whose span does not appear in the article is a fabrication, and the extraction
-   is rejected whole rather than partially salvaged.
+**`ProcessingStatus` already reserves D's states.** `geocoded` and `matched` are
+declared in `db/types.py` and are so far unreachable. D makes them reachable.
+
+**`events.attention_score` and `events.confidence_score` already exist, and are
+not the two scores D must compute.** `CONTEXT.md` names the two scores
+`early_signal_score` and `evidence_score`, and the umbrella architecture forbids
+merging them. Reconciling the two existing event columns with the two named
+scores is a design decision D has to make explicitly, not a detail to settle
+while coding.
+
+**Extractions carry ungeocoded place names.** Sub-project C stores locations in
+`signals.ai_extraction` as text with source spans. Nothing has resolved them to
+coordinates, and no geocoding provider has been chosen.
 
 ---
 
 ## Invariants You Must Never Break
 
-1. **Signals with `duplicate`, `needs_review`, or `fetched` are never sent to AI.**
-   Only `normalized` signals enter classification, and only `classified` signals
-   with `public_health_relevant = true` enter extraction. The selection queries
-   are the enforcement, and the plan tests them directly.
-2. **AI confidence is not ground truth.** No model confidence value promotes a
-   signal to `officially_confirmed`. Nothing in this sub-project writes
-   `verification_status` at all.
-3. **Cheap before expensive.** Deterministic checks run before model calls, and
-   escalation happens only when a check rejects an answer.
-4. **Official source provenance remains untouched.** WHO DON and ECDC pipelines
-   operate independently; their models and observation records stay intact.
-5. **A number without its span is never stored.** If a change would let an
-   ungrounded number through, the change is wrong.
-6. **"Could not ask" is not "asked and could not trust."** A rate limit, timeout,
-   or exhausted guard leaves the signal exactly as it was, for the next run. Only
-   a validated rejection at every tier sends it to `needs_review`.
-7. **Decision modules import neither SQLAlchemy nor httpx.** Only
-   `ai/repository.py` imports SQLAlchemy; only `ai/openrouter.py` imports httpx.
-8. **Absence is `None`, never `False` and never `0`.** An empty `transmission`
-   object is not a finding.
+The umbrella architecture's invariants all still hold. These are the ones D is
+most likely to breach:
+
+1. **Conservative matching.** Falsely merging two events is worse than carrying a
+   temporary duplicate. Matching weights and thresholds stay configurable, and the
+   ambiguous band escalates for review rather than guessing.
+2. **Two scores, never merged.** `early_signal_score` answers how interesting a
+   signal is; `evidence_score` answers how strongly it is supported. A local
+   newspaper report can be 92 and 38 at once.
+3. **Confirmation is earned, not inferred.** A GDELT-only event begins at
+   `monitoring`. `officially_confirmed` requires an official source, and no model
+   confidence value can grant it.
+4. **An event's history is its observations.** Write a new `event_observations`
+   row; never overwrite a running total on the event.
+5. **A number without its span is never stored.** Observations promoted out of
+   `signals.ai_extraction` keep their grounding.
+6. **Official source provenance is only added to.** The WHO DON and ECDC pipelines
+   already write events and observations; D joins that history rather than
+   rewriting it.
+7. **Decision modules import neither SQLAlchemy nor httpx.** Sub-project C's seam
+   discipline is the house pattern: pure decision modules, one repository module
+   for the database, one adapter module per network provider.
+8. **Absence is `None`, never `False` and never `0`.**
+
+---
+
+## Known Follow-Ups Carried Forward
+
+From Sub-project C's two-axis review. None is blocking, and each is worth a
+decision during D's design:
+
+- `ai_request_delay_seconds` is declared in `config.py`, but pacing happens per
+  request batch rather than between individual requests.
+- `DEFAULT_MIN_CONFIDENCE` in `ai/extract.py` is `0.50`, while `extract_runner.py`
+  passes `settings.ai_min_confidence` (`0.60`). The constant is dead in practice
+  and misleading in isolation.
+- `SqlAlchemyAiRepository.record_extraction` writes `summary` and `signal_type`
+  alongside `ai_extraction` and `disease_id`, which is wider than its name implies.
+- `ladder.climb()` records `latency_ms = 0` on `ModelUnavailable`, where no round
+  trip was ever timed. A null would say what happened; a zero says something false.
+- Two stale git worktrees exist. `.worktrees/ingestion` holds
+  `feat/who-don-ingestion`, which is merged into `main` and can be pruned.
+  `C:/Users/DELL/.codex/worktrees/f11d/EpiSignal` holds `feat/ai-extraction`,
+  which is **not** merged: it carries six documentation-only commits containing an
+  earlier draft of the Sub-project C design and plan that `main` superseded.
+  Confirm nothing on it is still wanted before removing either.
 
 ---
 
 ## Before You Can Run It Live
 
-Task 21 is the only task that touches the network or a database. It needs:
+Any live pass needs `apps/api/.env` populated and a reachable PostgreSQL with
+PostGIS. `EPISIGNAL_OPENROUTER_API_KEY` is already required by the extraction
+pass. Sub-project D will add at least one geocoding provider, whose key and rate
+limits belong in the same file and whose free-tier terms should be confirmed
+during design rather than during implementation.
 
-- `EPISIGNAL_OPENROUTER_API_KEY` set in `apps/api/.env`;
-- the three seeded model ids in `database/seeds/ai_models.json` confirmed against
-  the live OpenRouter model list — they were written on 2026-08-27 and free
-  endpoints disappear without notice;
-- at least one signal at `processing_status = 'normalized'` in the database.
-
-Everything before Task 21 runs with no key, no socket, and no database.
+Everything except the final live-verification task must run with no key, no
+socket, and no database.
 
 ---
 
 ## Definition of Done
 
-The plan's own acceptance criteria, all fourteen of them, plus the project gates:
+Sub-project D's own plan will carry its acceptance criteria. The project gates do
+not change:
 
 ```powershell
 uv run pytest
@@ -158,6 +197,6 @@ uv run mypy apps/api/src packages/backend/src
 corepack pnpm verify
 ```
 
-Then use the `code-review` skill against `e39ab9d`, then `verify-and-stop`, and
-write the completion report into `report.md` in the shape Sub-project B's entry
-uses.
+Then use the `code-review` skill against the base commit, then `verify-and-stop`,
+then write the completion report into `docs/reports/` in the shape Sub-project C's
+entry uses.
