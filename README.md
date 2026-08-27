@@ -84,10 +84,12 @@ pnpm test              # web and Python tests
 pnpm typecheck         # tsc and mypy
 pnpm contracts:check   # regenerate contracts and fail on drift
 pnpm db:check          # readiness probe against the configured database
-pnpm db:seed           # seed canonical diseases, sources, and GDELT query rules
+pnpm db:seed           # seed canonical diseases, sources, GDELT query rules, and Stage 0 filter rules
 pnpm discover:gdelt    # discover local media signals through GDELT DOC 2.0
+pnpm dedupe:signals    # resolve syndicated copies to one primary signal
 pnpm ingest:who        # ingest WHO Disease Outbreak News
 pnpm ingest:ecdc       # ingest ECDC Epidemiological Updates
+
 ```
 
 `pnpm verify` needs no credentials.
