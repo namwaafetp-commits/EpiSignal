@@ -173,3 +173,129 @@ def test_a_resolved_admin1_narrows_the_scope_before_the_name_is_matched() -> Non
         gazetteer,
     )
     assert gazetteer.calls[0] == ("Lagos", "exact", "NG", "05")
+
+
+def test_two_survivors_coarsen_to_the_admin1_centroid() -> None:
+    gazetteer = StubGazetteer(
+        by_form={
+            ("Springfield", "exact", "NG"): (
+                candidate(1, "Springfield", latitude=1.0, longitude=1.0),
+                candidate(2, "Springfield", latitude=2.0, longitude=2.0),
+            )
+        },
+        admin1="05",
+        centroids={
+            ("NG", "05"): candidate(
+                9001, "Lagos State", precision="admin1", latitude=6.6, longitude=3.5
+            )
+        },
+    )
+    resolved = resolve_place(
+        ExtractedPlace(
+            role=LocationRole.PRIMARY,
+            country_name="Nigeria",
+            admin1_name="Lagos State",
+            place_name="Springfield",
+        ),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.ADMIN1
+    assert resolved.confidence == 0.55
+    assert resolved.latitude == 6.6
+    assert resolved.resolved_name == "Lagos State"
+
+
+def test_coarsening_never_returns_one_of_the_tied_candidates() -> None:
+    # The rule the sub-project exists to enforce. Neither candidate may be
+    # chosen, by population or by anything else.
+    gazetteer = StubGazetteer(
+        by_form={
+            ("Springfield", "exact", "NG"): (
+                candidate(1, "Springfield", latitude=1.0, longitude=1.0),
+                candidate(2, "Springfield", latitude=2.0, longitude=2.0),
+            )
+        },
+        admin1="05",
+        centroids={
+            ("NG", "05"): candidate(
+                9001, "Lagos State", precision="admin1", latitude=6.6, longitude=3.5
+            )
+        },
+    )
+    resolved = resolve_place(
+        ExtractedPlace(
+            role=LocationRole.PRIMARY,
+            country_name="Nigeria",
+            admin1_name="Lagos State",
+            place_name="Springfield",
+        ),
+        gazetteer,
+    )
+    assert resolved.geonames_id not in {1, 2}
+
+
+def test_an_ambiguous_name_with_no_admin1_coarsens_to_the_country_centroid() -> None:
+    gazetteer = StubGazetteer(
+        by_form={
+            ("Springfield", "exact", "NG"): (
+                candidate(1, "Springfield"),
+                candidate(2, "Springfield"),
+            )
+        },
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        },
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Springfield"),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.COUNTRY
+    assert resolved.confidence == 0.30
+    assert resolved.latitude == 9.0
+
+
+def test_a_name_absent_from_the_gazetteer_coarsens_the_same_way() -> None:
+    gazetteer = StubGazetteer(
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        }
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Nowheresville"),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.COUNTRY
+    assert resolved.place_name == "Nowheresville"
+
+
+def test_a_country_named_with_no_town_resolves_to_the_country_centroid() -> None:
+    gazetteer = StubGazetteer(
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        }
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.AFFECTED_AREA, country_name="Nigeria"),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.COUNTRY
+    assert resolved.role == LocationRole.AFFECTED_AREA
+
+
+def test_a_country_with_no_centroid_at_all_is_unresolved() -> None:
+    gazetteer = StubGazetteer()
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Lagos"),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.UNRESOLVED
+    assert resolved.latitude is None
+    assert resolved.confidence is None
+    assert resolved.country_code == "NG"

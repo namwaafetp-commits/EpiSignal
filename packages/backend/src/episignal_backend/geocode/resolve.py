@@ -97,6 +97,36 @@ def _unique_match(
     return None
 
 
+def _unresolved(place: ExtractedPlace, *, country_code: str | None = None) -> ResolvedLocation:
+    return ResolvedLocation(
+        role=place.role,
+        country_name=place.country_name,
+        admin1_name=place.admin1_name,
+        place_name=place.place_name,
+        precision=Precision.UNRESOLVED,
+        country_code=country_code,
+        confidence=None,
+    )
+
+
+def _coarsen(
+    place: ExtractedPlace,
+    gazetteer: GazetteerRepository,
+    *,
+    country_code: str,
+    admin1_code: str | None,
+) -> ResolvedLocation:
+    """Answer at the least specific precision that is still true."""
+    if admin1_code is not None:
+        centre = gazetteer.centroid(country_code=country_code, admin1_code=admin1_code)
+        if centre is not None:
+            return _accept(place, centre, form=None, precision=Precision.ADMIN1)
+    centre = gazetteer.centroid(country_code=country_code, admin1_code=None)
+    if centre is not None:
+        return _accept(place, centre, form=None, precision=Precision.COUNTRY)
+    return _unresolved(place, country_code=country_code)
+
+
 def resolve_place(place: ExtractedPlace, gazetteer: GazetteerRepository) -> ResolvedLocation:
     """Run the ladder over one extracted place, exactly once."""
     country_code = resolve_country(place.country_name, gazetteer.country_aliases())
@@ -115,4 +145,4 @@ def resolve_place(place: ExtractedPlace, gazetteer: GazetteerRepository) -> Reso
             found, form = match
             return _accept(place, found, form=form)
 
-    raise NotImplementedError("the coarsening path arrives in a later task")
+    return _coarsen(place, gazetteer, country_code=country_code, admin1_code=admin1_code)
