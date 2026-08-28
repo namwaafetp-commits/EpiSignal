@@ -55,7 +55,7 @@ Tick each one in the same commit as its work.
 - [x] 2. The extraction carries an English title and a brief
 - [x] 3. Privacy scans the title and the brief
 - [x] 4. The prompt asks for English and for five slots
-- [ ] 5. The version, and reading what we already stored
+- [x] 5. The version, and reading what we already stored
 - [ ] 6. Persistence stamps the version and writes the brief
 - [ ] 7. Matching reads stored extractions tolerantly
 - [ ] 8. The backfill selection

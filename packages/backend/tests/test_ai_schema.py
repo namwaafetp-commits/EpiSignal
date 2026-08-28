@@ -2,11 +2,14 @@ import pytest
 from episignal_backend.ai.schema import (
     BRIEF_SLOT_COUNT,
     BRIEF_SLOTS,
+    EXTRACTION_SCHEMA_VERSION,
+    EXTRACTION_VERSION_KEY,
     BriefPoint,
     BriefSlot,
     Extraction,
     GroundedCount,
     GroundedFlag,
+    StoredExtractionPayload,
 )
 from pydantic import ValidationError
 
@@ -179,3 +182,41 @@ def test_a_classification_response_with_no_results_is_rejected() -> None:
 
     with pytest.raises(ValidationError):
         ClassificationResponse.model_validate({"results": []})
+
+
+def test_a_stored_payload_tolerates_the_version_key_the_strict_model_forbids() -> None:
+    stored = dict(minimal())
+    stored[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
+
+    payload = StoredExtractionPayload.model_validate(stored)
+
+    assert payload.title_english == "Angola reports growing cholera outbreak in Luanda"
+    assert len(payload.brief) == BRIEF_SLOT_COUNT
+
+
+def test_a_row_written_before_this_item_is_still_readable() -> None:
+    old = {
+        "signal_type": "outbreak_report",
+        "disease": {"name": "Cholera", "confidence": 0.97},
+        "epidemiology": {"confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"}},
+        "confidence": 0.9,
+    }
+
+    payload = StoredExtractionPayload.model_validate(old)
+
+    assert payload.brief == ()
+    assert payload.title_english is None
+    assert payload.epidemiology.confirmed_cases is not None
+
+
+def test_a_stored_payload_is_an_extraction() -> None:
+    assert isinstance(StoredExtractionPayload.model_validate(minimal()), Extraction)
+
+
+def test_the_strict_model_still_refuses_the_version_key() -> None:
+    stored = dict(minimal())
+    stored[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
+
+    with pytest.raises(ValidationError):
+        Extraction.model_validate(stored)
+

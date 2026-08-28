@@ -18,6 +18,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from episignal_backend.db.types import LocationRole, SignalType
 
+# Bumped when the shape of a stored extraction changes. Version 1 is every row
+# written before the brief existed: it has a `summary` and no `brief`.
+EXTRACTION_SCHEMA_VERSION = 2
+EXTRACTION_VERSION_KEY = "extraction_schema_version"
+
 SPAN_MAX_CHARACTERS = 300
 BRIEF_POINT_MAX_CHARACTERS = 200
 TITLE_MAX_CHARACTERS = 300
@@ -195,6 +200,27 @@ class Extraction(BaseModel):
         if tuple(point.slot for point in value) != BRIEF_SLOTS:
             raise ValueError("brief must carry exactly one point per slot, in slot order")
         return value
+
+
+class StoredExtractionPayload(Extraction):
+    """A stored extraction, read back out of `signals.ai_extraction`.
+
+    Strict on the way in, tolerant on the way back. The strict model is the
+    contract with a model and must keep rejecting a missing brief; this one
+    reads rows this system wrote itself, including rows written before the
+    brief existed and rows carrying the version key that `Extraction` forbids.
+
+    A version 1 row read this way has an empty brief and no English title. That
+    is the honest answer — it has neither — and the backfill is what changes it.
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    # Widening the parent's types is what makes an old row readable; mypy is
+    # right that this is not substitutable in general, and wrong that it matters
+    # here, because nothing writes through this model.
+    title_english: str | None = None  # type: ignore[assignment]
+    brief: tuple[BriefPoint, ...] = ()
 
 
 def extraction_json_schema() -> dict[str, Any]:
