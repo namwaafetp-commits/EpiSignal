@@ -42,7 +42,7 @@ Tick each one in the same commit as its work.
 - [x] 3. The catch-up window
 - [x] 4. The `PipelineRunRepository` boundary
 - [x] 5. The persisted vocabularies
-- [ ] 6. The chain runner and its failure policy
+- [x] 6. The chain runner and its failure policy
 - [ ] 7. The `PipelineRun` model
 - [ ] 8. The migration `20260828_0008_pipeline_runs`
 - [ ] 9. The schema check knows the new table
