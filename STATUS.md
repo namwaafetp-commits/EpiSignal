@@ -74,7 +74,7 @@ verified report back to the planner; do not mark `E` verified.
 
 ## Verified baseline
 
-Everything below was true at commit `99286aa` on `main`, tree clean. Recorded
+Everything below was true at commit `1a31480` on `main`, tree clean. Recorded
 from the `E` run logged untruncated in
 [docs/reports/2026-08-28-subproject-e-report.md](docs/reports/2026-08-28-subproject-e-report.md).
 
@@ -82,7 +82,7 @@ from the `E` run logged untruncated in
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
 | Python tests | 196 passed |
-| Web tests | 49 passed, 8 files |
+| Web tests | 52 passed, 8 files |
 | Lint and format | `ruff check` and `eslint` clean, 187 files formatted |
 | Types | `tsc` and `mypy` clean across 47 source files |
 | Migration revision | `20260828_0008_pipeline_runs` |

@@ -72,13 +72,13 @@ $ vitest run
  ✓ src/lib/api-signals.test.ts (3 tests) 18ms
  ✓ src/lib/api-radar.test.ts (15 tests) 37ms
  ✓ src/lib/radar-map-helpers.test.ts (7 tests) 18ms
- ✓ src/lib/api-pipeline.test.ts (8 tests) 18ms
- ✓ src/components/signal-map.test.tsx (3 tests) 39ms
- ✓ src/components/pipeline-monitor.test.tsx (5 tests) 41ms
- ✓ src/components/home-shell.test.tsx (6 tests) 115ms
+ ✓ src/lib/api-pipeline.test.ts (11 tests) 20ms
+ ✓ src/components/signal-map.test.tsx (3 tests) 203ms
+ ✓ src/components/pipeline-monitor.test.tsx (5 tests) 272ms
+ ✓ src/components/home-shell.test.tsx (6 tests) 378ms
 
  Test Files  8 passed (8)
-      Tests  49 passed (49)
+      Tests  52 passed (52)
    Start at  15:35:48
    Duration  4.70s (transform 3.09s, setup 2.05s, import 4.10s, tests 300ms, environment 10.96s)
 ============================= test session starts =============================
