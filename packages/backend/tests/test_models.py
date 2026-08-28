@@ -287,3 +287,32 @@ def test_signal_locations_are_indexed_for_spatial_matching() -> None:
     }
     assert ("geometry",) in indexed
     assert ("signal_id",) in indexed
+
+
+def test_event_exposes_renamed_score_columns_and_constraints() -> None:
+    from episignal_backend.models import Event
+
+    columns = set(Event.__table__.columns.keys())
+    assert "early_signal_score" in columns
+    assert "evidence_score" in columns
+    assert "attention_score" not in columns
+    assert "confidence_score" not in columns
+
+    constraint_names = {c.name for c in Event.__table__.constraints if c.name is not None}
+    assert any("early_signal_score_range" in name for name in constraint_names)
+    assert any("evidence_score_range" in name for name in constraint_names)
+    assert not any("attention_score_range" in name for name in constraint_names)
+    assert not any("confidence_score_range" in name for name in constraint_names)
+
+    constraints = {c.name: c for c in Event.__table__.constraints if c.name is not None}
+    early_constraint = next(
+        c for name, c in constraints.items() if "early_signal_score_range" in name
+    )
+    evidence_constraint = next(
+        c for name, c in constraints.items() if "evidence_score_range" in name
+    )
+    early_sql = str(early_constraint.sqltext)
+    evidence_sql = str(evidence_constraint.sqltext)
+
+    assert "early_signal_score >= 0" in early_sql and "early_signal_score <= 1" in early_sql
+    assert "evidence_score >= 0" in evidence_sql and "evidence_score <= 1" in evidence_sql

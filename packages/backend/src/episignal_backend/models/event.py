@@ -39,10 +39,12 @@ class Event(IdentityMixin, TimestampMixin, Base):
         CheckConstraint("latitude >= -90 AND latitude <= 90", name="latitude_range"),
         CheckConstraint("longitude >= -180 AND longitude <= 180", name="longitude_range"),
         CheckConstraint(
-            "attention_score >= 0 AND attention_score <= 100", name="attention_score_range"
+            "early_signal_score >= 0 AND early_signal_score <= 1",
+            name="early_signal_score_range",
         ),
         CheckConstraint(
-            "confidence_score >= 0 AND confidence_score <= 1", name="confidence_score_range"
+            "evidence_score >= 0 AND evidence_score <= 1",
+            name="evidence_score_range",
         ),
         Index("ix_events_status", "status"),
         Index("ix_events_verification_status", "verification_status"),
@@ -85,8 +87,8 @@ class Event(IdentityMixin, TimestampMixin, Base):
     last_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    attention_score: Mapped[float | None] = mapped_column(Float)
-    confidence_score: Mapped[float | None] = mapped_column(Float)
+    early_signal_score: Mapped[float | None] = mapped_column(Float)
+    evidence_score: Mapped[float | None] = mapped_column(Float)
     ai_summary: Mapped[str | None] = mapped_column(Text)
 
 
