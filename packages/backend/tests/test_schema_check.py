@@ -15,6 +15,7 @@ def test_missing_tables_are_reported_in_declaration_order() -> None:
         "event_locations",
         "gazetteer_places",
         "signal_locations",
+        "pipeline_runs",
     ]
 
 
@@ -47,3 +48,18 @@ def test_the_expected_event_columns_include_renamed_scores_and_neither_old_name(
     assert "evidence_score" in EXPECTED_EVENT_COLUMNS
     assert "attention_score" not in EXPECTED_EVENT_COLUMNS
     assert "confidence_score" not in EXPECTED_EVENT_COLUMNS
+
+
+def test_the_schema_check_expects_the_pipeline_runs_table() -> None:
+    from episignal_backend.schema_check import EXPECTED_TABLES
+
+    assert "pipeline_runs" in EXPECTED_TABLES
+
+
+def test_a_database_without_pipeline_runs_is_reported_as_missing_it() -> None:
+    from episignal_backend.schema_check import EXPECTED_TABLES, missing_tables
+
+    present = {table for table in EXPECTED_TABLES if table != "pipeline_runs"}
+
+    assert missing_tables(present) == ["pipeline_runs"]
+
