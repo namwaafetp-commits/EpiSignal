@@ -7,9 +7,10 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import math
+from datetime import datetime, timedelta
 
 from episignal_backend.db.types import Precision
-from episignal_backend.events.documents import LocationForMatching
+from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 
 PRECISION_WEIGHTS: dict[Precision, float] = {
     Precision.PLACE: 1.0,
@@ -88,3 +89,23 @@ def spatially_compatible(
         return False
 
     return haversine_distance_km(a.latitude, a.longitude, b.latitude, b.longitude) <= distance_km
+
+
+def _signal_timestamp(sig: SignalForMatching) -> datetime:
+    ts = sig.published_at if sig.published_at is not None else sig.first_seen_at
+    if ts.tzinfo is None or ts.tzinfo.utcoffset(ts) is None:
+        raise ValueError("Timezone-aware datetime required for temporal comparison")
+    return ts
+
+
+def temporally_compatible(
+    a: SignalForMatching,
+    b: SignalForMatching,
+    *,
+    window_days: int = 14,
+) -> bool:
+    """Evaluate temporal compatibility between two signals within a window in days."""
+    ts_a = _signal_timestamp(a)
+    ts_b = _signal_timestamp(b)
+    diff = abs(ts_a - ts_b)
+    return diff <= timedelta(days=window_days)

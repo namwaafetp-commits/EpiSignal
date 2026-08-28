@@ -1,3 +1,5 @@
+from datetime import UTC
+
 from episignal_backend.db.types import Precision
 from episignal_backend.events.cluster import precision_weight
 
@@ -188,3 +190,106 @@ def test_spatially_compatible_different_country_codes_always_fail():
 
     # Different country codes must return False regardless of close distance
     assert spatially_compatible(goma, gisenyi, distance_km=50) is False
+
+
+def test_temporally_compatible_within_and_outside_window():
+    from datetime import UTC, datetime, timedelta
+    from uuid import uuid4
+
+    from episignal_backend.db.types import CredibilityTier
+    from episignal_backend.events.cluster import temporally_compatible
+    from episignal_backend.events.documents import SignalForMatching
+
+    now = datetime.now(UTC)
+    sig1 = SignalForMatching(
+        signal_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+    )
+    sig2_inside = SignalForMatching(
+        signal_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now - timedelta(days=10),
+        first_seen_at=now - timedelta(days=10),
+    )
+    sig3_outside = SignalForMatching(
+        signal_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now - timedelta(days=20),
+        first_seen_at=now - timedelta(days=20),
+    )
+
+    # Window of 14 days
+    assert temporally_compatible(sig1, sig2_inside, window_days=14) is True
+    assert temporally_compatible(sig2_inside, sig1, window_days=14) is True  # symmetric
+    assert temporally_compatible(sig1, sig3_outside, window_days=14) is False
+    assert temporally_compatible(sig3_outside, sig1, window_days=14) is False
+
+
+def test_temporally_compatible_fallback_to_first_seen_at():
+    from datetime import UTC, datetime, timedelta
+    from uuid import uuid4
+
+    from episignal_backend.db.types import CredibilityTier
+    from episignal_backend.events.cluster import temporally_compatible
+    from episignal_backend.events.documents import SignalForMatching
+
+    now = datetime.now(UTC)
+    sig_with_pub = SignalForMatching(
+        signal_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+    )
+    sig_no_pub = SignalForMatching(
+        signal_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=None,
+        first_seen_at=now - timedelta(days=3),
+    )
+
+    assert temporally_compatible(sig_with_pub, sig_no_pub, window_days=14) is True
+    assert temporally_compatible(sig_no_pub, sig_with_pub, window_days=14) is True
+
+
+def test_temporally_compatible_rejects_naive_datetimes():
+    from datetime import datetime
+    from uuid import uuid4
+
+    import pytest
+    from episignal_backend.db.types import CredibilityTier
+    from episignal_backend.events.cluster import temporally_compatible
+    from episignal_backend.events.documents import SignalForMatching
+
+    # Ensure naive datetime is rejected or raises ValueError
+    naive_dt = datetime(2026, 8, 28, 10, 0, 0)
+    aware_dt = datetime(2026, 8, 28, 10, 0, 0, tzinfo=UTC)
+
+    # Ensure naive datetime is rejected or raises ValueError
+    sig_aware = SignalForMatching(
+        signal_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=aware_dt,
+        first_seen_at=aware_dt,
+    )
+
+    # If a signal somehow has a naive datetime, temporally_compatible raises ValueError
+    class MockSignal:
+        published_at = naive_dt
+        first_seen_at = naive_dt
+
+    with pytest.raises(ValueError, match="Timezone-aware"):
+        temporally_compatible(sig_aware, MockSignal(), window_days=14)  # type: ignore[arg-type]
