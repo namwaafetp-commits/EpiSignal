@@ -31,7 +31,7 @@ From [docs/superpowers/plans/2026-08-28-story-clustering.md](docs/superpowers/pl
 Tick each one in the same commit as its work.
 
 - [x] 1. Contracts across the seams — `events/documents.py`
-- [ ] 2. Precision weighting
+- [x] 2. Precision weighting
 - [ ] 3. Spatial compatibility at the coarsest shared precision
 - [ ] 4. Temporal compatibility
 - [ ] 5. A signal with no disease is not clustered
