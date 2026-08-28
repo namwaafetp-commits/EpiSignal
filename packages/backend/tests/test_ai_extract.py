@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID
 
 from episignal_backend.ai.documents import ExtractableSignal, StoredExtraction, Verdict
-from episignal_backend.ai.extract import ExtractionResult, run_extraction
+from episignal_backend.ai.extract import ExtractionResult, run_backfill, run_extraction
 from episignal_backend.ai.protocol import ModelUnavailable
 from episignal_backend.db.types import AiOutcome, AiPurpose
 from test_ai_classify import (
@@ -75,6 +75,23 @@ class ExtractRepository(FakeRepository):
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         self.stored[signal_id] = stored
+
+
+class BackfillRepository(ExtractRepository):
+    def __init__(self, stale: Sequence[ExtractableSignal]) -> None:
+        super().__init__(())
+        self._stale = tuple(stale)
+        self.asked_for_backfill = False
+
+    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
+        raise AssertionError("the backfill must not select new work")
+
+    def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]:
+        self.asked_for_backfill = True
+        return self._stale[:limit]
+
+    def mark_needs_review(self, signal_id: UUID) -> None:
+        raise AssertionError("a rejected re-extraction must leave the row where it is")
 
 
 def english(identifier: UUID = FIRST) -> ExtractableSignal:
@@ -190,3 +207,46 @@ def test_each_signal_is_committed_on_its_own() -> None:
     run(repository, ScriptedModel([GOOD, FRENCH_ANSWER]))
 
     assert repository.commits == 2
+
+
+def test_the_backfill_re_extracts_a_stale_signal() -> None:
+    signal = ExtractableSignal(id=FIRST, title="Cholera in Luanda", raw_text=BODY)
+    repository = BackfillRepository([signal])
+    model = ScriptedModel([GOOD])
+
+    result = run_backfill(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert result.examined == 1
+    assert result.extracted == 1
+    assert FIRST in repository.stored
+
+
+def test_the_backfill_asks_for_stale_work_and_never_for_new_work() -> None:
+    repository = BackfillRepository([])
+    model = ScriptedModel([])
+
+    run_backfill(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert repository.asked_for_backfill is True
+
+
+def test_a_rejected_re_extraction_leaves_the_row_exactly_where_it_was() -> None:
+    signal = ExtractableSignal(id=FIRST, title="Cholera in Luanda", raw_text=BODY)
+    repository = BackfillRepository([signal])
+    model = ScriptedModel([UNGROUNDED, UNGROUNDED, UNGROUNDED])
+
+    result = run_backfill(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert result.extracted == 0
+    assert FIRST not in repository.stored
+
+
+def test_a_rejected_first_extraction_still_goes_to_review() -> None:
+    signal = ExtractableSignal(id=SECOND, title="Cholera in Luanda", raw_text=BODY)
+    repository = ExtractRepository([signal])
+    model = ScriptedModel([UNGROUNDED, UNGROUNDED, UNGROUNDED])
+
+    result = run_extraction(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert result.reviewed == 1
+

@@ -8,12 +8,13 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from episignal_backend.ai.documents import (
     ChatRequest,
+    ExtractableSignal,
     ModelSpec,
     StoredExtraction,
 )
@@ -64,12 +65,13 @@ def _accept_builder(raw_text: str, min_confidence: float) -> Callable[[str], Ext
     return _accept
 
 
-def run_extraction(
+def _run_pass(
     repository: AiRepository,
     model: ChatModel,
+    pending: Sequence[ExtractableSignal],
     *,
     guards: Guards,
-    limit: int = DEFAULT_LIMIT,
+    demote_on_rejection: bool,
     max_tier: int = DEFAULT_MAX_TIER,
     max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
@@ -77,7 +79,6 @@ def run_extraction(
 ) -> ExtractionResult:
     ladder = Ladder.build(repository.models(), max_tier=max_tier)
     budget = RunBudget(guards)
-    pending = repository.awaiting_extraction(limit=limit)
 
     extracted = 0
     reviewed = 0
@@ -129,7 +130,12 @@ def run_extraction(
                 )
                 extracted += 1
             elif result.outcome is ClimbOutcome.REJECTED:
-                repository.mark_needs_review(signal.id)
+                # A first extraction that cannot be trusted owes a human a look.
+                # A re-extraction that cannot be trusted owes nobody anything:
+                # the row already holds an answer that passed these same checks,
+                # and demoting it would throw that away to record a failure.
+                if demote_on_rejection:
+                    repository.mark_needs_review(signal.id)
                 reviewed += 1
             else:
                 unavailable += 1
@@ -153,3 +159,60 @@ def run_extraction(
         requests=requests,
         stopped_early=stopped_early,
     )
+
+
+def run_extraction(
+    repository: AiRepository,
+    model: ChatModel,
+    *,
+    guards: Guards,
+    limit: int = DEFAULT_LIMIT,
+    max_tier: int = DEFAULT_MAX_TIER,
+    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> ExtractionResult:
+    """Extract from signals nobody has extracted from yet."""
+    return _run_pass(
+        repository,
+        model,
+        repository.awaiting_extraction(limit=limit),
+        guards=guards,
+        demote_on_rejection=True,
+        max_tier=max_tier,
+        max_input_characters=max_input_characters,
+        min_confidence=min_confidence,
+        now=now,
+    )
+
+
+def run_backfill(
+    repository: AiRepository,
+    model: ChatModel,
+    *,
+    guards: Guards,
+    limit: int = DEFAULT_LIMIT,
+    max_tier: int = DEFAULT_MAX_TIER,
+    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> ExtractionResult:
+    """Re-extract signals whose stored extraction predates the current schema.
+
+    Identical to the extraction pass in every respect but its selection, which
+    is why it shares that pass rather than copying it. A rejected answer leaves
+    the existing extraction untouched: a backfill never destroys a good old
+    answer in order to store a bad new one.
+    """
+    return _run_pass(
+        repository,
+        model,
+        repository.awaiting_backfill(limit=limit),
+        guards=guards,
+        demote_on_rejection=False,
+        max_tier=max_tier,
+        max_input_characters=max_input_characters,
+        min_confidence=min_confidence,
+        now=now,
+    )
+

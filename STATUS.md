@@ -59,7 +59,7 @@ Tick each one in the same commit as its work.
 - [x] 6. Persistence stamps the version and writes the brief
 - [x] 7. Matching reads stored extractions tolerantly
 - [x] 8. The backfill selection
-- [ ] 9. The backfill pass
+- [x] 9. The backfill pass
 - [ ] 10. The backfill runner
 - [ ] 11. The command and the environment
 - [ ] 12. The naming authority
