@@ -234,6 +234,16 @@ def test_a_place_name_carrying_an_email_address_is_rejected() -> None:
     assert error.value.reason is RejectionReason.PRIVACY
 
 
+def test_an_english_title_carrying_an_email_address_is_rejected() -> None:
+    payload = grounded_payload()
+    payload["title_english"] = "Write to outbreak.desk@example.org for the case list"
+
+    with pytest.raises(Rejected) as error:
+        validate_extraction(json.dumps(payload), BODY)
+
+    assert error.value.reason is RejectionReason.PRIVACY
+
+
 def test_confidence_below_the_floor_is_rejected() -> None:
     payload = grounded_payload()
     payload["confidence"] = 0.2
