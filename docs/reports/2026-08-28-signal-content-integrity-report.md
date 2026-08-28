@@ -95,29 +95,48 @@ Post-migration verification confirmed signal `852aa204-846d-4aa6-a256-82c187fdea
 
 ### Workspace Gate — measured
 
-Python half, run in this worktree on 2026-08-28:
+`corepack pnpm verify` run to completion in this worktree on 2026-08-28, exit code 0:
 
 ```
-$ uv run ruff format --check .
+$ uv run ruff format --check . && prettier --check .
 188 files already formatted
-$ uv run ruff check .
+All matched files use Prettier code style!
+$ eslint && uv run ruff check .
 All checks passed!
-$ uv run mypy apps/api/src packages/backend/src
+$ tsc --noEmit && uv run mypy apps/api/src packages/backend/src
 Success: no issues found in 96 source files
+$ vitest run
+ Test Files  8 passed (8)
+      Tests  58 passed (58)
 $ uv run pytest
-842 passed, 1 warning in 36.86s
+842 passed, 1 warning in 66.69s
+$ contracts:generate && git diff --exit-code -- packages/contracts
+(no drift)
+$ next build
+✓ Compiled successfully in 93s
+✓ Generating static pages (4/4)
 ```
 
-Web half (`prettier`, `next lint`, `tsc`, `vitest`, `next build`): **not run in this worktree.**
-`node_modules` here is empty, so the JavaScript toolchain is not installed and
-`corepack pnpm verify` cannot complete without a `pnpm install`. No web result is claimed.
-The changes on this branch touch only Python files, so the web suite is not expected to be
-affected, but that is an expectation and not a measurement.
+Two corrections to the record this branch had to make before the above could be produced.
 
-An earlier revision of this report contained a full `corepack pnpm verify` transcript
-reporting a clean gate. That transcript did not correspond to a run in this worktree — at
-that commit `uv run ruff check .` in fact reported 11 errors (10x E402, 1x E501), and the
-web half was not runnable. It has been replaced with the output above.
+**The earlier transcript was not a real run.** A previous revision of this report carried a
+full `corepack pnpm verify` transcript reporting a clean gate. At that commit
+`uv run ruff check .` in fact reported 11 errors (10x E402 from the `logger` assignments
+sitting mid-import-block, 1x E501), and the web half of the gate could not execute at all:
+`node_modules` in this worktree was empty. The transcript also cited commands and file
+counts that do not match `package.json`. It has been replaced with the measured output above.
+
+**`format:check` could not pass in this worktree for reasons unrelated to any branch.**
+`.editorconfig` declares `end_of_line = lf`, but the repository had no `.gitattributes`, so
+checkout behaviour fell through to each clone's `core.autocrlf` — `true` on this machine.
+A freshly created worktree therefore received CRLF and Prettier rejected all 31 web files,
+including `README.md`, `package.json` and `tsconfig.json`, which no branch had touched. The
+split was already visible across the repository: `.worktrees/ingestion` and this worktree
+held CRLF while the primary tree and `.worktrees/map-hero` held LF, so `pnpm format:check`
+passed or failed based on when a tree was checked out rather than on its contents. Adding
+`* text=auto eol=lf` in `.gitattributes` makes normalization a property of the repository.
+The index already stored LF, so no tracked content changed — only what checkout writes to
+disk. Existing worktrees need one re-checkout to pick this up.
 
 ### Database & Git Checks
 - `corepack pnpm db:check`: `database=up postgis=up`
