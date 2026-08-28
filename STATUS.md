@@ -49,7 +49,7 @@ Tick each one in the same commit as its work.
 - [x] 10. The repository and the advisory lock
 - [x] 11. Settings and the catch-up clamp
 - [x] 12. The stage adapters
-- [ ] 13. The runner — `pipeline_runner.py`
+- [x] 13. The runner — `pipeline_runner.py`
 - [ ] 14. The script and the shell wrapper
 - [ ] 15. The environment example
 - [ ] 16. The seam guard
