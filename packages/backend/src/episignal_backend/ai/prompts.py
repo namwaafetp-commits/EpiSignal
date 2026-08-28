@@ -19,6 +19,14 @@ Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
 - Every count and every transmission flag must include source_span: a short
   phrase copied word for word from the article that states it.
+- Copy every source_span in the article's own language. Do not translate a span.
+- Write title_english and every brief point in English. Translate rather than
+  transliterate. An article already in English keeps its own headline, with
+  whitespace collapsed.
+- Return exactly five brief points, one for each slot, in the order the schema
+  lists them: what_where, counts, timing, spread, reporting.
+- A slot the article does not address gets reported: false and one short line
+  saying what is not reported. Never fill a slot from outside the article.
 - If the article does not state something, return null. Never infer, never
   estimate, never carry a number over from general knowledge.
 - Do not state that an outbreak is confirmed. Report what the article reports.

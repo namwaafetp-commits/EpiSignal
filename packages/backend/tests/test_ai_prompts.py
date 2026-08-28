@@ -1,5 +1,5 @@
 import json
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from episignal_backend.ai.documents import ClassifiableSignal, ExtractableSignal
 from episignal_backend.ai.prompts import (
@@ -79,3 +79,32 @@ def test_the_extraction_system_prompt_contains_the_generated_schema() -> None:
     system, _ = extraction_prompt(signal, max_characters=100)
 
     assert json.loads(system[system.index("{") :])["additionalProperties"] is False
+
+
+def test_the_extraction_prompt_asks_for_english() -> None:
+    system, _ = extraction_prompt(
+        ExtractableSignal(id=uuid4(), title="Choléra à Luanda", raw_text="Un article."),
+        max_characters=500,
+    )
+
+    assert "English" in system
+
+
+def test_the_extraction_prompt_forbids_translating_a_span() -> None:
+    system, _ = extraction_prompt(
+        ExtractableSignal(id=uuid4(), title="Choléra à Luanda", raw_text="Un article."),
+        max_characters=500,
+    )
+
+    assert "Do not translate a span" in system
+
+
+def test_the_extraction_prompt_carries_the_five_slots() -> None:
+    system, _ = extraction_prompt(
+        ExtractableSignal(id=uuid4(), title="Cholera in Luanda", raw_text="An article."),
+        max_characters=500,
+    )
+
+    for slot in ("what_where", "counts", "timing", "spread", "reporting"):
+        assert slot in system
+
