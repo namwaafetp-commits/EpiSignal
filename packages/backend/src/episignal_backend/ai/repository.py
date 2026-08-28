@@ -20,6 +20,10 @@ from episignal_backend.ai.documents import (
     StoredExtraction,
     Verdict,
 )
+from episignal_backend.ai.schema import (
+    EXTRACTION_SCHEMA_VERSION,
+    EXTRACTION_VERSION_KEY,
+)
 from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.models import AiModel, AiRequest, Disease, Signal
 
@@ -136,12 +140,17 @@ class SqlAlchemyAiRepository:
         )
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
+        # The version is stamped here and never by the model: a version a model
+        # can choose is a version that lies the moment the model is confused.
+        payload = stored.extraction.model_dump(mode="json")
+        payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
+
         self._session.execute(
             update(Signal)
             .where(Signal.id == signal_id)
             .values(
                 processing_status=ProcessingStatus.EXTRACTED,
-                ai_extraction=stored.extraction.model_dump(mode="json"),
+                ai_extraction=payload,
                 ai_model=stored.model_id,
                 ai_processed_at=stored.processed_at,
                 disease_id=stored.disease_id,

@@ -6,7 +6,11 @@ from uuid import uuid4
 from episignal_backend.ai.documents import AiRequestRecord, StoredExtraction, Verdict
 from episignal_backend.ai.protocol import AiRepository
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
-from episignal_backend.ai.schema import Extraction
+from episignal_backend.ai.schema import (
+    EXTRACTION_SCHEMA_VERSION,
+    EXTRACTION_VERSION_KEY,
+    Extraction,
+)
 from episignal_backend.db.types import AiOutcome, AiPurpose, ProcessingStatus, SignalType
 from sqlalchemy import Select, Update
 
@@ -164,3 +168,47 @@ def test_a_disease_is_resolved_case_insensitively_or_not_at_all() -> None:
 
     assert repository.resolve_disease("cholera") == identifier
     assert repository.resolve_disease("a disease nobody seeded") is None
+
+
+def test_an_accepted_extraction_stores_the_brief_as_the_signal_summary() -> None:
+    session = FakeSession()
+
+    SqlAlchemyAiRepository(session).record_extraction(
+        uuid4(),
+        StoredExtraction(
+            extraction=extraction(),
+            disease_id=None,
+            model_id="vendor/model:free",
+            processed_at=NOW,
+        ),
+    )
+
+    params = session.executed[0].compile().params
+    summary = next(value for value in params.values() if isinstance(value, str) and "\n" in value)
+    assert summary.splitlines() == [
+        "Cholera in Luanda, Angola.",
+        "No case count reported.",
+        "No date reported.",
+        "No transmission detail reported.",
+        "Reported by local media.",
+    ]
+
+
+def test_an_accepted_extraction_stamps_the_schema_version() -> None:
+    session = FakeSession()
+
+    SqlAlchemyAiRepository(session).record_extraction(
+        uuid4(),
+        StoredExtraction(
+            extraction=extraction(),
+            disease_id=None,
+            model_id="vendor/model:free",
+            processed_at=NOW,
+        ),
+    )
+
+    params = session.executed[0].compile().params
+    stored = next(value for value in params.values() if isinstance(value, dict))
+    assert stored[EXTRACTION_VERSION_KEY] == EXTRACTION_SCHEMA_VERSION
+    assert stored["brief"][0]["slot"] == "what_where"
+
