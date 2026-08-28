@@ -15,7 +15,19 @@ from episignal_backend.ai.validate import (
 
 GROUNDED = {
     "signal_type": "outbreak_report",
-    "summary": "Cholera outbreak reported in Luanda.",
+    "source_language": "en",
+    "title_english": "Angola reports growing cholera outbreak in Luanda",
+    "brief": [
+        {"slot": "what_where", "text": "Cholera in Luanda province, Angola.", "reported": True},
+        {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
+        {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
+        {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
+        {
+            "slot": "reporting",
+            "text": "Reported by the health ministry; not independently verified.",
+            "reported": True,
+        },
+    ],
     "disease": {"name": "Cholera", "confidence": 0.97},
     "epidemiology": {
         "confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"},
@@ -105,7 +117,19 @@ BODY = (FIXTURES / "ai_outbreak_body.txt").read_text(encoding="utf-8")
 def grounded_payload() -> dict[str, object]:
     return {
         "signal_type": "outbreak_report",
-        "summary": "Cholera outbreak reported in Luanda province.",
+        "source_language": "en",
+        "title_english": "Angola reports growing cholera outbreak in Luanda",
+        "brief": [
+            {"slot": "what_where", "text": "Cholera in Luanda province, Angola.", "reported": True},
+            {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
+            {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
+            {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
+            {
+                "slot": "reporting",
+                "text": "Reported by the health ministry; not independently verified.",
+                "reported": True,
+            },
+        ],
         "disease": {"name": "Cholera", "confidence": 0.97},
         "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
         "epidemiology": {
@@ -182,9 +206,15 @@ def test_an_ungrounded_transmission_flag_is_rejected() -> None:
     assert error.value.reason is RejectionReason.UNGROUNDED
 
 
-def test_a_summary_carrying_a_telephone_number_is_rejected() -> None:
+def test_a_brief_carrying_a_telephone_number_is_rejected() -> None:
     payload = grounded_payload()
-    payload["summary"] = "Call the family on +244 923 555 0142 for details."
+    points = list(payload["brief"])  # type: ignore[call-overload]
+    points[4] = {
+        "slot": "reporting",
+        "text": "Call the family on +244 923 555 0142 for details.",
+        "reported": True,
+    }
+    payload["brief"] = points
 
     with pytest.raises(Rejected) as error:
         validate_extraction(json.dumps(payload), BODY)

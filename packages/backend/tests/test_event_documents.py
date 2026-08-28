@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from episignal_backend.ai.schema import Extraction
+from episignal_backend.ai.schema import BriefPoint, BriefSlot, Extraction
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision, SignalType
 from episignal_backend.events.documents import (
     CandidateEvent,
@@ -81,7 +81,14 @@ def test_signal_for_matching_valid():
     )
     extraction = Extraction(
         signal_type=SignalType.OUTBREAK_REPORT,
-        summary="Ebola in Beni",
+        title_english="Ebola in Beni",
+        brief=(
+            BriefPoint(slot=BriefSlot.WHAT_WHERE, text="Ebola in Beni", reported=True),
+            BriefPoint(slot=BriefSlot.COUNTS, text="No counts", reported=False),
+            BriefPoint(slot=BriefSlot.TIMING, text="No dates", reported=False),
+            BriefPoint(slot=BriefSlot.SPREAD, text="No spread", reported=False),
+            BriefPoint(slot=BriefSlot.REPORTING, text="No reporting", reported=False),
+        ),
         confidence=0.9,
     )
     sig = SignalForMatching(

@@ -118,7 +118,8 @@ def _flatten(text: str) -> str:
 
 
 def check_privacy(extraction: Extraction) -> None:
-    candidates = [extraction.summary]
+    candidates = [extraction.title_english]
+    candidates.extend(point.text for point in extraction.brief)
     candidates.extend(
         location.place_name for location in extraction.locations if location.place_name
     )

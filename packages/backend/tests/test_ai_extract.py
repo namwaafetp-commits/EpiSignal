@@ -26,7 +26,15 @@ CHOLERA = UUID("b3f1c2d4-0000-4000-8000-0000000000ff")
 FRENCH_ANSWER = json.dumps(
     {
         "signal_type": "outbreak_report",
-        "summary": "Cholera outbreak in Luanda province, Angola.",
+        "source_language": "fr",
+        "title_english": "Cholera outbreak spreads in Luanda province, Angola",
+        "brief": [
+            {"slot": "what_where", "text": "Cholera in Luanda province, Angola.", "reported": True},
+            {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
+            {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
+            {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
+            {"slot": "reporting", "text": "Reported by local media.", "reported": True},
+        ],
         "disease": {"name": "Cholera", "confidence": 0.96},
         "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
         "epidemiology": {

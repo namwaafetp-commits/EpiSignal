@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from episignal_backend.ai.schema import BriefPoint, BriefSlot, Extraction
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision, SignalType
 from episignal_backend.events.documents import (
     LocationForMatching,
@@ -121,15 +122,31 @@ def test_evidence_score_official_outscores_informal():
 
 
 def test_evidence_score_contradictory_totals_lower_consistency():
-    from episignal_backend.ai.schema import Epidemiology, Extraction, GroundedCount
+    from episignal_backend.ai.schema import (
+        BriefPoint,
+        BriefSlot,
+        Epidemiology,
+        Extraction,
+        GroundedCount,
+    )
     from episignal_backend.events.score import evidence_score
 
     now = datetime.now(UTC)
 
+    def _brief(text: str) -> tuple[BriefPoint, ...]:
+        return (
+            BriefPoint(slot=BriefSlot.WHAT_WHERE, text="Outbreak", reported=True),
+            BriefPoint(slot=BriefSlot.COUNTS, text=text, reported=True),
+            BriefPoint(slot=BriefSlot.TIMING, text="No date", reported=False),
+            BriefPoint(slot=BriefSlot.SPREAD, text="No spread", reported=False),
+            BriefPoint(slot=BriefSlot.REPORTING, text="No reporting", reported=False),
+        )
+
     # Consistent reporting: 50 -> 60
     ext_1 = Extraction(
         signal_type=SignalType.OUTBREAK_REPORT,
-        summary="50 cases",
+        title_english="50 cases reported",
+        brief=_brief("50 cases"),
         epidemiology=Epidemiology(
             total_cases=GroundedCount(value=50, source_span="50 cases reported")
         ),
@@ -137,7 +154,8 @@ def test_evidence_score_contradictory_totals_lower_consistency():
     )
     ext_2 = Extraction(
         signal_type=SignalType.OUTBREAK_REPORT,
-        summary="60 cases",
+        title_english="60 cases reported",
+        brief=_brief("60 cases"),
         epidemiology=Epidemiology(
             total_cases=GroundedCount(value=60, source_span="60 cases total")
         ),
@@ -167,13 +185,15 @@ def test_evidence_score_contradictory_totals_lower_consistency():
     # Contradictory reporting: 500 -> 5
     ext_contradict = Extraction(
         signal_type=SignalType.OUTBREAK_REPORT,
-        summary="5 cases",
+        title_english="5 cases reported",
+        brief=_brief("5 cases"),
         epidemiology=Epidemiology(total_cases=GroundedCount(value=5, source_span="5 cases only")),
         confidence=0.9,
     )
     ext_prior = Extraction(
         signal_type=SignalType.OUTBREAK_REPORT,
-        summary="500 cases",
+        title_english="500 cases reported",
+        brief=_brief("500 cases"),
         epidemiology=Epidemiology(
             total_cases=GroundedCount(value=500, source_span="500 cases reported")
         ),
@@ -258,7 +278,14 @@ def test_verification_status_derived_from_sources_only():
         first_seen_at=now,
         extraction=Extraction(
             signal_type=SignalType.OUTBREAK_REPORT,
-            summary="Confirmed outbreak by blog",
+            title_english="Confirmed outbreak by blog",
+            brief=(
+                BriefPoint(slot=BriefSlot.WHAT_WHERE, text="Outbreak", reported=True),
+                BriefPoint(slot=BriefSlot.COUNTS, text="No counts", reported=False),
+                BriefPoint(slot=BriefSlot.TIMING, text="No date", reported=False),
+                BriefPoint(slot=BriefSlot.SPREAD, text="No spread", reported=False),
+                BriefPoint(slot=BriefSlot.REPORTING, text="Blog post", reported=True),
+            ),
             confidence=1.0,
         ),
     )

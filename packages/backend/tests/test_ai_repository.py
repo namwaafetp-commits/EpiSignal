@@ -48,7 +48,15 @@ def extraction() -> Extraction:
     return Extraction.model_validate(
         {
             "signal_type": "outbreak_report",
-            "summary": "Cholera outbreak reported in Luanda.",
+            "source_language": "en",
+            "title_english": "Cholera outbreak reported in Luanda",
+            "brief": [
+                {"slot": "what_where", "text": "Cholera in Luanda, Angola.", "reported": True},
+                {"slot": "counts", "text": "No case count reported.", "reported": False},
+                {"slot": "timing", "text": "No date reported.", "reported": False},
+                {"slot": "spread", "text": "No transmission detail reported.", "reported": False},
+                {"slot": "reporting", "text": "Reported by local media.", "reported": True},
+            ],
             "confidence": 0.9,
         }
     )

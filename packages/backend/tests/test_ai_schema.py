@@ -42,10 +42,26 @@ def test_a_point_rejects_a_slot_nobody_defined() -> None:
 
 
 
+def brief() -> list[dict[str, object]]:
+    return [
+        {"slot": "what_where", "text": "Cholera in Luanda province, Angola.", "reported": True},
+        {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
+        {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
+        {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
+        {
+            "slot": "reporting",
+            "text": "Reported by the health ministry; not independently verified.",
+            "reported": True,
+        },
+    ]
+
+
 def minimal(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "signal_type": "outbreak_report",
-        "summary": "Health authorities report a cholera outbreak in Luanda province.",
+        "source_language": "en",
+        "title_english": "Angola reports growing cholera outbreak in Luanda",
+        "brief": brief(),
         "disease": {"name": "Cholera", "confidence": 0.97},
         "pathogen": None,
         "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
@@ -58,55 +74,56 @@ def minimal(**overrides: object) -> dict[str, object]:
     return payload
 
 
-def test_a_grounded_extraction_validates() -> None:
+def test_an_extraction_carries_an_english_title_and_five_bullets() -> None:
     extraction = Extraction.model_validate(minimal())
 
-    assert extraction.disease is not None
-    assert extraction.disease.name == "Cholera"
-    assert extraction.epidemiology.confirmed_cases == GroundedCount(
-        value=327, source_span="327 confirmed cases"
-    )
-    assert extraction.epidemiology.deaths is None
+    assert extraction.title_english == "Angola reports growing cholera outbreak in Luanda"
+    assert extraction.source_language == "en"
+    assert tuple(point.slot for point in extraction.brief) == BRIEF_SLOTS
 
 
-def test_unknown_keys_are_rejected() -> None:
+def test_a_brief_missing_a_slot_is_rejected() -> None:
+    short = brief()[:4]
+
     with pytest.raises(ValidationError):
-        Extraction.model_validate(minimal(create_or_update_event=True))
+        Extraction.model_validate(minimal(brief=short))
 
 
-def test_a_count_without_a_span_is_rejected() -> None:
+def test_a_brief_with_a_repeated_slot_is_rejected() -> None:
+    repeated = brief()
+    repeated[3] = dict(repeated[1])
+
     with pytest.raises(ValidationError):
-        GroundedCount.model_validate({"value": 327, "source_span": "   "})
+        Extraction.model_validate(minimal(brief=repeated))
 
 
-def test_a_negative_count_is_rejected() -> None:
+def test_a_brief_out_of_slot_order_is_rejected_rather_than_sorted() -> None:
+    shuffled = brief()
+    shuffled[0], shuffled[1] = shuffled[1], shuffled[0]
+
     with pytest.raises(ValidationError):
-        GroundedCount.model_validate({"value": -1, "source_span": "minus one case"})
+        Extraction.model_validate(minimal(brief=shuffled))
 
 
-def test_a_flag_without_a_span_is_rejected() -> None:
+def test_the_free_form_summary_is_no_longer_part_of_the_contract() -> None:
     with pytest.raises(ValidationError):
-        GroundedFlag.model_validate({"value": True, "source_span": ""})
+        Extraction.model_validate(minimal(summary="Cholera in Angola."))
 
 
-def test_an_unknown_signal_type_is_rejected() -> None:
+def test_a_blank_english_title_is_rejected() -> None:
     with pytest.raises(ValidationError):
-        Extraction.model_validate(minimal(signal_type="football_match"))
+        Extraction.model_validate(minimal(title_english="   "))
 
 
-def test_an_unknown_location_role_is_rejected() -> None:
+def test_an_unknown_source_language_is_rejected() -> None:
     with pytest.raises(ValidationError):
-        Extraction.model_validate(minimal(locations=[{"role": "somewhere", "country": "Angola"}]))
+        Extraction.model_validate(minimal(source_language="portuguese"))
 
 
-def test_confidence_outside_zero_to_one_is_rejected() -> None:
-    with pytest.raises(ValidationError):
-        Extraction.model_validate(minimal(confidence=1.4))
+def test_an_unsure_source_language_is_stored_as_absence() -> None:
+    extraction = Extraction.model_validate(minimal(source_language=None))
 
-
-def test_a_summary_longer_than_the_bound_is_rejected() -> None:
-    with pytest.raises(ValidationError):
-        Extraction.model_validate(minimal(summary="a" * 401))
+    assert extraction.source_language is None
 
 
 def test_the_prompt_schema_names_every_field_the_model_must_return() -> None:

@@ -114,7 +114,14 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
         credibility_tier=CredibilityTier.OFFICIAL,
         extraction={
             "signal_type": "outbreak_report",
-            "summary": "Outbreak in Beni",
+            "title_english": "Outbreak in Beni",
+            "brief": [
+                {"slot": "what_where", "text": "Outbreak in Beni", "reported": True},
+                {"slot": "counts", "text": "No count", "reported": False},
+                {"slot": "timing", "text": "No date", "reported": False},
+                {"slot": "spread", "text": "No spread", "reported": False},
+                {"slot": "reporting", "text": "No reporting", "reported": False},
+            ],
             "confidence": 0.95,
         },
     )
@@ -352,7 +359,13 @@ def test_attach_signal_inserts_event_signal_row() -> None:
 
 
 def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> None:
-    from episignal_backend.ai.schema import Epidemiology, Extraction, GroundedCount
+    from episignal_backend.ai.schema import (
+        BriefPoint,
+        BriefSlot,
+        Epidemiology,
+        Extraction,
+        GroundedCount,
+    )
     from episignal_backend.models import EventObservation
 
     ev_id = uuid4()
@@ -361,7 +374,14 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
 
     extraction = Extraction(
         signal_type=SignalType.OUTBREAK_REPORT,
-        summary="35 cases reported",
+        title_english="35 cases reported",
+        brief=(
+            BriefPoint(slot=BriefSlot.WHAT_WHERE, text="35 cases reported", reported=True),
+            BriefPoint(slot=BriefSlot.COUNTS, text="35 cases", reported=True),
+            BriefPoint(slot=BriefSlot.TIMING, text="No date", reported=False),
+            BriefPoint(slot=BriefSlot.SPREAD, text="No spread", reported=False),
+            BriefPoint(slot=BriefSlot.REPORTING, text="No reporting", reported=False),
+        ),
         epidemiology=Epidemiology(
             total_cases=GroundedCount(value=35, source_span="35 cases"),
             # deaths is None, confirmed_cases is None!

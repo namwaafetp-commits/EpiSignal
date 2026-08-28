@@ -146,7 +146,7 @@ class SqlAlchemyAiRepository:
                 ai_processed_at=stored.processed_at,
                 disease_id=stored.disease_id,
                 signal_type=stored.extraction.signal_type,
-                summary=stored.extraction.summary,
+                summary="\n".join(point.text for point in stored.extraction.brief),
             )
         )
 

@@ -8,6 +8,7 @@ supports it, because a bare number cannot be checked against anything.
 This module imports neither SQLAlchemy nor httpx.
 """
 
+import re
 from datetime import date
 from enum import StrEnum
 from typing import Any
@@ -17,7 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from episignal_backend.db.types import LocationRole, SignalType
 
-SUMMARY_MAX_CHARACTERS = 400
 SPAN_MAX_CHARACTERS = 300
 BRIEF_POINT_MAX_CHARACTERS = 200
 TITLE_MAX_CHARACTERS = 300
@@ -154,7 +154,9 @@ class Extraction(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     signal_type: SignalType
-    summary: str = Field(min_length=1, max_length=SUMMARY_MAX_CHARACTERS)
+    source_language: str | None = None
+    title_english: str = Field(min_length=1, max_length=TITLE_MAX_CHARACTERS)
+    brief: tuple[BriefPoint, ...]
     disease: NamedEntity | None = None
     pathogen: NamedEntity | None = None
     locations: tuple[ExtractedLocation, ...] = ()
@@ -163,13 +165,36 @@ class Extraction(BaseModel):
     transmission: Transmission | None = None
     confidence: float = Field(ge=0.0, le=1.0)
 
-    @field_validator("summary")
+    @field_validator("source_language")
     @classmethod
-    def collapse_summary(cls, value: str) -> str:
+    def language_is_a_code(cls, value: str | None) -> str | None:
+        # Null means the model was unsure, which is recorded rather than guessed.
+        if value is None:
+            return None
+        code = value.strip().lower()
+        if not re.fullmatch(r"[a-z]{2}", code):
+            raise ValueError("source_language must be an ISO 639-1 two-letter code or null")
+        return code
+
+    @field_validator("title_english")
+    @classmethod
+    def collapse_title(cls, value: str) -> str:
         collapsed = " ".join(value.split())
         if not collapsed:
-            raise ValueError("summary must not be blank")
+            raise ValueError("title_english must not be blank")
         return collapsed
+
+    @field_validator("brief")
+    @classmethod
+    def brief_fills_every_slot_in_order(
+        cls, value: tuple[BriefPoint, ...]
+    ) -> tuple[BriefPoint, ...]:
+        # Rejected, never re-ordered. A model that returned the slots in its own
+        # order did not follow the contract, and quietly sorting its answer
+        # teaches the next reader that the order was never load-bearing.
+        if tuple(point.slot for point in value) != BRIEF_SLOTS:
+            raise ValueError("brief must carry exactly one point per slot, in slot order")
+        return value
 
 
 def extraction_json_schema() -> dict[str, Any]:

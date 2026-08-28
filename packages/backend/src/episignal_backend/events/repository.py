@@ -307,7 +307,11 @@ class SqlAlchemyEventRepository:
 
         if signal.extraction is not None:
             conf = signal.extraction.confidence
-            notes = signal.extraction.summary
+            notes = (
+                "\n".join(point.text for point in signal.extraction.brief)
+                if signal.extraction.brief
+                else None
+            )
             if signal.extraction.dates:
                 obs_date = signal.extraction.dates.event_date or signal.extraction.dates.data_as_of
             if signal.extraction.epidemiology:

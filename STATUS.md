@@ -52,7 +52,7 @@ From [docs/superpowers/plans/2026-08-28-english-brief.md](docs/superpowers/plans
 Tick each one in the same commit as its work.
 
 - [x] 1. The slot vocabulary — `BriefSlot`, `BriefPoint`
-- [ ] 2. The extraction carries an English title and a brief
+- [x] 2. The extraction carries an English title and a brief
 - [ ] 3. Privacy scans the title and the brief
 - [ ] 4. The prompt asks for English and for five slots
 - [ ] 5. The version, and reading what we already stored
