@@ -34,6 +34,7 @@ from episignal_backend.events.documents import (
 from episignal_backend.models import (
     Event,
     EventLocation,
+    EventObservation,
     EventSignal,
     Signal,
     SignalLocation,
@@ -282,10 +283,87 @@ class SqlAlchemyEventRepository:
         self._session.add(rel)
 
     def record_observation(self, event_id: UUID, signal: SignalForMatching) -> None:
-        raise NotImplementedError
+        obs_date = None
+        conf = None
+        notes = None
+        suspected = None
+        probable = None
+        confirmed = None
+        total = None
+        new_cases = None
+        deaths = None
+        new_deaths = None
+        recoveries = None
+        hospitalizations = None
+        cfr = None
+        affected_admin_areas = None
+
+        if signal.extraction is not None:
+            conf = signal.extraction.confidence
+            notes = signal.extraction.summary
+            if signal.extraction.dates:
+                obs_date = signal.extraction.dates.event_date or signal.extraction.dates.data_as_of
+            if signal.extraction.epidemiology:
+                epi = signal.extraction.epidemiology
+                if epi.suspected_cases is not None:
+                    suspected = epi.suspected_cases.value
+                if epi.confirmed_cases is not None:
+                    confirmed = epi.confirmed_cases.value
+                if epi.total_cases is not None:
+                    total = epi.total_cases.value
+                if epi.new_cases is not None:
+                    new_cases = epi.new_cases.value
+                if epi.deaths is not None:
+                    deaths = epi.deaths.value
+                if epi.new_deaths is not None:
+                    new_deaths = epi.new_deaths.value
+
+        rep_at = signal.published_at if signal.published_at is not None else signal.first_seen_at
+        if obs_date is None and rep_at is not None:
+            obs_date = rep_at.date()
+
+        obs = EventObservation(
+            id=uuid4(),
+            event_id=event_id,
+            signal_id=signal.signal_id,
+            observation_date=obs_date,
+            reported_at=rep_at,
+            suspected_cases=suspected,
+            probable_cases=probable,
+            confirmed_cases=confirmed,
+            total_cases=total,
+            new_cases=new_cases,
+            deaths=deaths,
+            new_deaths=new_deaths,
+            recoveries=recoveries,
+            hospitalizations=hospitalizations,
+            cfr=cfr,
+            affected_admin_areas=affected_admin_areas,
+            notes=notes,
+            extraction_confidence=conf,
+        )
+        self._session.add(obs)
 
     def add_locations(self, event_id: UUID, locations: Sequence[LocationForMatching]) -> None:
-        raise NotImplementedError
+        for loc in locations:
+            geom = (
+                WKTElement(f"POINT({loc.longitude} {loc.latitude})", srid=4326)
+                if (loc.latitude is not None and loc.longitude is not None)
+                else None
+            )
+            event_loc = EventLocation(
+                id=uuid4(),
+                event_id=event_id,
+                location_role=loc.location_role,
+                country_code=loc.country_code,
+                admin1=loc.admin1,
+                admin2=loc.admin2,
+                place_name=loc.place_name,
+                latitude=loc.latitude,
+                longitude=loc.longitude,
+                geometry=geom,
+            )
+            self._session.add(event_loc)
 
     def apply_scores(
         self,
@@ -294,7 +372,16 @@ class SqlAlchemyEventRepository:
         evidence_score: float,
         verification_status: VerificationStatus,
     ) -> None:
-        raise NotImplementedError
+        self._session.execute(
+            update(Event)
+            .where(Event.id == event_id)
+            .values(
+                early_signal_score=early_signal_score,
+                evidence_score=evidence_score,
+                verification_status=verification_status,
+                last_updated_at=datetime.now(UTC),
+            )
+        )
 
     def mark_matched(self, signal_id: UUID) -> None:
         self._session.execute(

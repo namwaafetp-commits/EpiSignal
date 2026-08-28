@@ -47,7 +47,7 @@ Tick each one in the same commit as its work.
 - [x] 15. Selecting geocoded signals
 - [x] 16. Candidate event retrieval
 - [x] 17. Creating events and attaching signals
-- [ ] 18. Observations are inserted, never updated
+- [x] 18. Observations are inserted, never updated
 - [ ] 19. The assembly pass — `run_event_assembly`
 - [ ] 20. Configuration
 - [ ] 21. The runner, the script, and the seam guard

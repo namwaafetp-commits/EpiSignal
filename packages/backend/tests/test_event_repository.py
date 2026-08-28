@@ -349,3 +349,105 @@ def test_attach_signal_inserts_event_signal_row() -> None:
     assert added_rel.relationship_type == RelationshipType.INITIAL_REPORT
     assert added_rel.match_score == 0.92
     assert added_rel.is_primary is True
+
+
+def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> None:
+    from episignal_backend.ai.schema import Epidemiology, Extraction, GroundedCount
+    from episignal_backend.models import EventObservation
+
+    ev_id = uuid4()
+    sig_id = uuid4()
+    now = datetime.now(UTC)
+
+    extraction = Extraction(
+        signal_type=SignalType.OUTBREAK_REPORT,
+        summary="35 cases reported",
+        epidemiology=Epidemiology(
+            total_cases=GroundedCount(value=35, source_span="35 cases"),
+            # deaths is None, confirmed_cases is None!
+        ),
+        confidence=0.88,
+    )
+    sig = SignalForMatching(
+        signal_id=sig_id,
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now,
+        first_seen_at=now,
+        extraction=extraction,
+    )
+
+    session = FakeSession()
+    repo = SqlAlchemyEventRepository(session)
+    repo.record_observation(event_id=ev_id, signal=sig)
+
+    assert len(session.added) == 1
+    obs = session.added[0]
+    assert isinstance(obs, EventObservation)
+    assert obs.event_id == ev_id
+    assert obs.signal_id == sig_id
+    assert obs.total_cases == 35
+    # Crucial invariant: null counts must be None, NEVER 0
+    assert obs.deaths is None
+    assert obs.confirmed_cases is None
+    assert obs.suspected_cases is None
+    assert obs.extraction_confidence == 0.88
+
+
+def test_add_locations_inserts_event_location_rows() -> None:
+    from episignal_backend.models import EventLocation
+
+    ev_id = uuid4()
+    loc1 = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        admin1="North Kivu",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    loc2 = LocationForMatching(
+        location_role=LocationRole.AFFECTED_AREA,
+        precision=Precision.ADMIN1,
+        country_code="CD",
+        admin1="Ituri",
+        place_name=None,
+        latitude=1.5,
+        longitude=30.0,
+    )
+
+    session = FakeSession()
+    repo = SqlAlchemyEventRepository(session)
+    repo.add_locations(event_id=ev_id, locations=[loc1, loc2])
+
+    assert len(session.added) == 2
+    for item in session.added:
+        assert isinstance(item, EventLocation)
+        assert item.event_id == ev_id
+
+
+def test_apply_scores_executes_update_on_event() -> None:
+    from episignal_backend.db.types import VerificationStatus
+    from sqlalchemy import Update
+
+    ev_id = uuid4()
+    session = FakeSession()
+    repo = SqlAlchemyEventRepository(session)
+    repo.apply_scores(
+        event_id=ev_id,
+        early_signal_score=0.75,
+        evidence_score=0.60,
+        verification_status=VerificationStatus.HIGH_CREDIBILITY,
+    )
+
+    assert len(session.executed) == 1
+    stmt = session.executed[0]
+    assert isinstance(stmt, Update)
+    stmt_str = str(stmt).lower()
+    assert "events" in stmt_str
+    assert "early_signal_score" in stmt_str
+    assert "evidence_score" in stmt_str
+    assert "verification_status" in stmt_str
