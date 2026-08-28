@@ -62,7 +62,7 @@ verified report back to the planner; do not mark `E` verified.
 - [x] 8. Strictly validate radar responses in the web client.
 - [x] 9. Add only the map dependencies and pure marker helpers.
 - [x] 10. Mount a small resilient MapLibre component.
-- [ ] 11. Replace the homepage with the radar map and list.
+- [x] 11. Replace the homepage with the radar map and list.
 - [ ] 12. Wire server fetching, loading, responsive CSS, and build safety.
 - [ ] 13. Strictly validate pipeline history in the web client.
 - [ ] 14. Build the read-only pipeline monitor page.

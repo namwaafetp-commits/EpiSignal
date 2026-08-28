@@ -1,92 +1,243 @@
 import { render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import type { RadarFeedState } from "../lib/api-radar";
 import { HomeShell } from "./home-shell";
 
-const evidenceFeed = {
-  status: "ready" as const,
+// Mock SignalMap
+vi.mock("./signal-map", () => ({
+  SignalMap: ({
+    items,
+    selectedId,
+    onSelect,
+  }: {
+    items: unknown[];
+    selectedId: string | null;
+    onSelect: (id: string) => void;
+  }) => (
+    <div data-testid="mock-signal-map" data-selected={selectedId}>
+      <span>Plotted {items.length} items</span>
+      <button onClick={() => onSelect("item-1")}>Select Item 1</button>
+    </div>
+  ),
+}));
+
+const SAMPLE_READY_RADAR: RadarFeedState = {
+  status: "ready",
   data: {
     items: [
       {
-        id: "178cc906-edee-4b01-9efb-b230c00a397a",
-        source_name: "WHO Disease Outbreak News",
-        title: "Ebola disease - Democratic Republic of the Congo",
-        raw_text: "4665 confirmed cases.",
-        url: "https://www.who.int/report",
-        published_at: "2026-08-14T15:38:29Z",
-        retrieved_at: "2026-08-26T10:00:00Z",
+        id: "24681357-1234-5678-9abc-def012345678",
+        title_english: "Cholera outbreak in Luanda Province",
+        brief: [
+          {
+            slot: "what_where",
+            text: "Cholera outbreak reported in Luanda province.",
+            reported: true,
+          },
+          {
+            slot: "counts",
+            text: "120 suspected cases and 4 deaths.",
+            reported: true,
+          },
+          {
+            slot: "timing",
+            text: "Cases reported between August 20 and August 27.",
+            reported: true,
+          },
+          {
+            slot: "spread",
+            text: "Spread observed across two municipal districts.",
+            reported: true,
+          },
+          {
+            slot: "reporting",
+            text: "Reported by the Provincial Health Directorate.",
+            reported: true,
+          },
+        ],
+        signal_type: "outbreak_report",
+        processing_status: "matched",
+        published_at: "2026-08-28T10:00:00Z",
+        first_seen_at: "2026-08-28T10:05:00Z",
+        source: {
+          name: "WHO AFRO",
+          url: "https://afro.who.int/report/123",
+          is_official: true,
+          credibility_tier: "official",
+        },
+        extraction_confidence: 0.95,
+        location: {
+          role: "primary",
+          precision: "admin1",
+          label: "Luanda Province",
+          country_code: "AO",
+          latitude: -8.8383,
+          longitude: 13.2344,
+        },
+        event_context_status: "attached",
+        event: {
+          public_id: "EVT-2026-00042",
+          verification_status: "officially_confirmed",
+          early_signal_score: 0.88,
+          evidence_score: 0.94,
+        },
       },
     ],
-    total: 12,
-    source_count: 1,
-    limit: 20,
-    offset: 0,
+    window_start: "2026-08-26T12:00:00Z",
+    window_end: "2026-08-28T12:00:00Z",
+    hours: 48,
+    limit: 50,
   },
 };
 
-test("renders traceable evidence and warns that coverage is limited", () => {
-  render(<HomeShell apiStatus="ready" evidenceFeed={evidenceFeed} />);
+describe("HomeShell", () => {
+  it("renders loading state when radar feed is loading", () => {
+    render(
+      <HomeShell
+        apiStatus="loading"
+        radarFeed={{ status: "loading", data: null }}
+      />
+    );
 
-  expect(
-    screen.getByRole("heading", {
-      name: "Ebola disease - Democratic Republic of the Congo",
-    }),
-  ).toBeInTheDocument();
-  expect(screen.getByText("4665 confirmed cases.")).toBeInTheDocument();
-  expect(screen.getByText("Collected 26 Aug 2026")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /view original/i })).toHaveAttribute(
-    "href",
-    "https://www.who.int/report",
-  );
-  expect(screen.getByText("Limited coverage")).toBeInTheDocument();
-  expect(screen.getByText(/12 reports from 1 source/i)).toBeInTheDocument();
-  expect(
-    screen.getByText(/not comprehensive global surveillance/i),
-  ).toBeInTheDocument();
-});
+    expect(screen.getByText(/loading recent signals/i)).toBeInTheDocument();
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  });
 
-const emptyFeed = {
-  status: "ready" as const,
-  data: { items: [], total: 0, source_count: 0, limit: 20, offset: 0 },
-};
+  it("renders unavailable state when radar feed is unavailable", () => {
+    render(
+      <HomeShell
+        apiStatus="ready"
+        radarFeed={{ status: "unavailable", data: null }}
+      />
+    );
 
-const unavailableFeed = { status: "unavailable" as const, data: null };
+    expect(screen.getByText(/signals unavailable/i)).toBeInTheDocument();
+  });
 
-test("renders an honest evidence-free shell", () => {
-  render(<HomeShell apiStatus="ready" evidenceFeed={emptyFeed} />);
-  expect(screen.getByRole("banner")).toBeInTheDocument();
-  expect(screen.getByRole("main")).toBeInTheDocument();
-  expect(screen.getByRole("searchbox")).toBeDisabled();
-  expect(
-    screen.getByText("No source evidence has been ingested yet."),
-  ).toBeInTheDocument();
-  expect(screen.queryByText(/cases|deaths/i)).not.toBeInTheDocument();
-});
+  it("renders empty state when radar feed has 0 items", () => {
+    render(
+      <HomeShell
+        apiStatus="ready"
+        radarFeed={{
+          status: "ready",
+          data: {
+            items: [],
+            window_start: "2026-08-26T12:00:00Z",
+            window_end: "2026-08-28T12:00:00Z",
+            hours: 48,
+            limit: 50,
+          },
+        }}
+      />
+    );
 
-test("shows API unavailability without hiding the product shell", () => {
-  render(<HomeShell apiStatus="unavailable" evidenceFeed={unavailableFeed} />);
-  expect(screen.getByText("API unavailable")).toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", { name: /what are official health sources/i }),
-  ).toBeInTheDocument();
-  expect(screen.getByText("Evidence feed unavailable.")).toBeInTheDocument();
-});
+    expect(
+      screen.getByText(/no signals found in the selected window/i)
+    ).toBeInTheDocument();
+  });
 
-test("shows loading state in the same stable shell", () => {
-  render(
-    <HomeShell
-      apiStatus="loading"
-      evidenceFeed={{ status: "loading", data: null }}
-    />,
-  );
-  expect(screen.getByText("Checking API")).toBeInTheDocument();
-  expect(screen.getByText("Checking stored reports.")).toBeInTheDocument();
-  expect(screen.getByRole("main")).toBeInTheDocument();
-});
+  it("renders full radar card with 5 slots, source metadata, separate event scores, and safe source link", () => {
+    render(
+      <HomeShell
+        apiStatus="ready"
+        radarFeed={SAMPLE_READY_RADAR}
+      />
+    );
 
-test("marks the mobile coverage panel as a bottom sheet", () => {
-  render(<HomeShell apiStatus="ready" evidenceFeed={evidenceFeed} />);
-  expect(screen.getByLabelText("Coverage notice")).toHaveAttribute(
-    "data-mobile-role",
-    "bottom-sheet",
-  );
+    // English Title
+    expect(
+      screen.getByText("Cholera outbreak in Luanda Province")
+    ).toBeInTheDocument();
+
+    // 5 Brief slots
+    expect(
+      screen.getByText("Cholera outbreak reported in Luanda province.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("120 suspected cases and 4 deaths.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Cases reported between August 20 and August 27.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Spread observed across two municipal districts.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Reported by the Provincial Health Directorate.")
+    ).toBeInTheDocument();
+
+    // Metadata
+    expect(screen.getByText(/official source/i)).toBeInTheDocument();
+    expect(screen.getByText(/luanda province/i)).toBeInTheDocument();
+    expect(screen.getByText(/95% extraction confidence/i)).toBeInTheDocument();
+
+    // Separate event scores
+    expect(screen.getByText(/surveillance interest: 88%/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence support: 94%/i)).toBeInTheDocument();
+    expect(screen.getByText(/EVT-2026-00042/i)).toBeInTheDocument();
+
+    // Safe external source link
+    const link = screen.getByRole("link", { name: /view original source/i });
+    expect(link).toHaveAttribute("href", "https://afro.who.int/report/123");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+
+  it("renders unmatched and ambiguous event statuses accurately", () => {
+    const feedUnmatched: RadarFeedState = {
+      status: "ready",
+      data: {
+        ...SAMPLE_READY_RADAR.data!,
+        items: [
+          {
+            ...SAMPLE_READY_RADAR.data!.items[0],
+            event_context_status: "none",
+            event: null,
+          },
+        ],
+      },
+    };
+
+    const { rerender } = render(
+      <HomeShell apiStatus="ready" radarFeed={feedUnmatched} />
+    );
+    expect(
+      screen.getByText(/unattached signal/i)
+    ).toBeInTheDocument();
+
+    const feedAmbiguous: RadarFeedState = {
+      status: "ready",
+      data: {
+        ...SAMPLE_READY_RADAR.data!,
+        items: [
+          {
+            ...SAMPLE_READY_RADAR.data!.items[0],
+            event_context_status: "ambiguous",
+            event: null,
+          },
+        ],
+      },
+    };
+
+    rerender(<HomeShell apiStatus="ready" radarFeed={feedAmbiguous} />);
+    expect(
+      screen.getByText(/ambiguous signal/i)
+    ).toBeInTheDocument();
+  });
+
+  it("allows selecting a signal card on click", async () => {
+    const user = userEvent.setup();
+    render(
+      <HomeShell
+        apiStatus="ready"
+        radarFeed={SAMPLE_READY_RADAR}
+      />
+    );
+
+    const card = screen.getByRole("article");
+    await user.click(card);
+
+    expect(card).toHaveAttribute("data-selected", "true");
+  });
 });
