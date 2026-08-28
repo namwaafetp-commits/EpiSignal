@@ -6,11 +6,15 @@ the only module in `ai/` that imports SQLAlchemy, and it owns transactions on
 behalf of the passes above it.
 """
 
+import logging
 from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from episignal_backend.ai.documents import (
     AiRequestRecord,
@@ -35,6 +39,41 @@ class SqlAlchemyAiRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def _scan_valid_signals(
+        self,
+        base_stmt: Any,
+        limit: int,
+        pass_name: str,
+    ) -> list[Signal]:
+        chunk_size = max(limit, 20)
+        max_scan = max(limit * 5, 100)
+        offset = 0
+        valid_signals: list[Signal] = []
+
+        while len(valid_signals) < limit and offset < max_scan:
+            chunk_stmt = base_stmt.offset(offset).limit(chunk_size)
+            exec_res = self._session.execute(chunk_stmt)
+            scalars_res = exec_res.scalars() if hasattr(exec_res, "scalars") else exec_res
+            chunk_rows = list(scalars_res.all() if hasattr(scalars_res, "all") else scalars_res)
+            if not chunk_rows:
+                break
+            offset += len(chunk_rows)
+            for row in chunk_rows:
+                if not verify_content_hash(row.title, row.raw_text, row.content_hash):
+                    logger.warning(
+                        "Signal %s failed content hash integrity check; omitted from %s pass",
+                        row.id,
+                        pass_name,
+                    )
+                    continue
+                valid_signals.append(row)
+                if len(valid_signals) == limit:
+                    break
+            if len(chunk_rows) < chunk_size:
+                break
+
+        return valid_signals
+
     def models(self) -> Sequence[ModelSpec]:
         rows = self._session.execute(
             select(AiModel).where(AiModel.active.is_(True)).order_by(AiModel.tier)
@@ -55,15 +94,15 @@ class SqlAlchemyAiRepository:
         # The enforcement of the first invariant: `duplicate`, `needs_review`,
         # and `fetched` are simply not selectable here, so no later change can
         # send one to a model by accident.
-        rows = self._session.execute(
+        stmt = (
             select(Signal)
             .where(
                 Signal.processing_status == ProcessingStatus.NORMALIZED,
                 Signal.raw_text.is_not(None),
             )
             .order_by(Signal.first_seen_at)
-            .limit(limit)
-        ).scalars()
+        )
+        rows = self._scan_valid_signals(stmt, limit, "classification")
         return tuple(
             ClassifiableSignal(
                 id=row.id,
@@ -71,11 +110,10 @@ class SqlAlchemyAiRepository:
                 excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
             )
             for row in rows
-            if verify_content_hash(row.title, row.raw_text, row.content_hash)
         )
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
-        rows = self._session.execute(
+        stmt = (
             select(Signal)
             .where(
                 Signal.processing_status == ProcessingStatus.CLASSIFIED,
@@ -83,12 +121,11 @@ class SqlAlchemyAiRepository:
                 Signal.raw_text.is_not(None),
             )
             .order_by(Signal.first_seen_at)
-            .limit(limit)
-        ).scalars()
+        )
+        rows = self._scan_valid_signals(stmt, limit, "extraction")
         return tuple(
             ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
             for row in rows
-            if verify_content_hash(row.title, row.raw_text, row.content_hash)
         )
 
     def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]:
@@ -99,7 +136,7 @@ class SqlAlchemyAiRepository:
         decision, and the other has not been classified yet.
         """
         stored_version = Signal.ai_extraction[EXTRACTION_VERSION_KEY].as_integer()
-        rows = self._session.execute(
+        stmt = (
             select(Signal)
             .where(
                 Signal.processing_status.in_(
@@ -115,12 +152,11 @@ class SqlAlchemyAiRepository:
                 or_(stored_version.is_(None), stored_version < EXTRACTION_SCHEMA_VERSION),
             )
             .order_by(Signal.first_seen_at)
-            .limit(limit)
-        ).scalars()
+        )
+        rows = self._scan_valid_signals(stmt, limit, "backfill")
         return tuple(
             ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
             for row in rows
-            if verify_content_hash(row.title, row.raw_text, row.content_hash)
         )
 
     def resolve_disease(self, name: str) -> UUID | None:

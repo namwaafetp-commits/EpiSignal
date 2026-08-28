@@ -731,7 +731,7 @@ def test_query_radar_pagination_skips_malformed_without_consuming_limit() -> Non
     assert page.items[1].id == sig3.id
 
 
-def test_query_radar_excludes_signal_with_mismatched_content_hash() -> None:
+def test_query_radar_excludes_signal_with_mismatched_content_hash(caplog: Any) -> None:
     now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
     corrupted_sig = FakeSignalRow(
         id=uuid4(),
@@ -748,8 +748,12 @@ def test_query_radar_excludes_signal_with_mismatched_content_hash() -> None:
         ]
     )
 
-    page = query_radar(session, now=now, hours=48, limit=50)
+    with caplog.at_level("WARNING"):
+        page = query_radar(session, now=now, hours=48, limit=50)
+
     assert len(page.items) == 0
+    assert str(corrupted_sig.id) in caplog.text
+    assert "failed content hash integrity" in caplog.text
 
 
 def test_query_radar_pagination_scans_past_mismatched_content_hash() -> None:

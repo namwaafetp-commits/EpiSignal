@@ -5,6 +5,7 @@ representative locations, source credibility, and optional attached event contex
 Also provides counts-only pipeline run monitoring.
 """
 
+import logging
 import re
 from collections import defaultdict
 from collections.abc import Sequence
@@ -16,6 +17,8 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from episignal_backend.ai.schema import BRIEF_SLOT_COUNT, BriefPoint, StoredExtractionPayload
 from episignal_backend.db.types import (
@@ -272,6 +275,10 @@ def query_radar(
             if not payload.title_english or len(payload.brief) != BRIEF_SLOT_COUNT:
                 continue
             if not verify_content_hash(row.title, row.raw_text, row.content_hash):
+                logger.warning(
+                    "Signal %s failed content hash integrity check; omitted from radar feed",
+                    row.id,
+                )
                 continue
             valid_rows_and_payloads.append((row, payload))
             if len(valid_rows_and_payloads) == limit:
