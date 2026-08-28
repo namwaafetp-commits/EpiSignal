@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260828_0008"]
+    assert scripts.get_heads() == ["20260828_0009"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -227,3 +227,16 @@ def test_the_event_scores_migration_renames_columns_and_constraints() -> None:
     sql = render_offline("upgrade", "head")
     assert "early_signal_score" in sql
     assert "evidence_score" in sql
+
+
+def test_the_quarantine_revision_follows_pipeline_runs_revision() -> None:
+    module = _load_revision("20260828_0009_quarantine_corrupted_signal")
+    assert module.revision == "20260828_0009"
+    assert module.down_revision == "20260828_0008"
+
+
+def test_the_quarantine_migration_preserves_text_and_sets_needs_review() -> None:
+    source = _revision_source("20260828_0009_quarantine_corrupted_signal")
+    assert "852aa204-846d-4aa6-a256-82c187fdeaef" in source
+    assert "needs_review" in source
+    assert "extracted" in source
