@@ -51,7 +51,7 @@ Tick each one in the same commit as its work.
 - [x] 12. The stage adapters
 - [x] 13. The runner — `pipeline_runner.py`
 - [x] 14. The script and the shell wrapper
-- [ ] 15. The environment example
+- [x] 15. The environment example
 - [ ] 16. The seam guard
 - [ ] 17. The scheduling document
 - [ ] 18. Live verification and the completion report
