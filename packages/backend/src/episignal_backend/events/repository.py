@@ -107,11 +107,18 @@ class SqlAlchemyEventRepository:
 
         signals: list[SignalForMatching] = []
         for sig, is_official, cred_tier in rows:
-            extraction = (
-                Extraction.model_validate(sig.ai_extraction)
-                if sig.ai_extraction is not None
-                else None
-            )
+            extraction = None
+            if sig.ai_extraction is not None:
+                try:
+                    extraction = Extraction.model_validate(sig.ai_extraction)
+                except Exception:
+                    if isinstance(sig.ai_extraction, dict):
+                        payload = dict(sig.ai_extraction)
+                        payload.setdefault("confidence", 0.5)
+                        try:
+                            extraction = Extraction.model_validate(payload)
+                        except Exception:
+                            extraction = None
             signals.append(
                 SignalForMatching(
                     signal_id=sig.id,
