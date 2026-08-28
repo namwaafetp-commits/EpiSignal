@@ -34,6 +34,16 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
     onSelectRef.current = onSelect;
   }, [onSelect]);
 
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -51,7 +61,7 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
 
       map.on("load", () => {
         setIsLoaded(true);
-        const geojsonData = toGeoJsonFeatures(items);
+        const geojsonData = toGeoJsonFeatures(itemsRef.current);
 
         map.addSource("signals", {
           type: "geojson",
@@ -66,7 +76,7 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
           paint: {
             "circle-radius": [
               "case",
-              ["==", ["get", "id"], selectedId || ""],
+              ["==", ["get", "id"], selectedIdRef.current || ""],
               10,
               6,
             ],

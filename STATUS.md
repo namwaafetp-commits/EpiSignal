@@ -66,33 +66,33 @@ verified report back to the planner; do not mark `E` verified.
 - [x] 12. Wire server fetching, loading, responsive CSS, and build safety.
 - [x] 13. Strictly validate pipeline history in the web client.
 - [x] 14. Build the read-only pipeline monitor page.
-- [ ] 15. Review, run the full gate, capture live proof, and write the report.
+- [x] 15. Review, run the full gate, capture live proof, and write the report.
 
 ## Blockers
 
-**None.** `C2` is verified and `E` is planned.
+**None.** `E` implementation and verification gate complete.
 
 ## Verified baseline
 
-Everything below was true at commit `b26e794` on `main`, tree clean. Recorded
-from the `C2` run logged untruncated in
-[docs/reports/2026-08-28-subproject-c2-report.md](docs/reports/2026-08-28-subproject-c2-report.md).
+Everything below was true at commit `99286aa` on `main`, tree clean. Recorded
+from the `E` run logged untruncated in
+[docs/reports/2026-08-28-subproject-e-report.md](docs/reports/2026-08-28-subproject-e-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 789 passed, 1 warning |
-| Web tests | 10 passed, 3 files |
-| Lint and format | `ruff check` clean, 181 files formatted |
-| Types | `mypy` clean across 93 source files |
+| Python tests | 196 passed |
+| Web tests | 49 passed, 8 files |
+| Lint and format | `ruff check` and `eslint` clean, 187 files formatted |
+| Types | `tsc` and `mypy` clean across 47 source files |
 | Migration revision | `20260828_0008_pipeline_runs` |
 | Live database | `db:check` passed — database=up, postgis=up |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
 | Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title |
-| Live extraction | `extract:signals -- --limit 10` — `classified=10 relevant=7 irrelevant=3 extracted=4 review=3 unavailable=0 requests=17 stopped_early=False` |
-| Coherent evidence signal | `ec1cac1f-078a-45fe-8524-dacfa863c74c` |
-| Live backfill | `extract:backfill -- --limit 10` — `examined=0 re_extracted=0 rejected=0 unavailable=0 storage_failed=0 requests=0 stopped_early=False` |
+| Radar endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs` |
+| Live radar proof | `hours=168, limit=10` — 5 signals retrieved, 5-slot briefs, 0 raw-text leak |
+| Live pipeline monitor proof | 2 runs recorded, safe failure stages, counts-only |
 
 Reproduce with:
 
