@@ -6,6 +6,14 @@ made, and the observation history that followed.
 
 **Product principle:** never show a number without the evidence behind it.
 
+## Roadmap and status
+
+- [ROADMAP.md](ROADMAP.md) — the whole road from foundation to the Phase 1 MVP,
+  banded, with the status of every item.
+- [STATUS.md](STATUS.md) — where the build is right now and what happens next.
+- [docs/agents/workflow.md](docs/agents/workflow.md) — how the planning and
+  implementation roles hand work between each other.
+
 ## Current scope
 
 This repository currently contains the **foundation only**:
@@ -124,6 +132,7 @@ Nothing is overwritten in place: new reporting arrives as new observations.
 - Foundation design: [docs/superpowers/specs/2026-08-26-foundation-design.md](docs/superpowers/specs/2026-08-26-foundation-design.md)
 - GDELT discovery design: [docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md)
 - GDELT layer architecture: [docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md](docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md)
+- Master tracking design: [docs/superpowers/specs/2026-08-28-master-tracking-design.md](docs/superpowers/specs/2026-08-28-master-tracking-design.md)
 
 ## Attribution
 
