@@ -32,7 +32,7 @@ Tick each one in the same commit as its work.
 
 - [x] 1. Contracts across the seams — `events/documents.py`
 - [x] 2. Precision weighting
-- [ ] 3. Spatial compatibility at the coarsest shared precision
+- [x] 3. Spatial compatibility at the coarsest shared precision
 - [ ] 4. Temporal compatibility
 - [ ] 5. A signal with no disease is not clustered
 - [ ] 6. Single-link cluster assembly
