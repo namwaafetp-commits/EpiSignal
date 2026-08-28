@@ -33,7 +33,11 @@ FRENCH_ANSWER = json.dumps(
             {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
             {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
             {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
-            {"slot": "reporting", "text": "Reported by Angola's health ministry.", "reported": True},
+            {
+                "slot": "reporting",
+                "text": "Reported by Angola's health ministry.",
+                "reported": True,
+            },
         ],
         "disease": {"name": "Cholera", "confidence": 0.96},
         "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
@@ -285,4 +289,3 @@ def test_a_rolled_back_backfill_is_not_reported_as_extracted() -> None:
     assert result.extracted == 0
     assert result.storage_failed == 1
     assert repository.rollbacks == 1
-

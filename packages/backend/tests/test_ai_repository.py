@@ -59,7 +59,11 @@ def extraction() -> Extraction:
                 {"slot": "counts", "text": "No case count reported.", "reported": False},
                 {"slot": "timing", "text": "No date reported.", "reported": False},
                 {"slot": "spread", "text": "No transmission detail reported.", "reported": False},
-                {"slot": "reporting", "text": "Reported by Angola's health ministry.", "reported": True},
+                {
+                    "slot": "reporting",
+                    "text": "Reported by Angola's health ministry.",
+                    "reported": True,
+                },
             ],
             "confidence": 0.9,
         }

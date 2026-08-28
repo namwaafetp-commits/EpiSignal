@@ -89,11 +89,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"stopped_early={result.stopped_early}"
     )
     return (
-        0
-        if result.reviewed == 0
-        and result.unavailable == 0
-        and result.storage_failed == 0
-        else 1
+        0 if result.reviewed == 0 and result.unavailable == 0 and result.storage_failed == 0 else 1
     )
 
 

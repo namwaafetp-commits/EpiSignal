@@ -69,7 +69,6 @@ def test_any_failed_signal_makes_the_command_fail(
     assert main([]) == 1
 
 
-
 def test_a_missing_api_key_stops_the_run_with_a_clear_message(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
