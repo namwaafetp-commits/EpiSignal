@@ -25,6 +25,7 @@ from episignal_backend.ai.schema import (
     EXTRACTION_VERSION_KEY,
 )
 from episignal_backend.db.types import ProcessingStatus
+from episignal_backend.ingestion.fingerprint import verify_content_hash
 from episignal_backend.models import AiModel, AiRequest, Disease, Signal
 
 EXCERPT_CHARACTERS = 1200
@@ -70,6 +71,7 @@ class SqlAlchemyAiRepository:
                 excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
             )
             for row in rows
+            if verify_content_hash(row.title, row.raw_text, row.content_hash)
         )
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
@@ -86,6 +88,7 @@ class SqlAlchemyAiRepository:
         return tuple(
             ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
             for row in rows
+            if verify_content_hash(row.title, row.raw_text, row.content_hash)
         )
 
     def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]:
@@ -117,6 +120,7 @@ class SqlAlchemyAiRepository:
         return tuple(
             ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
             for row in rows
+            if verify_content_hash(row.title, row.raw_text, row.content_hash)
         )
 
     def resolve_disease(self, name: str) -> UUID | None:

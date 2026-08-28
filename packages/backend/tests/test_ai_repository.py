@@ -237,3 +237,65 @@ def test_the_backfill_never_selects_a_signal_awaiting_a_human() -> None:
     selected = [value for value in compiled.params.values() if isinstance(value, str)]
     assert ProcessingStatus.NEEDS_REVIEW.value not in selected
     assert ProcessingStatus.NORMALIZED.value not in selected
+
+
+class FakeSignalModel:
+    def __init__(
+        self,
+        *,
+        id: Any = None,
+        title: str = "Cholera in Luanda",
+        raw_text: str | None = "50 cases of cholera reported in Luanda.",
+        content_hash: str | None = None,
+    ) -> None:
+        self.id = id or uuid4()
+        self.title = title
+        self.raw_text = raw_text
+        if content_hash is not None:
+            self.content_hash = content_hash
+        else:
+            from episignal_backend.ingestion.fingerprint import content_hash as compute_hash
+
+            self.content_hash = compute_hash(title, raw_text or "")
+
+
+def test_awaiting_classification_excludes_mismatched_content_hash() -> None:
+    corrupted = FakeSignalModel(
+        title="Pennsylvania measles",
+        raw_text="Luanda cholera",
+        content_hash="bad_hash_00000000000000000000000000000000000000000000000000000000",
+    )
+    valid = FakeSignalModel(title="Valid title", raw_text="Valid body")
+    session = FakeSession([FakeResult([corrupted, valid])])
+
+    results = SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
+    assert len(results) == 1
+    assert results[0].id == valid.id
+
+
+def test_awaiting_extraction_excludes_mismatched_content_hash() -> None:
+    corrupted = FakeSignalModel(
+        title="Pennsylvania measles",
+        raw_text="Luanda cholera",
+        content_hash="bad_hash_00000000000000000000000000000000000000000000000000000000",
+    )
+    valid = FakeSignalModel(title="Valid title", raw_text="Valid body")
+    session = FakeSession([FakeResult([corrupted, valid])])
+
+    results = SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
+    assert len(results) == 1
+    assert results[0].id == valid.id
+
+
+def test_awaiting_backfill_excludes_mismatched_content_hash() -> None:
+    corrupted = FakeSignalModel(
+        title="Pennsylvania measles",
+        raw_text="Luanda cholera",
+        content_hash="bad_hash_00000000000000000000000000000000000000000000000000000000",
+    )
+    valid = FakeSignalModel(title="Valid title", raw_text="Valid body")
+    session = FakeSession([FakeResult([corrupted, valid])])
+
+    results = SqlAlchemyAiRepository(session).awaiting_backfill(limit=10)
+    assert len(results) == 1
+    assert results[0].id == valid.id

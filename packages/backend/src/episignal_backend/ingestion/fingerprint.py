@@ -21,3 +21,13 @@ def _collapse(value: str) -> str:
 def content_hash(title: str, body: str) -> str:
     payload = f"{_collapse(title)}{SEPARATOR}{_collapse(body)}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def verify_content_hash(title: str, body: str | None, stored_hash: str | None) -> bool:
+    """Verify that a stored content hash matches the recomputed hash of (title, body).
+
+    Returns True if stored_hash is a non-empty string matching content_hash(title, body or "").
+    """
+    if not stored_hash or not isinstance(stored_hash, str):
+        return False
+    return content_hash(title, body or "") == stored_hash

@@ -29,6 +29,7 @@ from episignal_backend.db.types import (
     SignalType,
     VerificationStatus,
 )
+from episignal_backend.ingestion.fingerprint import verify_content_hash
 from episignal_backend.models import (
     Event,
     EventSignal,
@@ -221,6 +222,9 @@ def query_radar(
             Signal.published_at,
             Signal.first_seen_at,
             Signal.ai_extraction,
+            Signal.title,
+            Signal.raw_text,
+            Signal.content_hash,
             Source.name.label("source_name"),
             Source.is_official.label("source_is_official"),
             Source.credibility_tier.label("source_credibility_tier"),
@@ -266,6 +270,8 @@ def query_radar(
             except Exception:
                 continue
             if not payload.title_english or len(payload.brief) != BRIEF_SLOT_COUNT:
+                continue
+            if not verify_content_hash(row.title, row.raw_text, row.content_hash):
                 continue
             valid_rows_and_payloads.append((row, payload))
             if len(valid_rows_and_payloads) == limit:

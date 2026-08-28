@@ -342,6 +342,9 @@ class FakeSignalRow:
         published_at: datetime | None = None,
         first_seen_at: datetime | None = None,
         ai_extraction: dict[str, Any] | None = None,
+        title: str = "Cholera in Luanda",
+        raw_text: str | None = "Health officials reported 50 cholera cases.",
+        content_hash: str | None = None,
         source_name: str = "Health Ministry",
         source_is_official: bool = True,
         source_credibility_tier: CredibilityTier = CredibilityTier.OFFICIAL,
@@ -352,6 +355,14 @@ class FakeSignalRow:
         self.signal_type = signal_type
         self.published_at = published_at
         self.first_seen_at = first_seen_at or datetime(2026, 8, 28, 10, 0, tzinfo=UTC)
+        self.title = title
+        self.raw_text = raw_text
+        if content_hash is not None:
+            self.content_hash = content_hash
+        else:
+            from episignal_backend.ingestion.fingerprint import content_hash as compute_hash
+
+            self.content_hash = compute_hash(title, raw_text or "")
         self.ai_extraction = (
             ai_extraction
             if ai_extraction is not None
@@ -718,3 +729,60 @@ def test_query_radar_pagination_skips_malformed_without_consuming_limit() -> Non
     assert len(page.items) == 2
     assert page.items[0].id == sig2.id
     assert page.items[1].id == sig3.id
+
+
+def test_query_radar_excludes_signal_with_mismatched_content_hash() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    corrupted_sig = FakeSignalRow(
+        id=uuid4(),
+        title="Pennsylvania reports first 2 measles deaths",
+        raw_text="Health officials in Luanda, Angola reported 50 confirmed cases of cholera.",
+        content_hash="0000000000000000000000000000000000000000000000000000000000000000",
+    )
+
+    session = FakeSession(
+        [
+            FakeResult([corrupted_sig]),
+            FakeResult([]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+    assert len(page.items) == 0
+
+
+def test_query_radar_pagination_scans_past_mismatched_content_hash() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    corrupted_sig = FakeSignalRow(
+        id=uuid4(),
+        title="Pennsylvania measles deaths",
+        raw_text="Luanda cholera body",
+        content_hash="badhash000000000000000000000000000000000000000000000000000000000",
+    )
+    valid_sig1 = FakeSignalRow(id=uuid4())
+    valid_sig2 = FakeSignalRow(id=uuid4())
+
+    session = FakeSession(
+        [
+            FakeResult([corrupted_sig, valid_sig1, valid_sig2]),
+            FakeResult([]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=2)
+    assert len(page.items) == 2
+    assert page.items[0].id == valid_sig1.id
+    assert page.items[1].id == valid_sig2.id
+
+
+def test_query_radar_statement_selects_integrity_fields() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    session = FakeSession()
+
+    query_radar(session, now=now, hours=48, limit=50)
+    statement = str(session.executed[0])
+    assert "signals.title" in statement
+    assert "signals.raw_text" in statement
+    assert "signals.content_hash" in statement
