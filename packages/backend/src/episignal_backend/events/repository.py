@@ -10,13 +10,16 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from geoalchemy2.elements import WKTElement
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.ai.schema import Extraction
 from episignal_backend.db.types import (
+    EventStatus,
+    EventType,
     Precision,
     ProcessingStatus,
     RelationshipType,
@@ -31,6 +34,7 @@ from episignal_backend.events.documents import (
 from episignal_backend.models import (
     Event,
     EventLocation,
+    EventSignal,
     Signal,
     SignalLocation,
     Source,
@@ -201,7 +205,63 @@ class SqlAlchemyEventRepository:
         return tuple(candidates)
 
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
-        raise NotImplementedError
+        if cluster.disease_id is None:
+            raise ValueError("Cannot create an event for a cluster without a disease_id")
+
+        event_id = uuid4()
+        public_id = f"EVT-{event_id.hex[:8].upper()}"
+        slug = f"event-{event_id.hex[:10].lower()}"
+
+        rep_loc = cluster.representative_location
+        country_code = rep_loc.country_code if rep_loc else None
+        admin1 = rep_loc.admin1 if rep_loc else None
+        admin2 = rep_loc.admin2 if rep_loc else None
+        place_name = rep_loc.place_name if rep_loc else None
+        lat = rep_loc.latitude if rep_loc else None
+        lon = rep_loc.longitude if rep_loc else None
+        geom = (
+            WKTElement(f"POINT({lon} {lat})", srid=4326)
+            if (lat is not None and lon is not None)
+            else None
+        )
+
+        loc_label = place_name or admin1 or country_code or "Unknown"
+        title = f"Outbreak event in {loc_label} ({public_id})"
+
+        first_sig_at = cluster.span[0]
+        event_start_date = first_sig_at.date()
+        last_updated_at = cluster.span[1]
+
+        event = Event(
+            id=event_id,
+            public_id=public_id,
+            slug=slug,
+            title=title,
+            disease_id=cluster.disease_id,
+            pathogen_id=None,
+            event_type=EventType.OUTBREAK,
+            status=EventStatus.MONITORING,
+            verification_status=VerificationStatus.SIGNAL,
+            country_code=country_code,
+            admin1=admin1,
+            admin2=admin2,
+            latitude=lat,
+            longitude=lon,
+            geometry=geom,
+            first_signal_at=first_sig_at,
+            event_start_date=event_start_date,
+            last_updated_at=last_updated_at,
+        )
+        self._session.add(event)
+
+        locations = (rep_loc,) if rep_loc is not None else ()
+        return CandidateEvent(
+            event_id=event_id,
+            disease_id=cluster.disease_id,
+            locations=locations,
+            first_signal_at=first_sig_at,
+            last_updated_at=last_updated_at,
+        )
 
     def attach_signal(
         self,
@@ -212,7 +272,14 @@ class SqlAlchemyEventRepository:
         match_score: float,
         is_primary: bool,
     ) -> None:
-        raise NotImplementedError
+        rel = EventSignal(
+            event_id=event_id,
+            signal_id=signal_id,
+            relationship_type=relationship_type,
+            match_score=match_score,
+            is_primary=is_primary,
+        )
+        self._session.add(rel)
 
     def record_observation(self, event_id: UUID, signal: SignalForMatching) -> None:
         raise NotImplementedError

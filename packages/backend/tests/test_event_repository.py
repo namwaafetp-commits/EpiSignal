@@ -274,3 +274,78 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     sql_admin1 = str(session_admin1.executed[0]).lower()
     assert "st_dwithin" not in sql_admin1
     assert "country_code" in sql_admin1
+
+
+def test_create_event_inserts_event_row_and_returns_candidate() -> None:
+    from episignal_backend.events.documents import StoryCluster
+    from episignal_backend.models import Event
+
+    disease_id = uuid4()
+    now = datetime.now(UTC)
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        admin1="North Kivu",
+        admin2="Beni",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    sig = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_id,
+        source_id=uuid4(),
+        source_is_official=True,
+        credibility_tier=CredibilityTier.OFFICIAL,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    cluster = StoryCluster(signals=(sig,))
+
+    session = FakeSession()
+    repo = SqlAlchemyEventRepository(session)
+    candidate = repo.create_event(cluster)
+
+    assert candidate.disease_id == disease_id
+    assert len(candidate.locations) == 1
+    assert candidate.locations[0].place_name == "Beni"
+    assert candidate.first_signal_at == now
+
+    # Check added event model instance
+    assert len(session.added) == 1
+    added_event = session.added[0]
+    assert isinstance(added_event, Event)
+    assert added_event.disease_id == disease_id
+    assert added_event.country_code == "CD"
+    assert added_event.latitude == 0.49
+    assert added_event.longitude == 29.47
+    assert added_event.public_id.startswith("EVT-")
+
+
+def test_attach_signal_inserts_event_signal_row() -> None:
+    from episignal_backend.db.types import RelationshipType
+    from episignal_backend.models import EventSignal
+
+    ev_id = uuid4()
+    sig_id = uuid4()
+
+    session = FakeSession()
+    repo = SqlAlchemyEventRepository(session)
+    repo.attach_signal(
+        event_id=ev_id,
+        signal_id=sig_id,
+        relationship_type=RelationshipType.INITIAL_REPORT,
+        match_score=0.92,
+        is_primary=True,
+    )
+
+    assert len(session.added) == 1
+    added_rel = session.added[0]
+    assert isinstance(added_rel, EventSignal)
+    assert added_rel.event_id == ev_id
+    assert added_rel.signal_id == sig_id
+    assert added_rel.relationship_type == RelationshipType.INITIAL_REPORT
+    assert added_rel.match_score == 0.92
+    assert added_rel.is_primary is True
