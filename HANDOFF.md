@@ -1,92 +1,90 @@
-# Handoff — Sub-Project L: Scheduler
+# Handoff — Sub-Project C2: The English Brief
 
 **Date:** 2026-08-28
-**Branch:** `main` (clean, 694 passing tests)
-**Head:** `D2a` complete and verified; `events`, `event_signals`, `event_observations`, and `event_locations` have a working writer, and every stage of the pipeline exists as a CLI runner.
-**State:** `P0`–`P3`, `A`, `B`, `C`, `D1`, and `D2a` are complete, verified, and merged. `L` is **designed and planned**. **Your task is to implement Sub-Project L, task by task, from the committed plan.**
+**Branch:** `main` (clean, 756 passing Python tests, 10 web tests)
+**Head:** `L` complete and verified. The whole pipeline runs from one command, records each run in `pipeline_runs`, and is scheduled daily.
+**State:** `P0`–`P3`, `A`, `B`, `C`, `D1`, `D2a`, and `L` are complete, verified, and merged. `C2` is **designed and planned**. **Your task is to implement Sub-Project C2, task by task, from the committed plan.**
 
 ---
 
 ## Why this item, and why now
 
-Every stage of the pipeline works. Nothing runs it.
+An extraction currently carries one free-form `summary`: up to 400 characters,
+written in whatever language the article was written in. Nothing can lay two of
+them out the same way, and a reader who does not read Portuguese learns nothing
+from a Portuguese outbreak report the system has already paid a model to read.
 
-`D2a`'s live verification is the whole argument for this item:
+The operator asked for briefs that read in English as five bullets in an
+epidemiologist's order. That is a change to what extraction *writes*, so it is
+its own item rather than something the radar (`E`) does at render time.
 
-```
-seen=2 clusters=0 created=0 attached=0 refused=0 unclusterable=2
-```
-
-Two geocoded signals, zero events. Not because clustering is wrong — because
-seven commands have to be typed in order, by hand, and nobody has been typing
-them. `D2b` would tune an embedding threshold against zero refusals, and `E`
-would render an empty list. Both are worth building once there is a corpus. This
-item is what produces one.
-
----
-
-## What Sub-Project L Builds
-
-1. **One command that runs the whole chain.** `pnpm pipeline:run` executes
-   `ingest_who → ingest_ecdc → discover → dedupe → extract → geocode → match`
-   once, then exits. No daemon, no queue, no in-process scheduler.
-2. **A run record.** A new `pipeline_runs` table holds one row per run: what
-   each stage did, how deep the backlog is, and the window discovery asked for.
-3. **A recoverable missed day.** Discovery's window starts where the last
-   successful run stopped, clamped to seven days, so a laptop that was asleep
-   costs a longer run rather than a permanent hole.
-4. **A lock.** A PostgreSQL advisory lock, so a manual run and a scheduled one
-   cannot collide.
-5. **A trigger.** `scripts/run-pipeline.ps1` plus a documented Windows Task
-   Scheduler entry.
+It goes before `E` because an extraction is paid for once. Fixing the shape now
+means the corpus grows in its final form; fixing it after `E` means paying a
+second time for every article already read.
 
 ---
 
-## Scope note: this is an orchestrator
+## What Sub-Project C2 builds
 
-`L` writes no signal, no event, and no observation of its own. Every stage it
-calls is an existing, already-verified path, and each is idempotent by
-`processing_status`. `L` adds three things those paths do not have: an order, a
-record, and a lock.
-
-If you find yourself changing what a stage *does* — editing `run_geocoding`,
-`run_extraction`, `run_event_assembly`, or any repository under `events/`,
-`geocode/`, `ai/`, or `ingestion/` — you have left this item. Stop and report.
-The one exception is `schema_check.py`, which task 9 changes by design.
+1. **An English title.** `title_english`, stored beside the publisher's
+   headline and never over it.
+2. **A brief.** Exactly five bullets, one per slot, in a fixed order:
+   `what_where`, `counts`, `timing`, `spread`, `reporting`.
+3. **A stated absence.** A slot the article never addresses is stored with
+   `reported: false` and text that says what is missing.
+4. **A version.** `ai_extraction` carries `extraction_schema_version`, stamped
+   by the repository, and a tolerant model that can still read rows written
+   before any of this existed.
+5. **A backfill.** `pnpm extract:backfill` re-extracts rows below the current
+   version, bounded by the same cost guards, and returns each to `extracted` so
+   geocoding and matching run again.
 
 ---
 
-## Start Here
+## Scope note: this changes one stage's output
+
+`C2` touches `ai/` and the one line in `events/repository.py` that reads what
+`ai/` wrote. It adds no table, no migration, and no column.
+
+If you find yourself changing what discovery finds, what dedupe rejects, what
+geocoding resolves, how clustering matches, or what the scheduler calls, you
+have left this item. Stop and report. The single deliberate exception is
+`events/repository.py`, which task 7 changes because task 6 would otherwise
+silently break the way matching reads a stored extraction.
+
+---
+
+## Start here
 
 Read in this exact order:
 
 1. This file (`HANDOFF.md`);
-2. `STATUS.md` — the current position, the 18-task ledger, settled decisions, and the verified baseline;
-3. `ROADMAP.md` — where `L` sits;
+2. `STATUS.md` — the current position, the 13-task ledger, and the verified baseline;
+3. `ROADMAP.md` — where `C2` sits, between `C` and `D1`;
 4. `docs/agents/workflow.md` — the planner and worker contract and the completion gate;
-5. `docs/superpowers/specs/2026-08-28-scheduler-design.md` — the design you are implementing;
-6. `docs/superpowers/plans/2026-08-28-scheduler.md` — the 18 tasks, in order;
-7. `AGENTS.md` — model routing, project skills, TDD rules, token efficiency, provenance principles;
-8. `CONTEXT.md` — the naming authority. Note the spec's **Vocabulary** section: *stage* means a step of the pipeline here and never a rung of the model ladder, which is a *tier*;
-9. `docs/reports/2026-08-28-subproject-d2a-report.md` — the outgoing item's completion report;
-10. `docs/handoffs/2026-08-28-d2a.md` — the briefing `D2a` was built under.
+5. `docs/superpowers/specs/2026-08-28-english-brief-design.md` — the design you are implementing;
+6. `docs/superpowers/plans/2026-08-28-english-brief.md` — the 13 tasks, in order;
+7. `AGENTS.md` — model routing, project skills, TDD rules, provenance principles;
+8. `CONTEXT.md` — the naming authority. Task 12 adds *brief*, *slot*, and *English title* to it; read the existing **Judgement** section first so the additions match its voice;
+9. `docs/reports/2026-08-28-subproject-l-report.md` — the outgoing item's completion report;
+10. `docs/handoffs/2026-08-28-l.md` — the briefing `L` was built under.
 
-When `L` reaches `verified`, archive this file to `docs/handoffs/2026-08-28-l.md`
+When `C2` reaches `verified`, archive this file to `docs/handoffs/2026-08-28-c2.md`
 before rewriting it for the next item. Do not overwrite it in place.
 
 ---
 
-## Windows Environment Facts
+## Windows environment facts
 
 - **Python:** Run all commands through `uv run`. Do not activate virtual environments manually. Bare `python` is not on `PATH`; use `uv run python`.
-- **Node / pnpm:** `pnpm` is not on `PATH`, but `corepack` ships with Node and is. Always enter the workspace through `corepack pnpm <command>` (for example `corepack pnpm verify`, `corepack pnpm db:migrate`, `corepack pnpm pipeline:run`).
+- **Node / pnpm:** `pnpm` is not on `PATH`, but `corepack` ships with Node and is. Always enter the workspace through `corepack pnpm <command>`.
 - **PowerShell:** Commands run under Windows PowerShell 5.1 (no `&&`, no ternary, no `??`). Chain with `;`.
 - **UTF-8 BOM:** Strip UTF-8 BOM from generated scripts or use standard python writers.
 - **This is a shared working tree.** Other agents commit to `main` in this same directory. Commit only the files your task names; never `git add -A`.
 
 ---
 
-## Verified Baseline
+## Verified baseline
 
 ```powershell
 uv run pytest
@@ -96,123 +94,113 @@ uv run mypy apps/api/src packages/backend/src
 corepack pnpm verify
 ```
 
-**Expected baseline output at `6d61554`:**
-- `694 passed, 1 warning`
+**Expected baseline output at `4dbe028`:**
+- `756 passed, 1 warning`
 - `All checks passed!`
-- `158 files already formatted`
-- `Success: no issues found in 82 source files`
+- `179 files already formatted`
+- `Success: no issues found in 92 source files`
 - Web: `10 passed (10)`, 3 test files
-- `corepack pnpm verify` runs format, lint, typecheck, both test suites, contracts check, and Next.js build cleanly.
+- `corepack pnpm verify` exits 0.
 
-The database is at migration revision `20260828_0007_event_scores`.
-
----
-
-## Testing Rules That Are Not Optional
-
-- **No test touches a database, a socket, or a model.** There is no
-  `conftest.py` and no fixture database in this repository. Repository tests use
-  a hand-written `FakeSession` — copy the one at the top of
-  `packages/backend/tests/test_event_repository.py`.
-- **Only task 18 touches the live database.** Tasks 1 through 17 need no key, no
-  network, and no database.
-- **Test-first, red then green.** The plan gives you the failing test, the
-  command to prove it fails, and the expected failure message for every task.
-- Tests are flat files in `packages/backend/tests/`, named
-  `test_schedule_<module>.py`.
+The database is at migration revision `20260828_0008_pipeline_runs`. This item
+adds no migration, so it should still be there when you finish.
 
 ---
 
-## Invariants for Sub-Project L
+## Testing rules that are not optional
 
-1. **Pure modules import no driver.** `documents.py`, `chains.py`, `window.py`,
-   `protocol.py`, and `run.py` import neither `sqlalchemy`, `geoalchemy2`, nor
-   `httpx`. `repository.py` is the only module in `schedule/` that imports
-   SQLAlchemy. Task 16 enforces this; obey it from task 1.
-2. **A failing stage never stops the chain.** Every stage selects its own
-   backlog by `processing_status`, so a failed extraction does not invalidate
-   work already waiting to be geocoded. Run every stage, record which failed,
-   exit non-zero.
-3. **Failures are recorded by exception type, never by message.** An exception
-   raised near the session can carry the connection string; one raised near a
-   prompt can carry the article. `type(error).__name__` and nothing else.
-4. **The run row is written before the first stage.** A run killed mid-flight
-   must leave a `running` row with a null `finished_at`. Nothing cleans those
-   up — that row is the evidence.
-5. **The advisory lock is session-level, not transaction-level.** It must
-   survive a stage's rollback and die with the process.
-6. **Losing a run is acceptable; losing it silently is not.** When the catch-up
-   window is clamped, the run still records the window it actually asked for.
-7. **Do not call a runner's `main()` or `_run()` from a stage.** Those parse
-   argv, print, and return exit codes. Call the same domain function the runner
-   calls.
+- **No test touches a database, a socket, or a model.** There is no `conftest.py`
+  and no fixture database. Repository tests use a hand-written `FakeSession` —
+  the one at the top of `packages/backend/tests/test_ai_repository.py` is the
+  one this item extends. Model calls use `ScriptedModel` from
+  `packages/backend/tests/test_ai_classify.py`.
+- **Only task 13 touches the live database or spends money.** Tasks 1 through 12
+  need no key, no network, and no database.
+- **Test-first, red then green.** The plan gives you the failing test, the command
+  to prove it fails, and the expected failure for every task.
+- **Task 2 must be one commit.** Removing `summary` from the contract breaks every
+  payload in the suite; the schema change and the fixture updates land together
+  or the history has a commit nobody can bisect through.
 
 ---
 
-## Settled Decisions — Do Not Reopen
+## Invariants for Sub-Project C2
 
-These were decided in the design and approved. Implement them; do not relitigate
-them in code.
-
-- **The OS drives the cadence.** One-shot CLI plus Windows Task Scheduler. No
-  APScheduler, no Celery, no daemon, no queue. Phase 1 §42.
-- **One chain, `daily`, in the order the spec gives.** WHO and ECDC first, so an
-  official document that corroborates a story is in the database before that
-  story's media coverage is matched.
-- **Continue past a failing stage.** Not abort-on-first-failure.
-- **A `pipeline_runs` table, not stdout alone.** Journald does not exist on
-  Windows and item `E` needs a table to render.
-- **The cadence settings are `.env`, not code defaults.** The existing
-  `window_covers_the_interval` validator already enforces the relationship. Do
-  not change `gdelt_poll_interval_minutes`' default in `config.py`.
-
----
-
-## Known Trap: the budgets do not compose
-
-Discovery stores up to `EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN` (default `200`)
-per run. Extraction handles up to `EPISIGNAL_AI_SIGNAL_BATCH_LIMIT` (default
-`100`). Run daily at those defaults and the un-extracted backlog grows by one
-hundred signals a day, for ever.
-
-Do **not** fix this by changing code defaults for a traffic pattern nobody has
-measured. Task 10's `backlog_depth` records the count at each
-`processing_status` on every run, and task 15 recommends
-`EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN=100` in `apps/api/.env.example`. That
-makes a growing backlog a fact in a table instead of a surprise in three weeks.
+1. **The brief never fills a slot the article left empty.** `reported: false` and
+   a line saying what is missing. A model told to always produce five bullets
+   from an article supporting three will invent two, and every review of this
+   item checks that first.
+2. **Spans stay in the article's language.** `check_grounding` requires each
+   `source_span` to occur verbatim in the body. If you find yourself translating
+   a span to make grounding pass, you have inverted the design.
+3. **The version is written by code, never by the model.** A version a model can
+   choose is a version that lies the moment the model is confused.
+4. **Strict on the way in, tolerant on the way back.** `Extraction` keeps
+   rejecting a missing brief. `StoredExtractionPayload` reads rows this system
+   already wrote, including rows that predate the brief.
+5. **A rejected re-extraction changes nothing.** The row already holds an answer
+   that passed these same checks. The backfill does not demote it to
+   `needs_review`, and it does not overwrite it.
+6. **`needs_review` rows are never backfilled.** A human owes them a decision,
+   and `M` is the item that collects it.
+7. **Counts only on stdout.** No key, no prompt, no article body, in any runner's
+   output or in any error message. `type(error).__name__` and nothing else.
 
 ---
 
-## Carried Forward From `D2a`
+## Settled decisions — do not reopen
 
-- `D2a`'s completion gate was met, but the **verified baseline in `STATUS.md`
-  was not updated by the worker** — it still described the `D1` run until a
-  later commit fixed it. `docs/agents/workflow.md` makes updating that table the
-  worker's job. Task 18 step 6 is yours. Do not skip it.
-- `D2b` remains `not-started` and unspecified. Ambiguous matches continue to
-  route to `needs_review`; nothing in this item changes that.
-- The live database has two geocoded signals and zero events. After your first
-  real `pipeline:run` that will change, and the numbers you record in the
-  completion report are the first honest measurement of what the pipeline
-  actually produces in a day.
+- Five slots, always, in the order the enum declares them. A brief with four
+  points, six points, a duplicated slot, or slots out of order is rejected, not
+  sorted.
+- One model call, not two. The model that reads the article writes the English
+  title and the bullets in the same response as the counts. Translation never
+  triggers escalation — `CONTEXT.md` already forbids escalating on language.
+- The free-form `summary` field leaves the contract. The `signals.summary`
+  *column* stays, holding the five bullet texts joined by newlines.
+- No migration. `ai_extraction` is already JSONB.
+- The backfill is not wired into the daily chain. A future prompt change must not
+  be able to silently re-extract a corpus of thousands.
 
 ---
 
-## The Completion Gate
+## Known trap: the tolerant reader and mypy
 
-From `docs/agents/workflow.md`. `L` becomes `verified` only when all of these
-are true, and it is not waived:
+`StoredExtractionPayload` widens two of its parent's fields, which mypy `strict`
+rejects without a narrow `# type: ignore[assignment]` on the `title_english`
+line. That ignore is required and used — `warn_unused_ignores` will tell you if
+it ever stops being needed. Do not widen it to a bare `# type: ignore`, and do
+not solve it by making the strict model lenient: the strict model is the only
+thing forcing a model to return a brief at all.
+
+---
+
+## Carried forward from `L`
+
+- The daily chain runs `ingest_who → ingest_ecdc → discover → dedupe → extract →
+  geocode → match` under an advisory lock, and records each run in
+  `pipeline_runs`.
+- `EPISIGNAL_OPENROUTER_API_KEY` was missing for the whole of `L`, which is why
+  its live run recorded `extract failed (RuntimeError)`. The operator set it on
+  2026-08-28. Task 13 is the first run that will exercise it — if extraction
+  fails for a *different* reason, that is a finding worth reporting, not
+  something to work around.
+- The last recorded backlog was `normalized=46`, `needs_review=7`,
+  `duplicate=1`. Those 46 will be classified and extracted into the new shape by
+  a normal run; the handful already extracted are what the backfill is for.
+
+---
+
+## The completion gate
+
+`C2` becomes `verified` only when every one of these is true:
 
 1. Every task in the plan is ticked in `STATUS.md`.
-2. `corepack pnpm verify` ran and reported zero failures.
-3. The real output of that run is quoted in the completion report — the actual
-   test counts, not a claim that tests passed.
-4. The report is committed and linked from `L`'s row in `ROADMAP.md`.
-5. `STATUS.md`'s verified baseline is updated to the commit the run was
-   performed at.
+2. `corepack pnpm verify` ran in your session and reported zero failures.
+3. The real output of that run — the test counts, not a claim — is quoted in
+   `docs/reports/2026-08-28-subproject-c2-report.md`.
+4. The report is committed.
+5. `STATUS.md`'s verified baseline is updated to the commit you ran at.
 
-Never claim a gate passed without having run the command in that session. If the
-run did not happen, the item stays `building`.
-
-Set `L` to `building` in `ROADMAP.md` when task 1 begins. Do **not** set it to
-`verified` yourself — hand back to the planner.
+You do not set `C2` to `verified` in `ROADMAP.md`. Hand back to the planner and
+report what ran, what it printed, and anything in the spec you found to be wrong.

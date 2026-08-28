@@ -199,16 +199,22 @@ was unsure, and unsure is recorded rather than guessed.
 
 ## Validation order
 
-`check_shape` gains the brief checks, and they run before grounding, because a
-malformed brief is cheaper to detect than a missing span:
+There is no separate shape function to extend: shape is what `parse_extraction`
+already delegates to Pydantic, and arithmetic is the only check layered on top
+of it. The brief's rules join it there, as a model validator on `Extraction`:
 
 1. Exactly `BRIEF_SLOT_COUNT` points.
-2. One point per slot, no duplicates, in the schema's order.
+2. One point per slot, no duplicates, in the enum's order.
 3. Non-blank text on every point, including `reported: false` points.
 
-A failure raises `Rejected(RejectionReason.SHAPE, ...)`, which the existing ladder
-escalates and, if the next tier also fails, lands in `needs_review`. No
-salvaging, and no re-ordering of a model's answer on its behalf.
+A violation raises `ValidationError`, which `parse_extraction` already converts
+to `Rejected(RejectionReason.SHAPE, ...)`. The existing ladder escalates it and,
+if the next tier also fails, the signal lands in `needs_review`. Nothing is
+salvaged and nothing is re-ordered on the model's behalf.
+
+`check_privacy` currently scans `extraction.summary`. It scans `title_english`
+and every brief `text` instead, because those are the fields a person's name or
+telephone number would now travel in.
 
 ## Persistence
 
@@ -220,6 +226,33 @@ salvaging, and no re-ordering of a model's answer on its behalf.
 
 `signals.title` is not touched. The English title lives in `ai_extraction` and is
 read from there by whatever renders a card.
+
+### Reading what we already stored
+
+`Extraction` forbids unknown keys, and `events/repository.py` validates stored
+`ai_extraction` payloads straight back into it when it assembles a cluster. Both
+of this item's storage changes would break that read: the version key is an
+unknown key, and a row written before this item has no `brief` at all.
+
+So the strict model stays strict for what a model returns, and a second model
+reads what we already wrote:
+
+```python
+class StoredExtractionPayload(Extraction):
+    """A stored extraction, read back. Tolerant where the strict model is not."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    title_english: str | None = None
+    brief: tuple[BriefPoint, ...] = ()
+```
+
+It subclasses `Extraction`, so anything typed to accept an extraction accepts
+one of these. Strict on the way in, tolerant on the way back: a model that omits
+a brief is rejected, and a row we wrote last week is still readable.
+
+Until the backfill runs, a version 1 row read this way carries no brief. That is
+visible rather than hidden — `brief` is empty, and the surface says so.
 
 ## The backfill command
 

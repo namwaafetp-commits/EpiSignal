@@ -12,10 +12,10 @@ rules for who edits this file are in
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
 | Item | `C2` — English title and the five-slot brief |
-| Status | `designed` |
-| Briefing | [HANDOFF.md](HANDOFF.md) — still briefs `L`; it is rewritten when `C2` is planned |
+| Status | `planned` |
+| Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [2026-08-28-english-brief-design.md](docs/superpowers/specs/2026-08-28-english-brief-design.md) |
-| Plan | Not yet committed |
+| Plan | [2026-08-28-english-brief.md](docs/superpowers/plans/2026-08-28-english-brief.md) |
 
 Last item completed: `L` — the scheduler, `verified` on 2026-08-28
 ([report](docs/reports/2026-08-28-subproject-l-report.md)). The planner re-ran
@@ -30,11 +30,8 @@ second time for every article already read.
 
 ## Next action
 
-**Planner.** Turn
-[the approved spec](docs/superpowers/specs/2026-08-28-english-brief-design.md)
-into a numbered implementation plan, commit it, then archive
-[HANDOFF.md](HANDOFF.md) to `docs/handoffs/2026-08-28-l.md` and rewrite it for
-`C2`. No worker task exists until the plan is committed.
+**Worker.** Start at task 1 below. Read [HANDOFF.md](HANDOFF.md) and the plan
+first. Set `C2` to `building` in [ROADMAP.md](ROADMAP.md) when task 1 begins.
 
 ## Settled for `E`, so the next planner does not re-ask
 
@@ -51,8 +48,26 @@ into a numbered implementation plan, commit it, then archive
 
 ## Task ledger
 
-Empty. `E` has no committed plan yet; the planner fills this section from the
-plan's numbered tasks when it lands.
+From [docs/superpowers/plans/2026-08-28-english-brief.md](docs/superpowers/plans/2026-08-28-english-brief.md).
+Tick each one in the same commit as its work.
+
+- [ ] 1. The slot vocabulary — `BriefSlot`, `BriefPoint`
+- [ ] 2. The extraction carries an English title and a brief
+- [ ] 3. Privacy scans the title and the brief
+- [ ] 4. The prompt asks for English and for five slots
+- [ ] 5. The version, and reading what we already stored
+- [ ] 6. Persistence stamps the version and writes the brief
+- [ ] 7. Matching reads stored extractions tolerantly
+- [ ] 8. The backfill selection
+- [ ] 9. The backfill pass
+- [ ] 10. The backfill runner
+- [ ] 11. The command and the environment
+- [ ] 12. The naming authority
+- [ ] 13. Live verification and the completion report
+
+Tasks 1 through 12 need no key, no network, and no database. Task 13 is the only
+one that touches the database or spends money. Task 2 lands as a single commit:
+removing `summary` from the contract breaks every payload in the suite at once.
 
 ## Blockers
 
@@ -63,8 +78,8 @@ the backlog stopped at `normalized` with 46 signals. The operator has since set
 the key in `apps/api/.env`; its presence is confirmed, and the first live run
 that exercises it will say whether extraction now completes.
 
-`apps/api/.env.example` still does not document the variable. Whichever item
-next touches that file adds it, with no value beside it.
+`apps/api/.env.example` still does not document the variable. Task 11 of `C2`
+adds it, with no value beside it.
 
 Carried forward from `L`, still true: discovery stores up to 200 articles per
 run while extraction handles 100, so the un-extracted backlog grows unless both
