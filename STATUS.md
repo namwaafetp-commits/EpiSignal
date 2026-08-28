@@ -63,7 +63,7 @@ Tick each one in the same commit as its work.
 - [x] 10. The backfill runner
 - [x] 11. The command and the environment
 - [x] 12. The naming authority
-- [ ] 13. Live verification and the completion report
+- [x] 13. Live verification and the completion report
 
 Tasks 1 through 12 need no key, no network, and no database. Task 13 is the only
 one that touches the database or spends money. Task 2 lands as a single commit:
@@ -71,39 +71,27 @@ removing `summary` from the contract breaks every payload in the suite at once.
 
 ## Blockers
 
-**Cleared on 2026-08-28.** Every live `pipeline:run` used to fail at `extract`
-with `EPISIGNAL_OPENROUTER_API_KEY is not set`
-(`packages/backend/src/episignal_backend/schedule/stages.py:122`), which is why
-the backlog stopped at `normalized` with 46 signals. The operator has since set
-the key in `apps/api/.env`; its presence is confirmed, and the first live run
-that exercises it will say whether extraction now completes.
-
-`apps/api/.env.example` still does not document the variable. Task 11 of `C2`
-adds it, with no value beside it.
-
-Carried forward from `L`, still true: discovery stores up to 200 articles per
-run while extraction handles 100, so the un-extracted backlog grows unless both
-are matched in `.env`. `apps/api/.env.example` now sets
-`EPISIGNAL_GDELT_MAX_ARTICLES_PER_RUN=100` for that reason.
+**None.** OpenRouter API key configured, extraction and backfill tested live, verified gate clean.
 
 ## Verified baseline
 
-Everything below was true at commit `76b8bb8` on `main`, tree clean. Recorded
-from the `L` run logged untruncated in
-[docs/reports/2026-08-28-subproject-l-report.md](docs/reports/2026-08-28-subproject-l-report.md).
+Everything below was true at commit `5e148ce` on `main`, tree clean. Recorded
+from the `C2` run logged untruncated in
+[docs/reports/2026-08-28-subproject-c2-report.md](docs/reports/2026-08-28-subproject-c2-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 756 passed, 1 warning |
+| Python tests | 783 passed, 1 warning |
 | Web tests | 10 passed, 3 files |
-| Lint and format | `ruff check` clean, 179 files formatted |
-| Types | `mypy` clean across 92 source files |
+| Lint and format | `ruff check` clean, 181 files formatted |
+| Types | `mypy` clean across 93 source files |
 | Migration revision | `20260828_0008_pipeline_runs` |
-| Live database | `schema_check` passed — core tables + `pipeline_runs`, PostGIS up |
+| Live database | `db:check` passed — database=up, postgis=up |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
-| `pipeline:run` on live data | `ingest_who ok`, `ingest_ecdc ok`, `discover ok`, `dedupe ok`, `extract failed (RuntimeError)`, `geocode ok`, `match ok` |
+| Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title |
+| Live backfill | `extract:backfill` passed, version stamped in PostgreSQL |
 
 Reproduce with:
 

@@ -94,15 +94,13 @@ uv run mypy apps/api/src packages/backend/src
 corepack pnpm verify
 ```
 
-**Expected baseline output at `b78f51d`**, every line of it observed by the
-planner rather than copied from a report. The tests were run at `4dbe028`; the
-three commits since are documentation only, and `ruff`, `mypy`, and the two test
-suites were re-run at `b78f51d`:
+**Expected baseline output at `5e148ce`**, every line of it observed by the
+worker rather than copied from a report:
 
-- `756 passed, 1 warning`
+- `783 passed, 1 warning`
 - `All checks passed!`
-- `179 files already formatted`
-- `Success: no issues found in 92 source files`
+- `181 files already formatted`
+- `Success: no issues found in 93 source files`
 - Web: `10 passed (10)`, 3 test files
 - `corepack pnpm verify` exits 0.
 
