@@ -10,70 +10,80 @@ rules for who edits this file are in
 
 | Field | Value |
 | --- | --- |
-| Band | 2 — GDELT discovery layer |
-| Item | `D2a` — Story clustering, event matching, dual scoring |
+| Band | 4 — Operations |
+| Item | `L` — Scheduler |
 | Status | `planned` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | [2026-08-28-story-clustering-design.md](docs/superpowers/specs/2026-08-28-story-clustering-design.md) |
-| Plan | [2026-08-28-story-clustering.md](docs/superpowers/plans/2026-08-28-story-clustering.md) |
+| Spec | [2026-08-28-scheduler-design.md](docs/superpowers/specs/2026-08-28-scheduler-design.md) |
+| Plan | [2026-08-28-scheduler.md](docs/superpowers/plans/2026-08-28-scheduler.md) |
 
-Last item completed: `D1` — geocoding, `verified` on 2026-08-27
-([report](docs/reports/2026-08-27-subproject-d1-report.md)).
+Last item completed: `D2a` — story clustering, event matching, and dual scoring,
+`verified` on 2026-08-28
+([report](docs/reports/2026-08-28-subproject-d2a-report.md)).
+
+`L` is taken out of Band 4 order deliberately. Every pipeline stage is verified
+and every one is invoked by hand, which is why the live database holds two
+geocoded signals and zero events. `D2b` would tune an embedding threshold
+against zero refusals and `E` would render an empty list; both need the corpus
+that running daily produces.
 
 ## Next action
 
 **Worker.** Start at task 1 below. Read [HANDOFF.md](HANDOFF.md) and the plan
-first. Set `D2a` to `building` in [ROADMAP.md](ROADMAP.md) when task 1 begins.
+first. Set `L` to `building` in [ROADMAP.md](ROADMAP.md) when task 1 begins.
 
 ## Task ledger
 
-From [docs/superpowers/plans/2026-08-28-story-clustering.md](docs/superpowers/plans/2026-08-28-story-clustering.md).
+From [docs/superpowers/plans/2026-08-28-scheduler.md](docs/superpowers/plans/2026-08-28-scheduler.md).
 Tick each one in the same commit as its work.
 
-- [x] 1. Contracts across the seams — `events/documents.py`
-- [x] 2. Precision weighting
-- [x] 3. Spatial compatibility at the coarsest shared precision
-- [x] 4. Temporal compatibility
-- [x] 5. A signal with no disease is not clustered
-- [x] 6. Single-link cluster assembly
-- [x] 7. Candidate match scoring
-- [x] 8. The conservative decision — attach, create, or refuse
-- [x] 9. The early signal score
-- [x] 10. The evidence score
-- [x] 11. Verification status is derived, never scored
-- [x] 12. The score column migration `20260828_0007_event_scores`
-- [x] 13. Schema check follows the rename
-- [x] 14. The `EventRepository` boundary
-- [x] 15. Selecting geocoded signals
-- [x] 16. Candidate event retrieval
-- [x] 17. Creating events and attaching signals
-- [x] 18. Observations are inserted, never updated
-- [x] 19. The assembly pass — `run_event_assembly`
-- [x] 20. Configuration
-- [x] 21. The runner, the script, and the seam guard
-- [x] 22. Live database verification and the completion report
+- [ ] 1. Contracts across the seams — `schedule/documents.py`
+- [ ] 2. The daily chain and its order
+- [ ] 3. The catch-up window
+- [ ] 4. The `PipelineRunRepository` boundary
+- [ ] 5. The persisted vocabularies
+- [ ] 6. The chain runner and its failure policy
+- [ ] 7. The `PipelineRun` model
+- [ ] 8. The migration `20260828_0008_pipeline_runs`
+- [ ] 9. The schema check knows the new table
+- [ ] 10. The repository and the advisory lock
+- [ ] 11. Settings and the catch-up clamp
+- [ ] 12. The stage adapters
+- [ ] 13. The runner — `pipeline_runner.py`
+- [ ] 14. The script and the shell wrapper
+- [ ] 15. The environment example
+- [ ] 16. The seam guard
+- [ ] 17. The scheduling document
+- [ ] 18. Live verification and the completion report
 
-Tasks 1 through 21 need no key, no network, and no database. Task 22 is the only
+Tasks 1 through 17 need no key, no network, and no database. Task 18 is the only
 one that touches the database.
 
 ## Blockers
 
-None. `D2a` is planned and ready to execute.
+None. `L` is planned and ready to execute.
 
 Decisions already settled, so the worker does not reopen them:
 
-- Both scores are `0–1`. `events.attention_score` is renamed to
-  `early_signal_score` and `confidence_score` to `evidence_score` in task 12,
-  with both check constraints widened to `0–1`. The table is empty, so nothing
-  moves.
-- Scoring is a deterministic weighted formula over stored fields. No model call
-  anywhere in `D2a`.
-- A cluster matching two events at or above the threshold creates nothing and
-  routes its signals to `needs_review`. Embedding and LLM answers for those
-  cases are `D2b`, not this item.
+- The OS drives the cadence. One-shot CLI plus a Windows Task Scheduler entry.
+  No APScheduler, no Celery, no daemon, no queue. Phase 1 §42.
+- One chain, `daily`, in the order the spec gives. WHO and ECDC are ingested
+  first so an official document that corroborates a story is in the database
+  before that story's media coverage is matched.
+- A failing stage does not stop the chain. Every stage selects its own backlog
+  by `processing_status`, so the run continues, records which stages failed, and
+  exits non-zero.
+- Runs are recorded in a new `pipeline_runs` table, not in stdout alone.
+  Journald does not exist on Windows and item `E` needs a table to render.
+- The daily cadence lives in `apps/api/.env.example`, not in `config.py`
+  defaults. The existing `window_covers_the_interval` validator already enforces
+  the relationship between the window and the interval.
 
-Carried-forward follow-ups from `C` are listed in [HANDOFF.md](HANDOFF.md) and
-are not blockers.
+Known trap, carried into the plan rather than fixed by changing defaults:
+discovery stores up to 200 articles per run while extraction handles 100, so at
+the current defaults a daily run grows the un-extracted backlog by 100 a day.
+Task 10 records backlog depth on every run and task 15 recommends matching the
+two in `.env`.
 
 ## Verified baseline
 

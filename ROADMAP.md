@@ -41,9 +41,9 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [####--] 4/7  D2a building, D2b and F remain
+Band 2  GDELT discovery layer   [#####-] 5/7  D2b and F remain
 Band 3  Product surface         [------] 0/6
-Band 4  Operations              [---]    0/3
+Band 4  Operations              [---]    0/3  L planned
 Band 5  Acceptance              [-]      0/1
 ```
 
@@ -87,7 +87,7 @@ Umbrella architecture and shared invariants:
 | `B` | Stage 0: deduplication and rule filtering | Syndicated copies and obviously irrelevant articles are rejected before any AI call. | `A` | `verified` |
 | `C` | AI classification, extraction, escalation, cost logging | Relevant signals carry schema-validated epidemiological extraction, and every AI request is costed. | `B` | `verified` |
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
-| `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `building` |
+| `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 
@@ -105,7 +105,8 @@ Artifacts:
 [plan](docs/superpowers/plans/2026-08-27-geocoding.md) ·
 [report](docs/reports/2026-08-27-subproject-d1-report.md) —
 `D2a` [spec](docs/superpowers/specs/2026-08-28-story-clustering-design.md) ·
-[plan](docs/superpowers/plans/2026-08-28-story-clustering.md)
+[plan](docs/superpowers/plans/2026-08-28-story-clustering.md) ·
+[report](docs/reports/2026-08-28-subproject-d2a-report.md)
 
 ### Pipeline as it stands
 
@@ -116,10 +117,17 @@ Artifacts:
 [Gate 2 dedupe]   ->  B   dedupe_runner.py       verified
 [Gate 3 AI]       ->  C   extract_runner.py      verified
 [Geocoding]       ->  D1  geocode_runner.py      verified
-[Clustering]      ->  D2a event_runner.py        building      <-- next
+[Clustering]      ->  D2a event_runner.py        verified
 [Ambiguous match] ->  D2b ---                    not started
 [Radar surface]   ->  E   ---                    not started
+
+[Runs it daily]   ->  L   pipeline_runner.py     planned       <-- next
 ```
+
+Every stage above is verified and every one of them is invoked by hand, which is
+why the live database holds two geocoded signals and zero events. `L` is next
+because `D2b` would tune a threshold against zero refusals and `E` would render
+an empty list; both need the corpus that running daily produces.
 
 ---
 
@@ -143,9 +151,16 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `not-started` |
+| `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `planned` |
 | `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `not-started` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
+
+Artifacts:
+`L` [spec](docs/superpowers/specs/2026-08-28-scheduler-design.md) ·
+[plan](docs/superpowers/plans/2026-08-28-scheduler.md)
+
+`L` is scheduled ahead of Band 3 deliberately. It depends only on `D2a`, and the
+items that follow it are worth more once real events exist to build against.
 
 ---
 
