@@ -41,7 +41,7 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [####--] 4/7  D2a planned, D2b and F remain
+Band 2  GDELT discovery layer   [####--] 4/7  D2a building, D2b and F remain
 Band 3  Product surface         [------] 0/6
 Band 4  Operations              [---]    0/3
 Band 5  Acceptance              [-]      0/1
@@ -87,7 +87,7 @@ Umbrella architecture and shared invariants:
 | `B` | Stage 0: deduplication and rule filtering | Syndicated copies and obviously irrelevant articles are rejected before any AI call. | `A` | `verified` |
 | `C` | AI classification, extraction, escalation, cost logging | Relevant signals carry schema-validated epidemiological extraction, and every AI request is costed. | `B` | `verified` |
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
-| `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `planned` |
+| `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `building` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 
@@ -116,7 +116,7 @@ Artifacts:
 [Gate 2 dedupe]   ->  B   dedupe_runner.py       verified
 [Gate 3 AI]       ->  C   extract_runner.py      verified
 [Geocoding]       ->  D1  geocode_runner.py      verified
-[Clustering]      ->  D2a event_runner.py        planned       <-- next
+[Clustering]      ->  D2a event_runner.py        building      <-- next
 [Ambiguous match] ->  D2b ---                    not started
 [Radar surface]   ->  E   ---                    not started
 ```
