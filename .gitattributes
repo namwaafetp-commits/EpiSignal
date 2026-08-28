@@ -1,0 +1,11 @@
+# Normalize the working tree to LF on every platform.
+#
+# This repository sets `.editorconfig` to `end_of_line = lf`, but a Windows
+# checkout under `core.autocrlf=true` writes CRLF. Prettier then rejects every
+# web file, so `pnpm format:check` fails in a freshly created worktree on files
+# nobody touched. Declaring the conversion here makes checkout behaviour a
+# property of the repository rather than of each clone's local git config.
+* text=auto eol=lf
+
+# Compressed seed data must never be line-ending converted.
+*.gz binary
