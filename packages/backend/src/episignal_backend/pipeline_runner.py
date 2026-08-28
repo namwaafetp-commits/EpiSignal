@@ -106,7 +106,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     finished_at=datetime.now(UTC),
                     stage_counts={str(item.stage): dict(item.counts) for item in outcome.outcomes},
                     backlog=backlog,
-                    failed_stages=list(outcome.failed_stages),
+                    failed_stages=[item for item in outcome.outcomes if not item.ok],
                 )
             finally:
                 repository.unlock()

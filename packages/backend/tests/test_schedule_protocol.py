@@ -1,8 +1,9 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
-from episignal_backend.schedule.documents import DiscoveryWindow, StageName
+from episignal_backend.schedule.documents import DiscoveryWindow, StageOutcome
 from episignal_backend.schedule.protocol import PipelineRunRepository
 
 
@@ -34,7 +35,7 @@ class StubRepository:
         finished_at: datetime,
         stage_counts: dict[str, dict[str, int]],
         backlog: dict[str, int],
-        failed_stages: list[StageName],
+        failed_stages: Sequence[StageOutcome],
     ) -> None:
         return None
 

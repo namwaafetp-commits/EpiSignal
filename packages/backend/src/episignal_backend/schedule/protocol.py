@@ -7,12 +7,13 @@ above it knows what a session is.
 This module imports neither database driver nor httpx.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
-from episignal_backend.schedule.documents import DiscoveryWindow, StageName
+from episignal_backend.schedule.documents import DiscoveryWindow, StageOutcome
 
 
 @runtime_checkable
@@ -50,7 +51,7 @@ class PipelineRunRepository(Protocol):
         finished_at: datetime,
         stage_counts: dict[str, dict[str, int]],
         backlog: dict[str, int],
-        failed_stages: list[StageName],
+        failed_stages: Sequence[StageOutcome],
     ) -> None:
         """Close the row out with what every stage did."""
         ...

@@ -3,7 +3,8 @@ from typing import Any
 from uuid import uuid4
 
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
-from episignal_backend.schedule.documents import DiscoveryWindow, StageName
+from episignal_backend.models import PipelineRun
+from episignal_backend.schedule.documents import DiscoveryWindow, StageName, StageOutcome
 from episignal_backend.schedule.protocol import PipelineRunRepository
 from episignal_backend.schedule.repository import (
     PIPELINE_LOCK_KEY,
@@ -118,7 +119,7 @@ def test_starting_a_run_without_a_window_leaves_both_window_columns_null() -> No
     assert session.added[0].window_end is None
 
 
-def test_finishing_a_run_writes_the_counts_the_stages_reported() -> None:
+def test_finishing_a_run_preserves_safe_failure_types_without_counts_or_messages() -> None:
     session = FakeSession()
     repository = SqlAlchemyPipelineRunRepository(session)
     run_id = uuid4()
@@ -127,13 +128,22 @@ def test_finishing_a_run_writes_the_counts_the_stages_reported() -> None:
         run_id,
         status=PipelineRunStatus.FAILED,
         finished_at=NOW,
-        stage_counts={"geocode": {"located": 4}},
-        backlog={"geocoded": 12},
-        failed_stages=[StageName.EXTRACT],
+        stage_counts={"extract": {"attempted": 1}},
+        backlog={"extracted": 0},
+        failed_stages=[
+            StageOutcome(
+                stage=StageName.EXTRACT,
+                ok=False,
+                counts={"attempted": 1},
+                error="TimeoutError",
+            )
+        ],
     )
 
-    statement = str(session.executed[0])
-    assert "UPDATE pipeline_runs" in statement
+    update_stmt = session.executed[0]
+    # Check that failed_stages in values contains stage and error, no counts, no message
+    failed_payload = update_stmt._values[PipelineRun.__table__.c.failed_stages].value
+    assert failed_payload == [{"stage": "extract", "error": "TimeoutError"}]
 
 
 def test_the_backlog_is_counted_by_processing_status() -> None:

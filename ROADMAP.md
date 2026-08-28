@@ -154,7 +154,7 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `planned` |
+| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `building` |
 | `G` | Public event API | Read-only events list, event detail, observations, sources, and filters are served and contract-checked. Phase 1 spec §46. | `D2a` | `not-started` |
 | `H` | Homepage world map and event feed | A usable world map and list view render real events, responsive from the first commit. Phase 1 spec §26–§28. | `G` | `not-started` |
 | `I` | Event page: overview, timeline, sources, data | Every claim on the page shows the source that made it, the time it was made, and the previous value. Phase 1 spec §30–§34. | `G` | `not-started` |

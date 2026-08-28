@@ -6,6 +6,7 @@ the pipeline permanently locked, and a rolled-back stage cannot silently hand
 the lock to a second process mid-chain.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
 from episignal_backend.models import PipelineRun, Signal
-from episignal_backend.schedule.documents import DiscoveryWindow, StageName
+from episignal_backend.schedule.documents import DiscoveryWindow, StageOutcome
 
 # Arbitrary but fixed. Two processes must ask for the same key or the lock
 # protects nothing, so this constant is never computed and never configured.
@@ -83,8 +84,11 @@ class SqlAlchemyPipelineRunRepository:
         finished_at: datetime,
         stage_counts: dict[str, dict[str, int]],
         backlog: dict[str, int],
-        failed_stages: list[StageName],
+        failed_stages: Sequence[StageOutcome],
     ) -> None:
+        assert all(not item.ok for item in failed_stages), (
+            "failed_stages must contain only failed outcomes"
+        )
         self._session.execute(
             update(PipelineRun)
             .where(PipelineRun.id == run_id)
@@ -93,7 +97,9 @@ class SqlAlchemyPipelineRunRepository:
                 finished_at=finished_at,
                 stage_counts=stage_counts,
                 backlog=backlog,
-                failed_stages=[str(stage) for stage in failed_stages],
+                failed_stages=[
+                    {"stage": str(item.stage), "error": item.error} for item in failed_stages
+                ],
             )
         )
 

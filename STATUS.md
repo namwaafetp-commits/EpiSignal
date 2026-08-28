@@ -52,7 +52,7 @@ verified report back to the planner; do not mark `E` verified.
 
 ## Task ledger
 
-- [ ] 1. Preserve exception types in pipeline history.
+- [x] 1. Preserve exception types in pipeline history.
 - [ ] 2. Define the radar read contracts and representative location rule.
 - [ ] 3. Query and assemble recent radar signals.
 - [ ] 4. Query counts-only pipeline history.
