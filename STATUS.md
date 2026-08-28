@@ -44,7 +44,7 @@ Tick each one in the same commit as its work.
 - [x] 5. The persisted vocabularies
 - [x] 6. The chain runner and its failure policy
 - [x] 7. The `PipelineRun` model
-- [ ] 8. The migration `20260828_0008_pipeline_runs`
+- [x] 8. The migration `20260828_0008_pipeline_runs`
 - [ ] 9. The schema check knows the new table
 - [ ] 10. The repository and the advisory lock
 - [ ] 11. Settings and the catch-up clamp
