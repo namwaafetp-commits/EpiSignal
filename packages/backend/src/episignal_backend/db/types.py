@@ -140,6 +140,22 @@ class LocationRole(StrEnum):
     AFFECTED_AREA = "affected_area"
 
 
+class PipelineChain(StrEnum):
+    DAILY = "daily"
+
+
+class PipelineTrigger(StrEnum):
+    SCHEDULED = "scheduled"
+    MANUAL = "manual"
+
+
+class PipelineRunStatus(StrEnum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    # Some stage raised. The chain still ran every later stage.
+    FAILED = "failed"
+
+
 def vocabulary(enum_class: type[StrEnum], name: str) -> Enum:
     """Store a controlled vocabulary as its lowercase values, not member names."""
     return Enum(
