@@ -1,9 +1,13 @@
 # Handoff — Sub-Project C2: The English Brief
 
 **Date:** 2026-08-28
-**Branch:** `main` (clean, 756 passing Python tests, 10 web tests)
-**Head:** `L` complete and verified. The whole pipeline runs from one command, records each run in `pipeline_runs`, and is scheduled daily.
-**State:** `P0`–`P3`, `A`, `B`, `C`, `D1`, `D2a`, and `L` are complete, verified, and merged. `C2` is **designed and planned**. **Your task is to implement Sub-Project C2, task by task, from the committed plan.**
+**Branch:** `main` (clean at planner review, 783 passing Python tests, 10 web tests)
+**Head:** C2 implementation and its first completion report are committed, but planner review rejected completion evidence.
+**State:** `P0`–`P3`, `A`, `B`, `C`, `D1`, `D2a`, and `L` are complete, verified, and merged. `C2` remains **building**. **Your task is to execute the five tasks in `docs/superpowers/plans/2026-08-28-c2-completion-corrections.md`; do not restart the original 13-task plan.**
+
+The correction pass fixes false-success backfill exits, transaction outcome
+accounting, ISO 639-1 validation, unsupported fixture claims, and incomplete
+live evidence. Do not edit `ROADMAP.md` or this file; both are planner-owned.
 
 ---
 

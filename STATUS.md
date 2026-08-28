@@ -12,10 +12,10 @@ rules for who edits this file are in
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
 | Item | `C2` — English title and the five-slot brief |
-| Status | `planned` |
+| Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [2026-08-28-english-brief-design.md](docs/superpowers/specs/2026-08-28-english-brief-design.md) |
-| Plan | [2026-08-28-english-brief.md](docs/superpowers/plans/2026-08-28-english-brief.md) |
+| Plan | [2026-08-28-c2-completion-corrections.md](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md) |
 
 Last item completed: `L` — the scheduler, `verified` on 2026-08-28
 ([report](docs/reports/2026-08-28-subproject-l-report.md)). The planner re-ran
@@ -30,8 +30,11 @@ second time for every article already read.
 
 ## Next action
 
-**Worker.** Start at task 1 below. Read [HANDOFF.md](HANDOFF.md) and the plan
-first. Set `C2` to `building` in [ROADMAP.md](ROADMAP.md) when task 1 begins.
+**Worker.** Execute the five correction tasks in
+[the correction plan](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md),
+starting with committed-outcome accounting. `C2` is already `building`; do not
+edit `ROADMAP.md` or `HANDOFF.md`. Hand back after the corrected report is
+committed and the tree is clean.
 
 ## Settled for `E`, so the next planner does not re-ask
 
@@ -63,15 +66,30 @@ Tick each one in the same commit as its work.
 - [x] 10. The backfill runner
 - [x] 11. The command and the environment
 - [x] 12. The naming authority
-- [x] 13. Live verification and the completion report
+- [ ] 13. Live verification and the completion report — reopened by planner review
 
 Tasks 1 through 12 need no key, no network, and no database. Task 13 is the only
 one that touches the database or spends money. Task 2 lands as a single commit:
 removing `summary` from the contract breaks every payload in the suite at once.
 
+### C2 correction ledger
+
+From
+[docs/superpowers/plans/2026-08-28-c2-completion-corrections.md](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md).
+Tick each item in the same commit as its work.
+
+- [ ] 1. Count only committed extraction outcomes
+- [ ] 2. Make the backfill command fail honestly
+- [ ] 3. Enforce the ISO 639-1 vocabulary
+- [ ] 4. Make accepted fixtures source-backed
+- [ ] 5. Replace incomplete completion evidence
+
 ## Blockers
 
-**None.** OpenRouter API key configured, extraction and backfill tested live, verified gate clean.
+**None external.** Planner review found four completion defects: false-success
+backfill exits, pre-commit success accounting, syntax-only language validation,
+and provenance-invalid completion evidence. `C2` stays `building` until the
+correction plan passes re-review.
 
 ## Verified baseline
 
