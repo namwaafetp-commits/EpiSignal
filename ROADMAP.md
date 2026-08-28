@@ -41,8 +41,8 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [#####--] 5/8  C2 building, D2b and F remain
-Band 3  Product surface         [------] 0/6  E designing, paused behind C2
+Band 2  GDELT discovery layer   [######--] 6/8  D2b and F remain
+Band 3  Product surface         [------] 0/6  E designing
 Band 4  Operations              [#--]    1/3  M and N remain
 Band 5  Acceptance              [-]      0/1
 ```
@@ -86,7 +86,7 @@ Umbrella architecture and shared invariants:
 | `A` | Discovery connector, query library, provenance schema | A GDELT-discovered signal is stored with its real publisher, original URL, and separated timestamps. | `P0` | `verified` |
 | `B` | Stage 0: deduplication and rule filtering | Syndicated copies and obviously irrelevant articles are rejected before any AI call. | `A` | `verified` |
 | `C` | AI classification, extraction, escalation, cost logging | Relevant signals carry schema-validated epidemiological extraction, and every AI request is costed. | `B` | `verified` |
-| `C2` | English title and the five-slot brief | Every extraction carries an English title and a five-bullet brief in fixed slot order, with source spans left in the language the publisher wrote. | `C` | `building` |
+| `C2` | English title and the five-slot brief | Every extraction carries an English title and a five-bullet brief in fixed slot order, with source spans left in the language the publisher wrote. | `C` | `verified` |
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
@@ -103,7 +103,9 @@ Artifacts:
 [plan](docs/superpowers/plans/2026-08-27-ai-extraction.md) ·
 [report](docs/reports/2026-08-27-subproject-c-report.md) —
 `C2` [spec](docs/superpowers/specs/2026-08-28-english-brief-design.md) ·
-[plan](docs/superpowers/plans/2026-08-28-english-brief.md) —
+[plan](docs/superpowers/plans/2026-08-28-english-brief.md) ·
+[correction plan](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md) ·
+[report](docs/reports/2026-08-28-subproject-c2-report.md) —
 `D1` [spec](docs/superpowers/specs/2026-08-27-geocoding-design.md) ·
 [plan](docs/superpowers/plans/2026-08-27-geocoding.md) ·
 [report](docs/reports/2026-08-27-subproject-d1-report.md) —
@@ -119,11 +121,11 @@ Artifacts:
 [Web retrieval]   ->  A   ArticleFetcher         verified
 [Gate 2 dedupe]   ->  B   dedupe_runner.py       verified
 [Gate 3 AI]       ->  C   extract_runner.py      verified
-[English brief]   ->  C2  backfill_runner.py     planned       <-- next
+[English brief]   ->  C2  backfill_runner.py     verified
 [Geocoding]       ->  D1  geocode_runner.py      verified
 [Clustering]      ->  D2a event_runner.py        verified
 [Ambiguous match] ->  D2b ---                    not started
-[Radar surface]   ->  E   ---                    designing
+[Radar surface]   ->  E   ---                    designing     <-- next
 
 [Runs it daily]   ->  L   pipeline_runner.py     verified
 ```
@@ -137,13 +139,11 @@ item on this map.
 
 The key was set on 2026-08-28, so the chain can now reach its AI stage.
 
-`C2` goes before `E`. An extraction is paid for once, and today it writes one
-free-form paragraph in whatever language the article was written in — which no
-card can lay out twice the same way. Fixing the shape now means the corpus grows
-in its final form; fixing it after `E` means paying a second time for every
-article already read. `E` renders what `C2` writes, and its own first decision
-is already settled: the homepage becomes the radar, a map of the last day or two
-above a list ranked by recency and heat.
+`C2` now gives `E` its display contract: an English title and five ordered brief
+slots, with evidence spans kept in the publisher's language. `E` renders that
+shape rather than summarizing again. Its first decision is already settled: the
+homepage becomes the radar, a map of the last day or two above a list ranked by
+recency and heat.
 
 ---
 

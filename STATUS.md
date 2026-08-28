@@ -10,18 +10,20 @@ rules for who edits this file are in
 
 | Field | Value |
 | --- | --- |
-| Band | 2 — GDELT discovery layer |
-| Item | `C2` — English title and the five-slot brief |
-| Status | `building` |
+| Band | 3 — Product surface |
+| Item | `E` — Signal Radar API, Signal Radar UI, admin monitoring |
+| Status | `designing` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | [2026-08-28-english-brief-design.md](docs/superpowers/specs/2026-08-28-english-brief-design.md) |
-| Plan | [2026-08-28-c2-completion-corrections.md](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md) |
+| Spec | Not yet committed |
+| Plan | Not yet committed |
 
-Last item completed: `L` — the scheduler, `verified` on 2026-08-28
-([report](docs/reports/2026-08-28-subproject-l-report.md)). The planner re-ran
-`corepack pnpm verify` at commit `4dbe028` before setting that status: exit code
-0, 756 Python tests passed, 10 web tests passed, contracts diff clean, Next.js
-build clean.
+Last item completed: `C2` — English title and the five-slot brief, `verified`
+on 2026-08-28
+([report](docs/reports/2026-08-28-subproject-c2-report.md)). The worker's gate at
+`b26e794` passed with 789 Python tests and 10 web tests. The planner independently
+re-ran `corepack pnpm verify` at `888369c` with the same counts and a clean
+contract diff and production build, then confirmed the documentation-only
+closure through `caefb6d` with `git diff --check` and a clean tree.
 
 `C2` is taken before `E` on the operator's instruction that briefs read in
 English as five bullets. An extraction is paid for once: fixing its shape now
@@ -30,11 +32,10 @@ second time for every article already read.
 
 ## Next action
 
-**Worker.** Execute the five correction tasks in
-[the correction plan](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md),
-starting with committed-outcome accounting. `C2` is already `building`; do not
-edit `ROADMAP.md` or `HANDOFF.md`. Hand back after the corrected report is
-committed and the tree is clean.
+**Planner.** Resume `E` design from the settled decisions below. Inspect the
+current signal, event, location, and pipeline-run read seams; decide the smallest
+honest radar contract; then commit the design spec before writing an
+implementation plan. No worker task exists yet.
 
 ## Settled for `E`, so the next planner does not re-ask
 
@@ -51,45 +52,12 @@ committed and the tree is clean.
 
 ## Task ledger
 
-From [docs/superpowers/plans/2026-08-28-english-brief.md](docs/superpowers/plans/2026-08-28-english-brief.md).
-Tick each one in the same commit as its work.
-
-- [x] 1. The slot vocabulary — `BriefSlot`, `BriefPoint`
-- [x] 2. The extraction carries an English title and a brief
-- [x] 3. Privacy scans the title and the brief
-- [x] 4. The prompt asks for English and for five slots
-- [x] 5. The version, and reading what we already stored
-- [x] 6. Persistence stamps the version and writes the brief
-- [x] 7. Matching reads stored extractions tolerantly
-- [x] 8. The backfill selection
-- [x] 9. The backfill pass
-- [x] 10. The backfill runner
-- [x] 11. The command and the environment
-- [x] 12. The naming authority
-- [x] 13. Live verification and the completion report
-
-Tasks 1 through 12 need no key, no network, and no database. Task 13 is the only
-one that touches the database or spends money. Task 2 lands as a single commit:
-removing `summary` from the contract breaks every payload in the suite at once.
-
-### C2 correction ledger
-
-From
-[docs/superpowers/plans/2026-08-28-c2-completion-corrections.md](docs/superpowers/plans/2026-08-28-c2-completion-corrections.md).
-Tick each item in the same commit as its work.
-
-- [x] 1. Count only committed extraction outcomes
-- [x] 2. Make the backfill command fail honestly
-- [x] 3. Enforce the ISO 639-1 vocabulary
-- [x] 4. Make accepted fixtures source-backed
-- [x] 5. Replace incomplete completion evidence
+No `E` task ledger exists yet. The planner creates it only after the design spec
+and implementation plan are approved and committed.
 
 ## Blockers
 
-**None external.** Planner review found four completion defects: false-success
-backfill exits, pre-commit success accounting, syntax-only language validation,
-and provenance-invalid completion evidence. `C2` stays `building` until the
-correction plan passes re-review.
+**None.** `C2` is verified. `E` is in design, not blocked.
 
 ## Verified baseline
 

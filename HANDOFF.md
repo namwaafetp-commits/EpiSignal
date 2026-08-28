@@ -1,215 +1,157 @@
-# Handoff — Sub-Project C2: The English Brief
+# Handoff — Sub-Project E: Signal Radar
 
 **Date:** 2026-08-28
-**Branch:** `main` (clean at planner review, 783 passing Python tests, 10 web tests)
-**Head:** C2 implementation and its first completion report are committed, but planner review rejected completion evidence.
-**State:** `P0`–`P3`, `A`, `B`, `C`, `D1`, `D2a`, and `L` are complete, verified, and merged. `C2` remains **building**. **Your task is to execute the five tasks in `docs/superpowers/plans/2026-08-28-c2-completion-corrections.md`; do not restart the original 13-task plan.**
-
-The correction pass fixes false-success backfill exits, transaction outcome
-accounting, ISO 639-1 validation, unsupported fixture claims, and incomplete
-live evidence. Do not edit `ROADMAP.md` or this file; both are planner-owned.
+**Branch:** `main`
+**State:** `P0`–`P3`, `A`, `B`, `C`, `C2`, `D1`, `D2a`, and `L` are verified. `E` is **designing**. No implementation spec or plan is committed yet.
+**Role:** Planner. Do not hand this file to an implementation worker as a build plan.
 
 ---
 
-## Why this item, and why now
+## Why this item is next
 
-An extraction currently carries one free-form `summary`: up to 400 characters,
-written in whatever language the article was written in. Nothing can lay two of
-them out the same way, and a reader who does not read Portuguese learns nothing
-from a Portuguese outbreak report the system has already paid a model to read.
+The pipeline now discovers, retrieves, deduplicates, classifies, extracts,
+geocodes, clusters, matches, scores, and schedules real reporting. `C2` added the
+stable display shape the product needed: an English title and five ordered brief
+slots with source-language spans preserved as evidence.
 
-The operator asked for briefs that read in English as five bullets in an
-epidemiologist's order. That is a change to what extraction *writes*, so it is
-its own item rather than something the radar (`E`) does at render time.
-
-It goes before `E` because an extraction is paid for once. Fixing the shape now
-means the corpus grows in its final form; fixing it after `E` means paying a
-second time for every article already read.
+The next missing piece is the product surface. `E` ends when a user can see an
+early signal, understand its uncertainty, and open the original source. It is
+the first item that turns the verified pipeline into something a person can use.
 
 ---
 
-## What Sub-Project C2 builds
+## Settled product decisions
 
-1. **An English title.** `title_english`, stored beside the publisher's
-   headline and never over it.
-2. **A brief.** Exactly five bullets, one per slot, in a fixed order:
-   `what_where`, `counts`, `timing`, `spread`, `reporting`.
-3. **A stated absence.** A slot the article never addresses is stored with
-   `reported: false` and text that says what is missing.
-4. **A version.** `ai_extraction` carries `extraction_schema_version`, stamped
-   by the repository, and a tolerant model that can still read rows written
-   before any of this existed.
-5. **A backfill.** `pnpm extract:backfill` re-extracts rows below the current
-   version, bounded by the same cost guards, and returns each to `extracted` so
-   geocoding and matching run again.
+Do not reopen these unless the operator explicitly changes them:
+
+1. The homepage becomes the radar. There is no second competing homepage.
+2. A large map shows the last day or two, with a ranked list beneath it.
+3. Ranking uses recency and heat while keeping `early_signal_score` separate
+   from `evidence_score`.
+4. `E` renders the English title and five-slot brief written by `C2`; it does not
+   summarize again in the API or browser.
+5. Every visible claim keeps a path to the original source.
+6. The radar must work from signals even when event coverage is sparse. Events
+   are the layer above signals, not a reason to render an empty product.
+7. `H` later refines the same homepage. `E` should establish the durable seams,
+   not build all of `H`, `I`, `J`, or `K` early.
 
 ---
 
-## Scope note: this changes one stage's output
+## Design questions still open
 
-`C2` touches `ai/` and the one line in `events/repository.py` that reads what
-`ai/` wrote. It adds no table, no migration, and no column.
+The design spec must settle these before an implementation plan exists:
 
-If you find yourself changing what discovery finds, what dedupe rejects, what
-geocoding resolves, how clustering matches, or what the scheduler calls, you
-have left this item. Stop and report. The single deliberate exception is
-`events/repository.py`, which task 7 changes because task 6 would otherwise
-silently break the way matching reads a stored extraction.
+1. The exact read model joining a signal, its English brief, resolved location,
+   source standing, processing state, and any attached event scores.
+2. The public API boundary: extend `/api/v1/signals` or introduce a dedicated
+   radar endpoint without duplicating evidence-query logic.
+3. The ranking formula and tie-breaks for recent signals without an event.
+4. How uncertainty is worded from source standing, extraction confidence,
+   location precision, and verification status without collapsing them into one
+   confidence label.
+5. Map behavior for place, district, province, country, and unresolved
+   locations, including honest display of coarse precision.
+6. Loading, unavailable, empty, and partial-data states on desktop and mobile.
+7. Whether admin monitoring belongs in the first vertical slice or a second
+   plan under the same roadmap item.
+8. Whether any code from `feat/map-hero` is still worth salvaging. Inspect it;
+   do not merge it wholesale or assume its dependencies still fit `main`.
 
 ---
 
 ## Start here
 
-Read in this exact order:
+Read in this order:
 
-1. This file (`HANDOFF.md`);
-2. `STATUS.md` — the current position, the 13-task ledger, and the verified baseline;
-3. `ROADMAP.md` — where `C2` sits, between `C` and `D1`;
-4. `docs/agents/workflow.md` — the planner and worker contract and the completion gate;
-5. `docs/superpowers/specs/2026-08-28-english-brief-design.md` — the design you are implementing;
-6. `docs/superpowers/plans/2026-08-28-english-brief.md` — the 13 tasks, in order;
-7. `AGENTS.md` — model routing, project skills, TDD rules, provenance principles;
-8. `CONTEXT.md` — the naming authority. Task 12 adds *brief*, *slot*, and *English title* to it; read the existing **Judgement** section first so the additions match its voice;
-9. `docs/reports/2026-08-28-subproject-l-report.md` — the outgoing item's completion report;
-10. `docs/handoffs/2026-08-28-l.md` — the briefing `L` was built under.
-
-When `C2` reaches `verified`, archive this file to `docs/handoffs/2026-08-28-c2.md`
-before rewriting it for the next item. Do not overwrite it in place.
-
----
-
-## Windows environment facts
-
-- **Python:** Run all commands through `uv run`. Do not activate virtual environments manually. Bare `python` is not on `PATH`; use `uv run python`.
-- **Node / pnpm:** `pnpm` is not on `PATH`, but `corepack` ships with Node and is. Always enter the workspace through `corepack pnpm <command>`.
-- **PowerShell:** Commands run under Windows PowerShell 5.1 (no `&&`, no ternary, no `??`). Chain with `;`.
-- **UTF-8 BOM:** Strip UTF-8 BOM from generated scripts or use standard python writers.
-- **This is a shared working tree.** Other agents commit to `main` in this same directory. Commit only the files your task names; never `git add -A`.
-
----
-
-## Verified baseline
-
-```powershell
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy apps/api/src packages/backend/src
-corepack pnpm verify
-```
-
-**Expected baseline output at `5e148ce`**, every line of it observed by the
-worker rather than copied from a report:
-
-- `783 passed, 1 warning`
-- `All checks passed!`
-- `181 files already formatted`
-- `Success: no issues found in 93 source files`
-- Web: `10 passed (10)`, 3 test files
-- `corepack pnpm verify` exits 0.
-
-If your first run disagrees with any of these before you have changed anything,
-stop and report it. Something moved that this briefing does not know about.
-
-The database is at migration revision `20260828_0008_pipeline_runs`. This item
-adds no migration, so it should still be there when you finish.
+1. `STATUS.md` — current position and settled `E` decisions.
+2. `ROADMAP.md` — `E`'s completion condition and neighboring product items.
+3. `docs/agents/workflow.md` — planner/worker ownership and completion gate.
+4. `CONTEXT.md` — signal, event, observation, early signal score, evidence score,
+   verification status, English title, brief, slot, and precision vocabulary.
+5. `docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md` — `E`'s
+   architectural position.
+6. `docs/superpowers/specs/2026-08-28-english-brief-design.md` — the display
+   contract `E` consumes.
+7. `docs/superpowers/specs/2026-08-28-story-clustering-design.md` — event scores,
+   verification, observations, and conservative matching.
+8. `docs/superpowers/specs/2026-08-27-geocoding-design.md` — coordinate precision
+   and ambiguity rules.
+9. `docs/superpowers/specs/2026-08-28-scheduler-design.md` — pipeline-run records
+   available for monitoring.
+10. `apps/api/src/episignal_api/routes/signals.py`,
+    `apps/api/src/episignal_api/dependencies.py`, and
+    `packages/backend/src/episignal_backend/evidence.py` — current read seam.
+11. `apps/web/src/components/home-shell.tsx`, `apps/web/src/lib/api-signals.ts`,
+    and `apps/web/src/app/globals.css` — current product surface.
+12. `packages/backend/src/episignal_backend/models/signal.py`,
+    `models/event.py`, `models/geography.py`, and `models/pipeline.py` — data the
+    radar may read.
+13. `docs/reports/2026-08-28-subproject-c2-report.md` — coherent live Indonesian
+    signal proving the brief contract.
+14. `docs/handoffs/2026-08-28-c2.md` — archived reasoning for the outgoing item.
 
 ---
 
-## Testing rules that are not optional
+## Required design invariants
 
-- **No test touches a database, a socket, or a model.** There is no `conftest.py`
-  and no fixture database. Repository tests use a hand-written `FakeSession` —
-  the one at the top of `packages/backend/tests/test_ai_repository.py` is the
-  one this item extends. Model calls use `ScriptedModel` from
-  `packages/backend/tests/test_ai_classify.py`.
-- **Only task 13 touches the live database or spends money.** Tasks 1 through 12
-  need no key, no network, and no database.
-- **Test-first, red then green.** The plan gives you the failing test, the command
-  to prove it fails, and the expected failure for every task.
-- **Task 2 must be one commit.** Removing `summary` from the contract breaks every
-  payload in the suite; the schema change and the fixture updates land together
-  or the history has a commit nobody can bisect through.
-
----
-
-## Invariants for Sub-Project C2
-
-1. **The brief never fills a slot the article left empty.** `reported: false` and
-   a line saying what is missing. A model told to always produce five bullets
-   from an article supporting three will invent two, and every review of this
-   item checks that first.
-2. **Spans stay in the article's language.** `check_grounding` requires each
-   `source_span` to occur verbatim in the body. If you find yourself translating
-   a span to make grounding pass, you have inverted the design.
-3. **The version is written by code, never by the model.** A version a model can
-   choose is a version that lies the moment the model is confused.
-4. **Strict on the way in, tolerant on the way back.** `Extraction` keeps
-   rejecting a missing brief. `StoredExtractionPayload` reads rows this system
-   already wrote, including rows that predate the brief.
-5. **A rejected re-extraction changes nothing.** The row already holds an answer
-   that passed these same checks. The backfill does not demote it to
-   `needs_review`, and it does not overwrite it.
-6. **`needs_review` rows are never backfilled.** A human owes them a decision,
-   and `M` is the item that collects it.
-7. **Counts only on stdout.** No key, no prompt, no article body, in any runner's
-   output or in any error message. `type(error).__name__` and nothing else.
+1. **Evidence before claims.** A card links to the publisher and never presents
+   model prose as official confirmation.
+2. **Scores stay separate.** `early_signal_score` is surveillance interest;
+   `evidence_score` is support. UI labels and API fields must preserve both.
+3. **Precision stays visible.** A country centroid is not displayed as a town.
+   Unresolved places remain visible as unresolved, never placed at null island.
+4. **Observation history stays historical.** The surface may select a latest
+   observation, but it must not overwrite or imply that older values vanished.
+5. **No patient-level data.** Do not expose names, contact details, or full raw
+   text on the public radar.
+6. **No synthetic fallback data.** Empty or unavailable states say so.
+7. **Responsive from the first implementation commit.** Map and list must remain
+   usable on small screens; desktop-only acceptance is insufficient.
+8. **Accessibility is structural.** Map information must also exist in the list,
+   keyboard focus must be visible, and color cannot carry uncertainty alone.
 
 ---
 
-## Settled decisions — do not reopen
+## Scope boundaries
 
-- Five slots, always, in the order the enum declares them. A brief with four
-  points, six points, a duplicated slot, or slots out of order is rejected, not
-  sorted.
-- One model call, not two. The model that reads the article writes the English
-  title and the bullets in the same response as the counts. Translation never
-  triggers escalation — `CONTEXT.md` already forbids escalating on language.
-- The free-form `summary` field leaves the contract. The `signals.summary`
-  *column* stays, holding the five bullet texts joined by newlines.
-- No migration. `ai_extraction` is already JSONB.
-- The backfill is not wired into the daily chain. A future prompt change must not
-  be able to silently re-extract a corpus of thousands.
+`E` may design and implement the radar read model, API, homepage map/list, and
+the minimum monitoring surface required by its roadmap row.
 
----
+Do not absorb these later items:
 
-## Known trap: the tolerant reader and mypy
-
-`StoredExtractionPayload` widens two of its parent's fields, which mypy `strict`
-rejects without a narrow `# type: ignore[assignment]` on the `title_english`
-line. That ignore is required and used — `warn_unused_ignores` will tell you if
-it ever stops being needed. Do not widen it to a bare `# type: ignore`, and do
-not solve it by making the strict model lenient: the strict model is the only
-thing forcing a model to return a brief at all.
+- `D2b`: embedding similarity or LLM matching escalation;
+- `G`: the full public event API;
+- `H`: the final homepage event feed and refinement pass;
+- `I`: event detail pages and timelines;
+- `J`: search;
+- `K`: export;
+- `M`: the human review queue;
+- `N`: final SEO, performance, and accessibility acceptance work.
 
 ---
 
-## Carried forward from `L`
+## Planner next action
 
-- The daily chain runs `ingest_who → ingest_ecdc → discover → dedupe → extract →
-  geocode → match` under an advisory lock, and records each run in
-  `pipeline_runs`.
-- `EPISIGNAL_OPENROUTER_API_KEY` was missing for the whole of `L`, which is why
-  its live run recorded `extract failed (RuntimeError)`. The operator set it on
-  2026-08-28. Task 13 is the first run that will exercise it — if extraction
-  fails for a *different* reason, that is a finding worth reporting, not
-  something to work around.
-- The last recorded backlog was `normalized=46`, `needs_review=7`,
-  `duplicate=1`. Those 46 will be classified and extracted into the new shape by
-  a normal run; the handful already extracted are what the backfill is for.
+Use the brainstorming process to present two or three narrow `E` architectures,
+recommend one, and get operator approval. Then commit
+`docs/superpowers/specs/2026-08-28-signal-radar-design.md`, self-review it, and
+only after approval write the implementation plan. Until those artifacts exist,
+there is no worker implementation task.
 
 ---
 
-## The completion gate
+## Verified incoming baseline
 
-`C2` becomes `verified` only when every one of these is true:
+The worker's `C2` gate ran at `b26e794` and is recorded untruncated in
+`docs/reports/2026-08-28-subproject-c2-report.md`:
 
-1. Every task in the plan is ticked in `STATUS.md`.
-2. `corepack pnpm verify` ran in your session and reported zero failures.
-3. The real output of that run — the test counts, not a claim — is quoted in
-   `docs/reports/2026-08-28-subproject-c2-report.md`.
-4. The report is committed.
-5. `STATUS.md`'s verified baseline is updated to the commit you ran at.
+- `corepack pnpm verify` — exit code 0;
+- 789 Python tests, 1 warning;
+- 10 web tests across 3 files;
+- Ruff, Prettier, ESLint, mypy across 93 source files, contracts, and Next.js
+  production build clean.
 
-You do not set `C2` to `verified` in `ROADMAP.md`. Hand back to the planner and
-report what ran, what it printed, and anything in the spec you found to be wrong.
+The planner independently re-ran the same gate at `888369c`, then reviewed the
+documentation-only closure through `caefb6d`. `git diff --check 11d2833...HEAD`
+and `git status --short` were clean before C2 was marked verified.
