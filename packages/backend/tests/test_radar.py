@@ -409,8 +409,8 @@ def test_query_radar_statement_structure() -> None:
     assert "signals.processing_status IN" in statement
     assert "signals.duplicate_of_signal_id IS NULL" in statement
     assert "coalesce(signals.published_at, signals.first_seen_at)" in statement
-    assert "HAVING count(event_signals.event_id) =" in statement
     assert "LIMIT" in statement
+    assert "OFFSET" in statement
 
 
 def test_query_radar_assembly_unmatched_signal() -> None:
@@ -647,3 +647,74 @@ def test_query_pipeline_runs_is_stale_flag() -> None:
     assert page.items[0].is_stale is True
     assert page.items[1].is_stale is False
     assert page.items[2].is_stale is False
+
+
+def test_query_pipeline_runs_sanitizes_unsafe_error_strings_to_none() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    run = PipelineRun(
+        chain=PipelineChain.DAILY,
+        trigger=PipelineTrigger.SCHEDULED,
+        status=PipelineRunStatus.FAILED,
+        started_at=now,
+        finished_at=now,
+        window_start=None,
+        window_end=None,
+        stage_counts={},
+        backlog={},
+        failed_stages=[
+            {"stage": "extract", "error": "TimeoutError"},  # Valid identifier: preserved
+            {
+                "stage": "extract",
+                "error": "https://api.openrouter.ai/v1/chat",
+            },  # URL: converted to None
+            {
+                "stage": "dedupe",
+                "error": "Failed to connect to db at postgresql://user:pass@host/db",
+            },  # Secret/Message: converted to None
+            {
+                "stage": "geocode",
+                "error": "Traceback (most recent call last):\n  File 'app.py'",
+            },  # Traceback: converted to None
+            {
+                "stage": "match",
+                "error": "Error: 500 Server Error",
+            },  # Message with spaces/colon: converted to None
+            {"stage": "ingest_who", "error": "OperationalError"},  # Valid identifier: preserved
+        ],
+    )
+    run.id = uuid4()
+
+    session = FakeSession([FakeResult([run])])
+    page = query_pipeline_runs(session, now=now, stale_after_minutes=60, limit=20)
+    assert len(page.items) == 1
+    failures = page.items[0].failures
+    assert len(failures) == 6
+    assert failures[0] == PipelineFailure(stage=StageName.EXTRACT, error="TimeoutError")
+    assert failures[1] == PipelineFailure(stage=StageName.EXTRACT, error=None)
+    assert failures[2] == PipelineFailure(stage=StageName.DEDUPE, error=None)
+    assert failures[3] == PipelineFailure(stage=StageName.GEOCODE, error=None)
+    assert failures[4] == PipelineFailure(stage=StageName.MATCH, error=None)
+    assert failures[5] == PipelineFailure(stage=StageName.INGEST_WHO, error="OperationalError")
+
+
+def test_query_radar_pagination_skips_malformed_without_consuming_limit() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig1 = FakeSignalRow(
+        id=uuid4(),
+        ai_extraction={"extraction_schema_version": 2, "title_english": "", "brief": []},
+    )
+    sig2 = FakeSignalRow(id=uuid4())
+    sig3 = FakeSignalRow(id=uuid4())
+
+    session = FakeSession(
+        [
+            FakeResult([sig1, sig2, sig3]),
+            FakeResult([]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=2)
+    assert len(page.items) == 2
+    assert page.items[0].id == sig2.id
+    assert page.items[1].id == sig3.id

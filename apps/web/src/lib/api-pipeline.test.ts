@@ -91,6 +91,26 @@ describe("isPipelineRunList", () => {
     data.items[0].failures[0].message = "Secret error message!";
     expect(isPipelineRunList(data)).toBe(false);
   });
+
+  it("rejects date-only and non-ISO timestamp formats", () => {
+    const data1 = JSON.parse(JSON.stringify(VALID_PIPELINE_RUNS));
+    data1.items[0].started_at = "2026-08-28";
+    expect(isPipelineRunList(data1)).toBe(false);
+
+    const data2 = JSON.parse(JSON.stringify(VALID_PIPELINE_RUNS));
+    data2.items[0].finished_at = "Fri, 28 Aug 2026 10:08:30 GMT";
+    expect(isPipelineRunList(data2)).toBe(false);
+  });
+
+  it("rejects invalid error type identifiers in failures", () => {
+    const data1 = JSON.parse(JSON.stringify(VALID_PIPELINE_RUNS));
+    data1.items[0].failures[0].error = "https://example.com/api/secret";
+    expect(isPipelineRunList(data1)).toBe(false);
+
+    const data2 = JSON.parse(JSON.stringify(VALID_PIPELINE_RUNS));
+    data2.items[0].failures[0].error = "Failed to connect: secret_pw";
+    expect(isPipelineRunList(data2)).toBe(false);
+  });
 });
 
 describe("getPipelineRuns", () => {

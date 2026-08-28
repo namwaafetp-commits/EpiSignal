@@ -27,6 +27,11 @@ const VALID_STAGES = new Set([
   "match",
 ]);
 
+const ISO_DATETIME_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+const VALID_ERROR_TYPE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -37,7 +42,10 @@ function isInteger(value: unknown, minimum: number) {
 
 function isTimestamp(value: unknown, nullable = false) {
   if (nullable && value === null) return true;
-  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+  if (typeof value !== "string" || !ISO_DATETIME_PATTERN.test(value)) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(value));
 }
 
 function isPipelineFailure(value: unknown): boolean {
@@ -47,7 +55,8 @@ function isPipelineFailure(value: unknown): boolean {
   return (
     typeof value.stage === "string" &&
     VALID_STAGES.has(value.stage) &&
-    (value.error === null || typeof value.error === "string")
+    (value.error === null ||
+      (typeof value.error === "string" && VALID_ERROR_TYPE.test(value.error)))
   );
 }
 

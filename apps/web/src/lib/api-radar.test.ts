@@ -162,6 +162,20 @@ describe("isRadarFeed", () => {
     feed2.items[0].source.url = "not-a-valid-url";
     expect(isRadarFeed(feed2)).toBe(false);
   });
+
+  it("rejects date-only and non-ISO timestamp formats", () => {
+    const feed1 = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed1.items[0].published_at = "2026-08-28";
+    expect(isRadarFeed(feed1)).toBe(false);
+
+    const feed2 = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed2.items[0].first_seen_at = "August 28, 2026 10:00:00 GMT";
+    expect(isRadarFeed(feed2)).toBe(false);
+
+    const feed3 = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed3.window_start = "2026-08-26";
+    expect(isRadarFeed(feed3)).toBe(false);
+  });
 });
 
 describe("getRadarFeed", () => {

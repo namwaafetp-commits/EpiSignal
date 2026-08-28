@@ -5,6 +5,7 @@ representative locations, source credibility, and optional attached event contex
 Also provides counts-only pipeline run monitoring.
 """
 
+import re
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -46,6 +47,16 @@ class EventContextStatus(StrEnum):
 
 
 @dataclass(frozen=True)
+class RadarLocation:
+    role: LocationRole
+    precision: Precision
+    label: str
+    country_code: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+@dataclass(frozen=True)
 class RadarSource:
     name: str
     url: str
@@ -54,21 +65,11 @@ class RadarSource:
 
 
 @dataclass(frozen=True)
-class RadarLocation:
-    role: LocationRole
-    precision: Precision
-    label: str
-    country_code: str | None
-    latitude: float | None
-    longitude: float | None
-
-
-@dataclass(frozen=True)
 class RadarEventContext:
     public_id: str
     verification_status: VerificationStatus
-    early_signal_score: float | None
-    evidence_score: float | None
+    early_signal_score: float
+    evidence_score: float
 
 
 @dataclass(frozen=True)
@@ -136,13 +137,12 @@ _PRECISION_RANK: dict[Precision, int] = {
 def choose_representative_location(
     locations: Sequence[SignalLocation],
 ) -> RadarLocation | None:
-    """Select one representative location for the signal map.
+    """Select the representative location for a signal following deterministic tie-breaking.
 
-    1. Consider primary locations first; if none, consider all locations.
-    2. Sort by highest recorded precision (place > admin2 > admin1 > country > unresolved).
-    3. Break equal-precision ties by ascending location UUID.
-    4. Label fallback: resolved_name -> place_name -> admin2 -> admin1 -> country_name.
-    5. Unresolved or incomplete coordinates return latitude=None, longitude=None.
+    Hierarchy:
+    1. Primary location (role == LocationRole.PRIMARY) preferred over non-primary.
+    2. Finest precision rank (place > admin2 > admin1 > country > unresolved).
+    3. Lowest UUID ascending as deterministic tie-breaker.
     """
     if not locations:
         return None
@@ -152,7 +152,7 @@ def choose_representative_location(
 
     chosen = min(
         candidates,
-        key=lambda loc: (_PRECISION_RANK.get(loc.precision, 99), loc.id),
+        key=lambda loc: (_PRECISION_RANK.get(loc.precision, 99), str(loc.id)),
     )
 
     label = (
@@ -160,20 +160,25 @@ def choose_representative_location(
         or chosen.place_name
         or chosen.admin2
         or chosen.admin1
+        or chosen.admin1_name
         or chosen.country_name
-        or ""
+        or "Unknown"
     )
 
+    lat = chosen.latitude
+    lon = chosen.longitude
     if (
         chosen.precision == Precision.UNRESOLVED
-        or chosen.latitude is None
-        or chosen.longitude is None
+        or lat is None
+        or lon is None
+        or not (-90.0 <= lat <= 90.0)
+        or not (-180.0 <= lon <= 180.0)
     ):
         latitude = None
         longitude = None
     else:
-        latitude = float(chosen.latitude)
-        longitude = float(chosen.longitude)
+        latitude = float(lat)
+        longitude = float(lon)
 
     return RadarLocation(
         role=chosen.location_role,
@@ -192,28 +197,27 @@ def query_radar(
     hours: int = 48,
     limit: int = 50,
 ) -> RadarPage:
-    """Query recent high-quality signals and assemble the radar read model."""
-    window_start = now - timedelta(hours=hours)
+    """Query recent signals with representative locations and event context."""
     window_end = now
+    window_start = now - timedelta(hours=hours)
 
     effective_time = func.coalesce(Signal.published_at, Signal.first_seen_at)
 
     event_heat_subquery = (
-        select(func.max(Event.early_signal_score))
-        .select_from(EventSignal)
-        .join(Event, Event.id == EventSignal.event_id)
+        select(Event.early_signal_score)
+        .join(EventSignal, EventSignal.event_id == Event.id)
         .where(EventSignal.signal_id == Signal.id)
-        .group_by(EventSignal.signal_id)
-        .having(func.count(EventSignal.event_id) == 1)
+        .order_by(Event.early_signal_score.desc().nulls_last())
+        .limit(1)
         .scalar_subquery()
     )
 
-    statement = (
+    base_statement = (
         select(
             Signal.id,
             Signal.url,
-            Signal.processing_status,
             Signal.signal_type,
+            Signal.processing_status,
             Signal.published_at,
             Signal.first_seen_at,
             Signal.ai_extraction,
@@ -241,11 +245,35 @@ def query_radar(
             event_heat_subquery.desc().nulls_last(),
             Signal.id.desc(),
         )
-        .limit(limit)
     )
 
-    rows = session.execute(statement).all()
-    if not rows:
+    chunk_size = max(limit, 20)
+    max_scan = max(limit * 5, 100)
+    offset = 0
+
+    valid_rows_and_payloads: list[tuple[Any, StoredExtractionPayload]] = []
+    while len(valid_rows_and_payloads) < limit and offset < max_scan:
+        chunk_stmt = base_statement.offset(offset).limit(chunk_size)
+        chunk_rows = session.execute(chunk_stmt).all()
+        if not chunk_rows:
+            break
+        offset += len(chunk_rows)
+        for row in chunk_rows:
+            if not row.ai_extraction:
+                continue
+            try:
+                payload = StoredExtractionPayload.model_validate(row.ai_extraction)
+            except Exception:
+                continue
+            if not payload.title_english or len(payload.brief) != BRIEF_SLOT_COUNT:
+                continue
+            valid_rows_and_payloads.append((row, payload))
+            if len(valid_rows_and_payloads) == limit:
+                break
+        if len(chunk_rows) < chunk_size:
+            break
+
+    if not valid_rows_and_payloads:
         return RadarPage(
             items=(),
             window_start=window_start,
@@ -254,7 +282,7 @@ def query_radar(
             limit=limit,
         )
 
-    signal_ids = [row.id for row in rows]
+    signal_ids = [row.id for row, _ in valid_rows_and_payloads]
 
     locations_stmt = select(SignalLocation).where(SignalLocation.signal_id.in_(signal_ids))
     location_results = session.execute(locations_stmt).scalars().all()
@@ -286,17 +314,7 @@ def query_radar(
         )
 
     items: list[RadarItem] = []
-    for row in rows:
-        if not row.ai_extraction:
-            continue
-        try:
-            payload = StoredExtractionPayload.model_validate(row.ai_extraction)
-        except Exception:
-            continue
-
-        if not payload.title_english or len(payload.brief) != BRIEF_SLOT_COUNT:
-            continue
-
+    for row, payload in valid_rows_and_payloads:
         linked_events = events_by_signal.get(row.id, [])
         if len(linked_events) == 0:
             event_context_status = EventContextStatus.NONE
@@ -367,6 +385,18 @@ def _normalize_backlog(raw: Any) -> dict[str, int]:
     return normalized
 
 
+_VALID_EXCEPTION_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+
+
+def _safe_error_name(error_val: Any) -> str | None:
+    if not isinstance(error_val, str):
+        return None
+    cleaned = error_val.strip()
+    if _VALID_EXCEPTION_NAME.match(cleaned):
+        return cleaned
+    return None
+
+
 def _normalize_failures(raw: Any) -> tuple[PipelineFailure, ...]:
     if not isinstance(raw, (list, tuple)):
         return ()
@@ -387,8 +417,7 @@ def _normalize_failures(raw: Any) -> tuple[PipelineFailure, ...]:
             except ValueError:
                 continue
             error_val = item.get("error")
-            error_str = str(error_val) if isinstance(error_val, str) else None
-            failures.append(PipelineFailure(stage=stage, error=error_str))
+            failures.append(PipelineFailure(stage=stage, error=_safe_error_name(error_val)))
     return tuple(failures)
 
 

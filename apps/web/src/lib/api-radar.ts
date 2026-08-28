@@ -82,9 +82,15 @@ function isInteger(value: unknown, minimum: number) {
   return Number.isInteger(value) && Number(value) >= minimum;
 }
 
+const ISO_DATETIME_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
 function isTimestamp(value: unknown, nullable = false) {
   if (nullable && value === null) return true;
-  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+  if (typeof value !== "string" || !ISO_DATETIME_PATTERN.test(value)) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(value));
 }
 
 function isSourceUrl(value: unknown) {
