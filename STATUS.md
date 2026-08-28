@@ -37,7 +37,7 @@ first. Set `L` to `building` in [ROADMAP.md](ROADMAP.md) when task 1 begins.
 From [docs/superpowers/plans/2026-08-28-scheduler.md](docs/superpowers/plans/2026-08-28-scheduler.md).
 Tick each one in the same commit as its work.
 
-- [ ] 1. Contracts across the seams — `schedule/documents.py`
+- [x] 1. Contracts across the seams — `schedule/documents.py`
 - [ ] 2. The daily chain and its order
 - [ ] 3. The catch-up window
 - [ ] 4. The `PipelineRunRepository` boundary

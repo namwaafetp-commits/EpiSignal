@@ -43,7 +43,7 @@ Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
 Band 2  GDELT discovery layer   [#####-] 5/7  D2b and F remain
 Band 3  Product surface         [------] 0/6
-Band 4  Operations              [---]    0/3  L planned
+Band 4  Operations              [---]    0/3  L building
 Band 5  Acceptance              [-]      0/1
 ```
 
@@ -121,7 +121,7 @@ Artifacts:
 [Ambiguous match] ->  D2b ---                    not started
 [Radar surface]   ->  E   ---                    not started
 
-[Runs it daily]   ->  L   pipeline_runner.py     planned       <-- next
+[Runs it daily]   ->  L   pipeline_runner.py     building      <-- next
 ```
 
 Every stage above is verified and every one of them is invoked by hand, which is
@@ -151,7 +151,7 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `planned` |
+| `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `building` |
 | `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `not-started` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
 
