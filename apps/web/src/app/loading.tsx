@@ -4,7 +4,7 @@ export default function Loading() {
   return (
     <HomeShell
       apiStatus="loading"
-      evidenceFeed={{ status: "loading", data: null }}
+      radarFeed={{ status: "loading", data: null }}
     />
   );
 }

@@ -1,11 +1,11 @@
 import { HomeShell } from "@/components/home-shell";
 import { getApiStatus } from "@/lib/api-health";
-import { getEvidenceFeed } from "@/lib/api-signals";
+import { getRadarFeed } from "@/lib/api-radar";
 
 export default async function Home() {
-  const [apiStatus, evidenceFeed] = await Promise.all([
+  const [apiStatus, radarFeed] = await Promise.all([
     getApiStatus(),
-    getEvidenceFeed(),
+    getRadarFeed({ hours: 48, limit: 50 }),
   ]);
-  return <HomeShell apiStatus={apiStatus} evidenceFeed={evidenceFeed} />;
+  return <HomeShell apiStatus={apiStatus} radarFeed={radarFeed} />;
 }
