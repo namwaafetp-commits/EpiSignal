@@ -57,7 +57,7 @@ Tick each one in the same commit as its work.
 - [x] 4. The prompt asks for English and for five slots
 - [x] 5. The version, and reading what we already stored
 - [x] 6. Persistence stamps the version and writes the brief
-- [ ] 7. Matching reads stored extractions tolerantly
+- [x] 7. Matching reads stored extractions tolerantly
 - [ ] 8. The backfill selection
 - [ ] 9. The backfill pass
 - [ ] 10. The backfill runner

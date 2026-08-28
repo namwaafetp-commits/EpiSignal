@@ -8,9 +8,16 @@ from episignal_backend.db.types import (
     Precision,
     SignalType,
 )
+from episignal_backend.ai.schema import (
+    EXTRACTION_SCHEMA_VERSION,
+    EXTRACTION_VERSION_KEY,
+)
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 from episignal_backend.events.protocol import EventRepository
-from episignal_backend.events.repository import SqlAlchemyEventRepository
+from episignal_backend.events.repository import (
+    SqlAlchemyEventRepository,
+    read_stored_extraction,
+)
 
 
 class FakeResult:
@@ -471,3 +478,32 @@ def test_apply_scores_executes_update_on_event() -> None:
     assert "early_signal_score" in stmt_str
     assert "evidence_score" in stmt_str
     assert "verification_status" in stmt_str
+
+
+def test_a_stored_extraction_survives_its_version_key() -> None:
+    payload = {
+        "signal_type": "outbreak_report",
+        "source_language": "en",
+        "title_english": "Cholera outbreak reported in Luanda",
+        "brief": [
+            {"slot": "what_where", "text": "Cholera in Luanda, Angola.", "reported": True},
+            {"slot": "counts", "text": "327 confirmed cases.", "reported": True},
+            {"slot": "timing", "text": "As of 25 August 2026.", "reported": True},
+            {"slot": "spread", "text": "Acquired locally.", "reported": True},
+            {"slot": "reporting", "text": "Reported by the health ministry.", "reported": True},
+        ],
+        "epidemiology": {"confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"}},
+        "confidence": 0.9,
+        EXTRACTION_VERSION_KEY: EXTRACTION_SCHEMA_VERSION,
+    }
+
+    extraction = read_stored_extraction(payload)
+
+    assert extraction is not None
+    assert extraction.epidemiology.confirmed_cases is not None
+    assert extraction.epidemiology.confirmed_cases.value == 327
+
+
+def test_an_unreadable_extraction_is_absence_rather_than_an_exception() -> None:
+    assert read_stored_extraction({"signal_type": "not_a_type"}) is None
+

@@ -13,10 +13,11 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from geoalchemy2.elements import WKTElement
+from pydantic import ValidationError
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.orm import Session
 
-from episignal_backend.ai.schema import Extraction
+from episignal_backend.ai.schema import Extraction, StoredExtractionPayload
 from episignal_backend.db.types import (
     EventStatus,
     EventType,
@@ -40,6 +41,21 @@ from episignal_backend.models import (
     SignalLocation,
     Source,
 )
+
+
+def read_stored_extraction(payload: Any) -> Extraction | None:
+    """Read `signals.ai_extraction` back, across every version we have written.
+
+    Returns absence rather than raising: a row this system cannot parse is a row
+    matching scores without an extraction, which is worse than a crash only if
+    it goes unnoticed — and `processing_status` is where it is noticed.
+    """
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return StoredExtractionPayload.model_validate(payload)
+    except ValidationError:
+        return None
 
 
 def _infer_precision(loc: Any) -> Precision:
@@ -107,18 +123,7 @@ class SqlAlchemyEventRepository:
 
         signals: list[SignalForMatching] = []
         for sig, is_official, cred_tier in rows:
-            extraction = None
-            if sig.ai_extraction is not None:
-                try:
-                    extraction = Extraction.model_validate(sig.ai_extraction)
-                except Exception:
-                    if isinstance(sig.ai_extraction, dict):
-                        payload = dict(sig.ai_extraction)
-                        payload.setdefault("confidence", 0.5)
-                        try:
-                            extraction = Extraction.model_validate(payload)
-                        except Exception:
-                            extraction = None
+            extraction = read_stored_extraction(sig.ai_extraction)
             signals.append(
                 SignalForMatching(
                     signal_id=sig.id,
