@@ -7,10 +7,11 @@ unit tests can override them and never reach the hosted project.
 from datetime import UTC, datetime
 from typing import Annotated
 
+from episignal_backend.config import get_settings
 from episignal_backend.db.session import connection_scope, session_scope
 from episignal_backend.evidence import EvidencePage, query_evidence_page
 from episignal_backend.health import DatabaseHealth, check_database
-from episignal_backend.radar import RadarPage, query_radar
+from episignal_backend.radar import PipelineRunPage, RadarPage, query_pipeline_runs, query_radar
 from fastapi import Query
 
 
@@ -37,3 +38,17 @@ def get_radar_page(
     with session_scope() as session:
         now = datetime.now(UTC)
         return query_radar(session, now=now, hours=hours, limit=limit)
+
+
+def get_pipeline_runs_page(
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> PipelineRunPage:
+    settings = get_settings()
+    with session_scope() as session:
+        now = datetime.now(UTC)
+        return query_pipeline_runs(
+            session,
+            now=now,
+            stale_after_minutes=settings.gdelt_poll_interval_minutes,
+            limit=limit,
+        )
