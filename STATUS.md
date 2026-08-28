@@ -38,7 +38,7 @@ From [docs/superpowers/plans/2026-08-28-scheduler.md](docs/superpowers/plans/202
 Tick each one in the same commit as its work.
 
 - [x] 1. Contracts across the seams — `schedule/documents.py`
-- [ ] 2. The daily chain and its order
+- [x] 2. The daily chain and its order
 - [ ] 3. The catch-up window
 - [ ] 4. The `PipelineRunRepository` boundary
 - [ ] 5. The persisted vocabularies
