@@ -8,13 +8,10 @@ behalf of the passes above it.
 
 import logging
 from collections.abc import Sequence
-from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import Select, func, or_, select, update
 from sqlalchemy.orm import Session
-
-logger = logging.getLogger(__name__)
 
 from episignal_backend.ai.documents import (
     AiRequestRecord,
@@ -32,6 +29,8 @@ from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.ingestion.fingerprint import verify_content_hash
 from episignal_backend.models import AiModel, AiRequest, Disease, Signal
 
+logger = logging.getLogger(__name__)
+
 EXCERPT_CHARACTERS = 1200
 
 
@@ -41,7 +40,7 @@ class SqlAlchemyAiRepository:
 
     def _scan_valid_signals(
         self,
-        base_stmt: Any,
+        base_stmt: Select[tuple[Signal]],
         limit: int,
         pass_name: str,
     ) -> list[Signal]:
@@ -52,9 +51,7 @@ class SqlAlchemyAiRepository:
 
         while len(valid_signals) < limit and offset < max_scan:
             chunk_stmt = base_stmt.offset(offset).limit(chunk_size)
-            exec_res = self._session.execute(chunk_stmt)
-            scalars_res = exec_res.scalars() if hasattr(exec_res, "scalars") else exec_res
-            chunk_rows = list(scalars_res.all() if hasattr(scalars_res, "all") else scalars_res)
+            chunk_rows = list(self._session.execute(chunk_stmt).scalars().all())
             if not chunk_rows:
                 break
             offset += len(chunk_rows)

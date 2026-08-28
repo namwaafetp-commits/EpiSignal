@@ -17,12 +17,25 @@ from sqlalchemy import Select, Update
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 
 
+class FakeScalarResult:
+    """Stands in for SQLAlchemy's ScalarResult: iterable, and answers `all()`."""
+
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def __iter__(self) -> Any:
+        return iter(self._value or ())
+
+    def all(self) -> list[Any]:
+        return list(self._value or ())
+
+
 class FakeResult:
     def __init__(self, value: Any) -> None:
         self._value = value
 
-    def scalars(self) -> Any:
-        return self._value
+    def scalars(self) -> FakeScalarResult:
+        return FakeScalarResult(self._value)
 
     def scalar_one_or_none(self) -> Any:
         return self._value
@@ -343,7 +356,8 @@ def test_awaiting_classification_does_not_stall_when_corrupted_row_persists_at_h
     assert batch1[0].id == valid1.id
     assert batch1[1].id == valid2.id
 
-    # Batch 2: valid1 & valid2 were classified (status changed), so next query sees corrupt at head then valid3, valid4
+    # Batch 2: valid1 and valid2 have been classified, so their status has advanced.
+    # The next query still sees the corrupted row at the head, then valid3 and valid4.
     session2 = FakeSession([FakeResult([corrupted, valid3, valid4])])
     batch2 = SqlAlchemyAiRepository(session2).awaiting_classification(limit=2)
     assert len(batch2) == 2

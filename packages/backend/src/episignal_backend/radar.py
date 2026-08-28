@@ -18,8 +18,6 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 from episignal_backend.ai.schema import BRIEF_SLOT_COUNT, BriefPoint, StoredExtractionPayload
 from episignal_backend.db.types import (
     CredibilityTier,
@@ -42,6 +40,8 @@ from episignal_backend.models import (
     Source,
 )
 from episignal_backend.schedule.documents import StageName
+
+logger = logging.getLogger(__name__)
 
 
 class EventContextStatus(StrEnum):
