@@ -50,7 +50,7 @@ Tick each one in the same commit as its work.
 - [x] 18. Observations are inserted, never updated
 - [x] 19. The assembly pass — `run_event_assembly`
 - [x] 20. Configuration
-- [ ] 21. The runner, the script, and the seam guard
+- [x] 21. The runner, the script, and the seam guard
 - [ ] 22. Live database verification and the completion report
 
 Tasks 1 through 21 need no key, no network, and no database. Task 22 is the only
