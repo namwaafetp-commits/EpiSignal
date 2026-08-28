@@ -60,7 +60,7 @@ Tick each one in the same commit as its work.
 - [x] 7. Matching reads stored extractions tolerantly
 - [x] 8. The backfill selection
 - [x] 9. The backfill pass
-- [ ] 10. The backfill runner
+- [x] 10. The backfill runner
 - [ ] 11. The command and the environment
 - [ ] 12. The naming authority
 - [ ] 13. Live verification and the completion report
