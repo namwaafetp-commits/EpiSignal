@@ -122,6 +122,17 @@ def test_an_unknown_source_language_is_rejected() -> None:
         Extraction.model_validate(minimal(source_language="portuguese"))
 
 
+def test_a_two_letter_code_outside_iso_639_1_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Extraction.model_validate(minimal(source_language="zz"))
+
+
+def test_a_known_language_code_is_normalized_to_lowercase() -> None:
+    extraction = Extraction.model_validate(minimal(source_language="FR"))
+
+    assert extraction.source_language == "fr"
+
+
 def test_an_unsure_source_language_is_stored_as_absence() -> None:
     extraction = Extraction.model_validate(minimal(source_language=None))
 
