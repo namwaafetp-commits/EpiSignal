@@ -94,13 +94,20 @@ uv run mypy apps/api/src packages/backend/src
 corepack pnpm verify
 ```
 
-**Expected baseline output at `4dbe028`:**
+**Expected baseline output at `b78f51d`**, every line of it observed by the
+planner rather than copied from a report. The tests were run at `4dbe028`; the
+three commits since are documentation only, and `ruff`, `mypy`, and the two test
+suites were re-run at `b78f51d`:
+
 - `756 passed, 1 warning`
 - `All checks passed!`
 - `179 files already formatted`
 - `Success: no issues found in 92 source files`
 - Web: `10 passed (10)`, 3 test files
 - `corepack pnpm verify` exits 0.
+
+If your first run disagrees with any of these before you have changed anything,
+stop and report it. Something moved that this briefing does not know about.
 
 The database is at migration revision `20260828_0008_pipeline_runs`. This item
 adds no migration, so it should still be there when you finish.
