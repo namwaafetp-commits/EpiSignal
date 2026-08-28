@@ -157,7 +157,8 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 Artifacts:
 `L` [spec](docs/superpowers/specs/2026-08-28-scheduler-design.md) ·
-[plan](docs/superpowers/plans/2026-08-28-scheduler.md)
+[plan](docs/superpowers/plans/2026-08-28-scheduler.md) ·
+[report](docs/reports/2026-08-28-subproject-l-report.md)
 
 `L` is scheduled ahead of Band 3 deliberately. It depends only on `D2a`, and the
 items that follow it are worth more once real events exist to build against.

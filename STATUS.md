@@ -54,7 +54,7 @@ Tick each one in the same commit as its work.
 - [x] 15. The environment example
 - [x] 16. The seam guard
 - [x] 17. The scheduling document
-- [ ] 18. Live verification and the completion report
+- [x] 18. Live verification and the completion report
 
 Tasks 1 through 17 need no key, no network, and no database. Task 18 is the only
 one that touches the database.
@@ -87,22 +87,22 @@ two in `.env`.
 
 ## Verified baseline
 
-Everything below was true at commit `0b777bc` on `main`, tree clean. Recorded
-from the `D2a` run logged untruncated in
-[docs/reports/2026-08-28-subproject-d2a-report.md](docs/reports/2026-08-28-subproject-d2a-report.md).
+Everything below was true at commit `76b8bb8` on `main`, tree clean. Recorded
+from the `L` run logged untruncated in
+[docs/reports/2026-08-28-subproject-l-report.md](docs/reports/2026-08-28-subproject-l-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 694 passed, 1 warning |
+| Python tests | 756 passed, 1 warning |
 | Web tests | 10 passed, 3 files |
-| Lint and format | `ruff check` clean, 158 files formatted |
-| Types | `mypy` clean across 82 source files |
-| Migration revision | `20260828_0007_event_scores` |
-| Live database | `scripts/verify-live-database.ps1` passed — 8 core tables, PostGIS up |
+| Lint and format | `ruff check` clean, 179 files formatted |
+| Types | `mypy` clean across 92 source files |
+| Migration revision | `20260828_0008_pipeline_runs` |
+| Live database | `schema_check` passed — core tables + `pipeline_runs`, PostGIS up |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
-| `match:events` on live data | `seen=2 clusters=0 created=0 attached=0 refused=0 unclusterable=2` |
+| `pipeline:run` on live data | `ingest_who ok`, `ingest_ecdc ok`, `discover ok`, `dedupe ok`, `extract failed (RuntimeError)`, `geocode ok`, `match ok` |
 
 Reproduce with:
 
