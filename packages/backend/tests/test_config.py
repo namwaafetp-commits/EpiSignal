@@ -234,3 +234,34 @@ def test_event_match_threshold_must_be_between_zero_and_one() -> None:
 
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_EVENT_MATCH_THRESHOLD="-0.1")
+
+
+def test_the_catch_up_clamp_defaults_to_seven_days() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        database_url="postgresql://user:secret@host/db",  # type: ignore[arg-type]
+        _env_file=None,
+    )
+
+    assert settings.pipeline_catch_up_max_minutes == 10080
+
+
+def test_the_default_chain_is_daily() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        database_url="postgresql://user:secret@host/db",  # type: ignore[arg-type]
+        _env_file=None,
+    )
+
+    assert settings.pipeline_chain == "daily"
+
+
+def test_a_catch_up_clamp_shorter_than_the_query_window_is_refused() -> None:
+    # A clamp inside the window would make the very first run ask for less than
+    # the window it was configured with, which no later run ever repairs.
+    with pytest.raises(ValidationError):
+        Settings(  # type: ignore[call-arg]
+            database_url="postgresql://user:secret@host/db",  # type: ignore[arg-type]
+            gdelt_query_window_minutes=1500,
+            pipeline_catch_up_max_minutes=600,
+            _env_file=None,
+        )
+

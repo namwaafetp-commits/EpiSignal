@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     event_match_batch_size: int = Field(default=100, ge=1, le=5000)
     event_match_stale: bool = False
 
+    # Seven days. Bounds the query issued after a long gap: a laptop closed for
+    # a month asks for a week, not a month GDELT would refuse.
+    pipeline_catch_up_max_minutes: int = Field(default=10080, ge=1, le=43200)
+    pipeline_chain: Literal["daily"] = "daily"
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
@@ -135,6 +140,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES must cover "
                 "EPISIGNAL_GDELT_POLL_INTERVAL_MINUTES"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def catch_up_covers_the_query_window(self) -> "Settings":
+        if self.pipeline_catch_up_max_minutes < self.gdelt_query_window_minutes:
+            raise ValueError(
+                "EPISIGNAL_PIPELINE_CATCH_UP_MAX_MINUTES must cover "
+                "EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES"
             )
         return self
 
