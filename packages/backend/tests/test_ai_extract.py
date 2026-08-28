@@ -94,6 +94,18 @@ class BackfillRepository(ExtractRepository):
         raise AssertionError("a rejected re-extraction must leave the row where it is")
 
 
+class CommitFailingBackfillRepository(BackfillRepository):
+    def __init__(self, stale: Sequence[ExtractableSignal]) -> None:
+        super().__init__(stale)
+        self.rollbacks = 0
+
+    def commit(self) -> None:
+        raise RuntimeError("database unavailable")
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
 def english(identifier: UUID = FIRST) -> ExtractableSignal:
     return ExtractableSignal(id=identifier, title="Cholera cases rise", raw_text=BODY)
 
@@ -249,3 +261,20 @@ def test_a_rejected_first_extraction_still_goes_to_review() -> None:
     result = run_extraction(repository, model, guards=guards(), now=lambda: NOW)
 
     assert result.reviewed == 1
+
+
+def test_a_rolled_back_backfill_is_not_reported_as_extracted() -> None:
+    signal = ExtractableSignal(id=FIRST, title="Cholera in Luanda", raw_text=BODY)
+    repository = CommitFailingBackfillRepository([signal])
+
+    result = run_backfill(
+        repository,
+        ScriptedModel([GOOD]),
+        guards=guards(),
+        now=lambda: NOW,
+    )
+
+    assert result.extracted == 0
+    assert result.storage_failed == 1
+    assert repository.rollbacks == 1
+

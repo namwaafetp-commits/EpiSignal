@@ -47,6 +47,7 @@ class ExtractionResult:
     extracted: int = 0
     reviewed: int = 0
     unavailable: int = 0
+    storage_failed: int = 0
     requests: int = 0
     stopped_early: bool = False
 
@@ -83,6 +84,7 @@ def _run_pass(
     extracted = 0
     reviewed = 0
     unavailable = 0
+    storage_failed = 0
     requests = 0
     stopped_early = False
 
@@ -128,24 +130,25 @@ def _run_pass(
                         processed_at=at,
                     ),
                 )
-                extracted += 1
-            elif result.outcome is ClimbOutcome.REJECTED:
-                # A first extraction that cannot be trusted owes a human a look.
-                # A re-extraction that cannot be trusted owes nobody anything:
-                # the row already holds an answer that passed these same checks,
-                # and demoting it would throw that away to record a failure.
-                if demote_on_rejection:
-                    repository.mark_needs_review(signal.id)
-                reviewed += 1
-            else:
-                unavailable += 1
+            elif result.outcome is ClimbOutcome.REJECTED and demote_on_rejection:
+                repository.mark_needs_review(signal.id)
 
             repository.commit()
         except Exception as error:
             repository.rollback()
+            storage_failed += 1
             logger.error(
-                "Could not store extraction for signal %s (%s)", signal.id, type(error).__name__
+                "Could not store extraction for signal %s (%s)",
+                signal.id,
+                type(error).__name__,
             )
+        else:
+            if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
+                extracted += 1
+            elif result.outcome is ClimbOutcome.REJECTED:
+                reviewed += 1
+            else:
+                unavailable += 1
 
         if result.outcome is ClimbOutcome.GUARD:
             stopped_early = True
@@ -156,6 +159,7 @@ def _run_pass(
         extracted=extracted,
         reviewed=reviewed,
         unavailable=unavailable,
+        storage_failed=storage_failed,
         requests=requests,
         stopped_early=stopped_early,
     )
