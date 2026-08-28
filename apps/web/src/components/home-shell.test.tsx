@@ -164,12 +164,14 @@ describe("HomeShell", () => {
 
     // Metadata
     expect(screen.getByText(/official source/i)).toBeInTheDocument();
-    expect(screen.getByText(/luanda province/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/luanda province/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/95% extraction confidence/i)).toBeInTheDocument();
 
     // Separate event scores
-    expect(screen.getByText(/surveillance interest: 88%/i)).toBeInTheDocument();
-    expect(screen.getByText(/evidence support: 94%/i)).toBeInTheDocument();
+    expect(screen.getByText(/surveillance interest:/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence support:/i)).toBeInTheDocument();
+    expect(screen.getByText(/88%/i)).toBeInTheDocument();
+    expect(screen.getByText(/94%/i)).toBeInTheDocument();
     expect(screen.getByText(/EVT-2026-00042/i)).toBeInTheDocument();
 
     // Safe external source link

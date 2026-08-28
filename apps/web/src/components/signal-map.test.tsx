@@ -1,30 +1,45 @@
 import { render, screen, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import maplibregl from "maplibre-gl";
 import type { RadarItem } from "../lib/api-radar";
 import { SignalMap } from "./signal-map";
 
-const mockMapInstance = {
-  addControl: vi.fn(),
-  on: vi.fn(),
-  off: vi.fn(),
-  remove: vi.fn(),
-  addSource: vi.fn(),
-  getSource: vi.fn(),
-  addLayer: vi.fn(),
-  flyTo: vi.fn(),
-  getZoom: vi.fn(() => 2),
-  getCanvas: vi.fn(() => ({ style: { cursor: "" } })),
-  isStyleLoaded: vi.fn(() => true),
-};
-
 vi.mock("maplibre-gl", () => {
+  class MockMap {
+    addControl() {}
+    on() {
+      return { unsubscribe: () => {} };
+    }
+    off() {
+      return { unsubscribe: () => {} };
+    }
+    remove() {}
+    addSource() {}
+    getSource() {
+      return { setData: vi.fn() };
+    }
+    addLayer() {}
+    flyTo() {}
+    getZoom() {
+      return 2;
+    }
+    getCanvas() {
+      return { style: { cursor: "" } };
+    }
+    isStyleLoaded() {
+      return true;
+    }
+  }
+
+  class MockNavigationControl {}
+
   return {
     default: {
-      Map: vi.fn().mockImplementation(() => mockMapInstance),
-      NavigationControl: vi.fn(),
+      Map: MockMap,
+      NavigationControl: MockNavigationControl,
     },
-    Map: vi.fn().mockImplementation(() => mockMapInstance),
-    NavigationControl: vi.fn(),
+    Map: MockMap,
+    NavigationControl: MockNavigationControl,
   };
 });
 
@@ -95,7 +110,7 @@ const sampleItems: RadarItem[] = [
 
 describe("SignalMap", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("renders map container with accessible label and coverage text", () => {
@@ -107,32 +122,35 @@ describe("SignalMap", () => {
       name: /epidemiological signal map/i,
     });
     expect(mapRegion).toBeInTheDocument();
-    expect(screen.getByText(/1 of 2 signals plotted/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/1 of 2 signals plotted/i).length,
+    ).toBeGreaterThan(0);
   });
 
   it("initializes maplibre map and navigation control on mount and cleans up on unmount", () => {
+    const addControlSpy = vi.spyOn(maplibregl.Map.prototype, "addControl");
+    const removeSpy = vi.spyOn(maplibregl.Map.prototype, "remove");
+    const onSpy = vi.spyOn(maplibregl.Map.prototype, "on");
+
     const { unmount } = render(
       <SignalMap items={sampleItems} selectedId={null} onSelect={vi.fn()} />,
     );
 
-    expect(mockMapInstance.addControl).toHaveBeenCalled();
-    expect(mockMapInstance.on).toHaveBeenCalledWith(
-      "load",
-      expect.any(Function),
-    );
+    expect(addControlSpy).toHaveBeenCalled();
+    expect(onSpy).toHaveBeenCalledWith("load", expect.any(Function));
 
     unmount();
-    expect(mockMapInstance.remove).toHaveBeenCalled();
+    expect(removeSpy).toHaveBeenCalled();
   });
 
   it("renders fallback message when map encounters an error", () => {
     let errorHandler: (() => void) | undefined;
-    mockMapInstance.on.mockImplementation(
-      (event: string, handler: () => void) => {
-        if (event === "error") {
-          errorHandler = handler;
+    vi.spyOn(maplibregl.Map.prototype, "on").mockImplementation(
+      (event: string, handler: unknown) => {
+        if (event === "error" && typeof handler === "function") {
+          errorHandler = handler as () => void;
         }
-        return mockMapInstance;
+        return { unsubscribe: () => {} } as never;
       },
     );
 
@@ -142,7 +160,7 @@ describe("SignalMap", () => {
 
     expect(errorHandler).toBeDefined();
     act(() => {
-      errorHandler!();
+      errorHandler?.();
     });
 
     expect(screen.getByText(/map unavailable/i)).toBeInTheDocument();

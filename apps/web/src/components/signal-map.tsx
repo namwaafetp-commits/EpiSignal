@@ -88,7 +88,7 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
             ],
             "circle-stroke-width": [
               "case",
-              ["==", ["get", "id"], selectedId || ""],
+              ["==", ["get", "id"], selectedIdRef.current || ""],
               3,
               1.5,
             ],
