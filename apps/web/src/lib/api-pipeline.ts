@@ -99,9 +99,7 @@ export function isPipelineRunList(value: unknown): value is PipelineRunList {
   return value.items.every(isPipelineRun);
 }
 
-export async function getPipelineRuns(
-  limit = 20
-): Promise<PipelineRunState> {
+export async function getPipelineRuns(limit = 20): Promise<PipelineRunState> {
   const baseUrl =
     process.env.NEXT_PUBLIC_EPISIGNAL_API_URL ?? "http://127.0.0.1:8000";
   try {
@@ -113,7 +111,7 @@ export async function getPipelineRuns(
       {
         cache: "no-store",
         signal: AbortSignal.timeout(5000),
-      }
+      },
     );
     if (!response.ok) return { status: "unavailable", data: null };
     const body: unknown = await response.json();

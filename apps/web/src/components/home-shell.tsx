@@ -75,7 +75,8 @@ export function HomeShell({
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   const statusLabel = STATUS_LABELS[apiStatus];
-  const items: RadarItem[] = radarFeed.status === "ready" ? radarFeed.data.items : [];
+  const items: RadarItem[] =
+    radarFeed.status === "ready" ? radarFeed.data.items : [];
 
   useEffect(() => {
     if (selectedId) {
@@ -108,8 +109,8 @@ export function HomeShell({
           <p className="eyebrow">Real-Time Epidemiological Intelligence</p>
           <h1 id="hero-title">Early Signal Radar</h1>
           <p className="hero-intro">
-            Continuous surveillance and 5-slot brief extraction of infectious disease
-            signals from official and regional health agencies.
+            Continuous surveillance and 5-slot brief extraction of infectious
+            disease signals from official and regional health agencies.
           </p>
         </section>
 
@@ -186,7 +187,7 @@ export function HomeShell({
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800">
                           {formatTierBadge(
                             item.source.credibility_tier,
-                            item.source.is_official
+                            item.source.is_official,
                           )}
                         </span>
                         {item.location && (
@@ -224,7 +225,8 @@ export function HomeShell({
                       </div>
 
                       <div className="event-context my-3 p-2.5 rounded bg-amber-50/60 border border-amber-200 text-xs">
-                        {item.event_context_status === "attached" && item.event ? (
+                        {item.event_context_status === "attached" &&
+                        item.event ? (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-amber-950">
@@ -232,7 +234,7 @@ export function HomeShell({
                               </span>
                               <span className="px-1.5 py-0.5 rounded bg-amber-100 font-medium text-amber-900">
                                 {formatVerificationStatus(
-                                  item.event.verification_status
+                                  item.event.verification_status,
                                 )}
                               </span>
                             </div>
@@ -242,7 +244,7 @@ export function HomeShell({
                                   Surveillance Interest:{" "}
                                   <strong>
                                     {Math.round(
-                                      item.event.early_signal_score * 100
+                                      item.event.early_signal_score * 100,
                                     )}
                                     %
                                   </strong>
@@ -252,7 +254,9 @@ export function HomeShell({
                                 <span>
                                   Evidence Support:{" "}
                                   <strong>
-                                    {Math.round(item.event.evidence_score * 100)}
+                                    {Math.round(
+                                      item.event.evidence_score * 100,
+                                    )}
                                     %
                                   </strong>
                                 </span>
@@ -297,8 +301,8 @@ export function HomeShell({
           <p className="eyebrow">Evidence before claims</p>
           <p className="text-sm text-slate-600 max-w-2xl">
             EpiSignal never shows a claim or metric without traceable source
-            provenance. 5-slot briefs and representative locations preserve the exact
-            chain of evidence from official reports.
+            provenance. 5-slot briefs and representative locations preserve the
+            exact chain of evidence from official reports.
           </p>
         </section>
       </main>

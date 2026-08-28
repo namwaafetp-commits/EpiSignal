@@ -100,33 +100,26 @@ describe("SignalMap", () => {
 
   it("renders map container with accessible label and coverage text", () => {
     render(
-      <SignalMap
-        items={sampleItems}
-        selectedId={null}
-        onSelect={vi.fn()}
-      />
+      <SignalMap items={sampleItems} selectedId={null} onSelect={vi.fn()} />,
     );
 
     const mapRegion = screen.getByRole("region", {
       name: /epidemiological signal map/i,
     });
     expect(mapRegion).toBeInTheDocument();
-    expect(
-      screen.getByText(/1 of 2 signals plotted/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 signals plotted/i)).toBeInTheDocument();
   });
 
   it("initializes maplibre map and navigation control on mount and cleans up on unmount", () => {
     const { unmount } = render(
-      <SignalMap
-        items={sampleItems}
-        selectedId={null}
-        onSelect={vi.fn()}
-      />
+      <SignalMap items={sampleItems} selectedId={null} onSelect={vi.fn()} />,
     );
 
     expect(mockMapInstance.addControl).toHaveBeenCalled();
-    expect(mockMapInstance.on).toHaveBeenCalledWith("load", expect.any(Function));
+    expect(mockMapInstance.on).toHaveBeenCalledWith(
+      "load",
+      expect.any(Function),
+    );
 
     unmount();
     expect(mockMapInstance.remove).toHaveBeenCalled();
@@ -134,19 +127,17 @@ describe("SignalMap", () => {
 
   it("renders fallback message when map encounters an error", () => {
     let errorHandler: (() => void) | undefined;
-    mockMapInstance.on.mockImplementation((event: string, handler: () => void) => {
-      if (event === "error") {
-        errorHandler = handler;
-      }
-      return mockMapInstance;
-    });
+    mockMapInstance.on.mockImplementation(
+      (event: string, handler: () => void) => {
+        if (event === "error") {
+          errorHandler = handler;
+        }
+        return mockMapInstance;
+      },
+    );
 
     render(
-      <SignalMap
-        items={sampleItems}
-        selectedId={null}
-        onSelect={vi.fn()}
-      />
+      <SignalMap items={sampleItems} selectedId={null} onSelect={vi.fn()} />,
     );
 
     expect(errorHandler).toBeDefined();

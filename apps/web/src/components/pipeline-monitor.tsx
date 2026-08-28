@@ -44,7 +44,7 @@ function formatStatus(run: PipelineRun) {
 
   // Failed
   const hasProgress = Object.values(run.stage_counts).some((counts) =>
-    Object.values(counts).some((c) => c > 0)
+    Object.values(counts).some((c) => c > 0),
   );
 
   return (
@@ -54,7 +54,9 @@ function formatStatus(run: PipelineRun) {
   );
 }
 
-function formatStageCounts(stageCounts: Record<string, Record<string, number>>) {
+function formatStageCounts(
+  stageCounts: Record<string, Record<string, number>>,
+) {
   const entries = Object.entries(stageCounts);
   if (entries.length === 0) return "—";
   return entries
@@ -81,7 +83,8 @@ export function PipelineMonitor({ pipelineState }: PipelineMonitorProps) {
           Pipeline Execution Monitor
         </h1>
         <p className="text-sm text-slate-600 mt-1">
-          Read-only operational history of automated surveillance and extraction runs.
+          Read-only operational history of automated surveillance and extraction
+          runs.
         </p>
       </div>
 
@@ -89,7 +92,8 @@ export function PipelineMonitor({ pipelineState }: PipelineMonitorProps) {
         <p className="empty-state">Loading pipeline execution history…</p>
       ) : pipelineState.status === "unavailable" ? (
         <p className="empty-state">
-          Pipeline history unavailable. The API could not load execution records.
+          Pipeline history unavailable. The API could not load execution
+          records.
         </p>
       ) : pipelineState.data.items.length === 0 ? (
         <p className="empty-state">No pipeline runs recorded.</p>
@@ -98,11 +102,19 @@ export function PipelineMonitor({ pipelineState }: PipelineMonitorProps) {
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Started (UTC)</th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  Started (UTC)
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Status</th>
-                <th className="px-4 py-3 text-left font-semibold">Chain / Trigger</th>
-                <th className="px-4 py-3 text-left font-semibold">Surveillance Window</th>
-                <th className="px-4 py-3 text-left font-semibold">Stage Progress</th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  Chain / Trigger
+                </th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  Surveillance Window
+                </th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  Stage Progress
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Failures</th>
               </tr>
             </thead>
@@ -121,13 +133,14 @@ export function PipelineMonitor({ pipelineState }: PipelineMonitorProps) {
                     {formatStatus(run)}
                   </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                    <span className="font-medium capitalize">{run.chain}</span> ·{" "}
-                    <span className="capitalize">{run.trigger}</span>
+                    <span className="font-medium capitalize">{run.chain}</span>{" "}
+                    · <span className="capitalize">{run.trigger}</span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
                     {run.window_start ? (
                       <div>
-                        {formatDate(run.window_start)} → {formatDate(run.window_end)}
+                        {formatDate(run.window_start)} →{" "}
+                        {formatDate(run.window_end)}
                       </div>
                     ) : (
                       "—"

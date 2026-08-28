@@ -193,7 +193,10 @@ function isRadarItem(value: unknown): boolean {
     return false;
   }
 
-  if (!Array.isArray(value.brief) || value.brief.length !== BRIEF_SLOTS.length) {
+  if (
+    !Array.isArray(value.brief) ||
+    value.brief.length !== BRIEF_SLOTS.length
+  ) {
     return false;
   }
   for (let i = 0; i < BRIEF_SLOTS.length; i++) {
@@ -242,10 +245,13 @@ export async function getRadarFeed({
       hours: String(hours),
       limit: String(limit),
     });
-    const response = await fetch(`${baseUrl}/api/v1/radar?${params.toString()}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
+    const response = await fetch(
+      `${baseUrl}/api/v1/radar?${params.toString()}`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      },
+    );
     if (!response.ok) return { status: "unavailable", data: null };
     const body: unknown = await response.json();
     if (!isRadarFeed(body)) return { status: "unavailable", data: null };

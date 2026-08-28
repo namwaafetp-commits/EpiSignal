@@ -27,7 +27,7 @@ export interface RadarFeatureCollection {
 }
 
 export function isPlottableLocation(
-  location: RadarLocation | null
+  location: RadarLocation | null,
 ): location is RadarLocation & { latitude: number; longitude: number } {
   if (!location) return false;
   if (location.precision === "unresolved") return false;
@@ -40,7 +40,7 @@ export function isPlottableLocation(
 }
 
 export function toGeoJsonFeatures(
-  items: readonly RadarItem[]
+  items: readonly RadarItem[],
 ): RadarFeatureCollection {
   const features: RadarMapFeature[] = [];
 
@@ -62,7 +62,8 @@ export function toGeoJsonFeatures(
         credibility_tier: item.source.credibility_tier,
         is_official: item.source.is_official,
         early_signal_score: item.event?.early_signal_score ?? null,
-        has_event: item.event_context_status === "attached" && item.event !== null,
+        has_event:
+          item.event_context_status === "attached" && item.event !== null,
       },
     });
   }
@@ -90,7 +91,7 @@ function formatTierLabel(tier: string, isOfficial: boolean): string {
 export function getMarkerAriaLabel(item: RadarItem): string {
   const sourceLabel = formatTierLabel(
     item.source.credibility_tier,
-    item.source.is_official
+    item.source.is_official,
   );
   if (item.location && item.location.label) {
     return `${item.title_english} (${item.location.label}, ${item.location.precision}) — ${sourceLabel}`;

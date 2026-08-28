@@ -77,7 +77,7 @@ describe("isRadarFeed", () => {
       isRadarFeed({
         ...VALID_RADAR_FEED,
         items: [],
-      })
+      }),
     ).toBe(true);
   });
 
@@ -183,7 +183,7 @@ describe("getRadarFeed", () => {
     expect(result).toEqual({ status: "ready", data: VALID_RADAR_FEED });
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/radar?hours=24&limit=10"),
-      expect.objectContaining({ cache: "no-store" })
+      expect.objectContaining({ cache: "no-store" }),
     );
   });
 

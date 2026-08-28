@@ -74,18 +74,20 @@ const SAMPLE_RUNS_STATE: PipelineRunState = {
 
 describe("PipelineMonitor", () => {
   it("renders loading state", () => {
-    render(<PipelineMonitor pipelineState={{ status: "loading", data: null }} />);
+    render(
+      <PipelineMonitor pipelineState={{ status: "loading", data: null }} />,
+    );
     expect(
-      screen.getByText(/loading pipeline execution history/i)
+      screen.getByText(/loading pipeline execution history/i),
     ).toBeInTheDocument();
   });
 
   it("renders unavailable state", () => {
     render(
-      <PipelineMonitor pipelineState={{ status: "unavailable", data: null }} />
+      <PipelineMonitor pipelineState={{ status: "unavailable", data: null }} />,
     );
     expect(
-      screen.getByText(/pipeline history unavailable/i)
+      screen.getByText(/pipeline history unavailable/i),
     ).toBeInTheDocument();
   });
 
@@ -93,11 +95,9 @@ describe("PipelineMonitor", () => {
     render(
       <PipelineMonitor
         pipelineState={{ status: "ready", data: { items: [], limit: 20 } }}
-      />
+      />,
     );
-    expect(
-      screen.getByText(/no pipeline runs recorded/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/no pipeline runs recorded/i)).toBeInTheDocument();
   });
 
   it("renders succeeded, failed, running, and stale-running runs with counts and failure stages", () => {
@@ -105,7 +105,9 @@ describe("PipelineMonitor", () => {
 
     // Check statuses
     expect(screen.getByText("Succeeded")).toBeInTheDocument();
-    expect(screen.getByText(/failed after partial progress/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/failed after partial progress/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("Running — stale")).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
 
@@ -113,7 +115,9 @@ describe("PipelineMonitor", () => {
     expect(screen.getByText(/extract: TimeoutError/i)).toBeInTheDocument();
 
     // Check counts
-    expect(screen.getByText(/extract: 10 extracted, 2 review/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/extract: 10 extracted, 2 review/i),
+    ).toBeInTheDocument();
 
     // Check back to radar link
     const link = screen.getByRole("link", { name: /back to signal radar/i });

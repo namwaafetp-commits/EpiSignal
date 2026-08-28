@@ -112,7 +112,7 @@ describe("getPipelineRuns", () => {
     expect(result).toEqual({ status: "ready", data: VALID_PIPELINE_RUNS });
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/admin/pipeline-runs?limit=20"),
-      expect.objectContaining({ cache: "no-store" })
+      expect.objectContaining({ cache: "no-store" }),
     );
   });
 

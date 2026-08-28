@@ -97,7 +97,7 @@ describe("HomeShell", () => {
       <HomeShell
         apiStatus="loading"
         radarFeed={{ status: "loading", data: null }}
-      />
+      />,
     );
 
     expect(screen.getByText(/loading recent signals/i)).toBeInTheDocument();
@@ -109,7 +109,7 @@ describe("HomeShell", () => {
       <HomeShell
         apiStatus="ready"
         radarFeed={{ status: "unavailable", data: null }}
-      />
+      />,
     );
 
     expect(screen.getByText(/signals unavailable/i)).toBeInTheDocument();
@@ -129,42 +129,37 @@ describe("HomeShell", () => {
             limit: 50,
           },
         }}
-      />
+      />,
     );
 
     expect(
-      screen.getByText(/no signals found in the selected window/i)
+      screen.getByText(/no signals found in the selected window/i),
     ).toBeInTheDocument();
   });
 
   it("renders full radar card with 5 slots, source metadata, separate event scores, and safe source link", () => {
-    render(
-      <HomeShell
-        apiStatus="ready"
-        radarFeed={SAMPLE_READY_RADAR}
-      />
-    );
+    render(<HomeShell apiStatus="ready" radarFeed={SAMPLE_READY_RADAR} />);
 
     // English Title
     expect(
-      screen.getByText("Cholera outbreak in Luanda Province")
+      screen.getByText("Cholera outbreak in Luanda Province"),
     ).toBeInTheDocument();
 
     // 5 Brief slots
     expect(
-      screen.getByText("Cholera outbreak reported in Luanda province.")
+      screen.getByText("Cholera outbreak reported in Luanda province."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("120 suspected cases and 4 deaths.")
+      screen.getByText("120 suspected cases and 4 deaths."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Cases reported between August 20 and August 27.")
+      screen.getByText("Cases reported between August 20 and August 27."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Spread observed across two municipal districts.")
+      screen.getByText("Spread observed across two municipal districts."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Reported by the Provincial Health Directorate.")
+      screen.getByText("Reported by the Provincial Health Directorate."),
     ).toBeInTheDocument();
 
     // Metadata
@@ -200,11 +195,9 @@ describe("HomeShell", () => {
     };
 
     const { rerender } = render(
-      <HomeShell apiStatus="ready" radarFeed={feedUnmatched} />
+      <HomeShell apiStatus="ready" radarFeed={feedUnmatched} />,
     );
-    expect(
-      screen.getByText(/unattached signal/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/unattached signal/i)).toBeInTheDocument();
 
     const feedAmbiguous: RadarFeedState = {
       status: "ready",
@@ -221,19 +214,12 @@ describe("HomeShell", () => {
     };
 
     rerender(<HomeShell apiStatus="ready" radarFeed={feedAmbiguous} />);
-    expect(
-      screen.getByText(/ambiguous signal/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/ambiguous signal/i)).toBeInTheDocument();
   });
 
   it("allows selecting a signal card on click", async () => {
     const user = userEvent.setup();
-    render(
-      <HomeShell
-        apiStatus="ready"
-        radarFeed={SAMPLE_READY_RADAR}
-      />
-    );
+    render(<HomeShell apiStatus="ready" radarFeed={SAMPLE_READY_RADAR} />);
 
     const card = screen.getByRole("article");
     await user.click(card);

@@ -8,7 +8,7 @@ import {
 
 function makeItem(
   overrides: Partial<RadarItem> = {},
-  locationOverrides: Partial<RadarLocation> | null = {}
+  locationOverrides: Partial<RadarLocation> | null = {},
 ): RadarItem {
   const loc: RadarLocation | null =
     locationOverrides === null
@@ -123,11 +123,11 @@ describe("toGeoJsonFeatures", () => {
         precision: "admin1",
         latitude: -4.4419,
         longitude: 15.2663,
-      }
+      },
     );
     const unplottable = makeItem(
       { id: "33333333-3333-3333-3333-333333333333" },
-      null
+      null,
     );
 
     const geojson = toGeoJsonFeatures([item1, item2, unplottable]);
@@ -179,7 +179,7 @@ describe("getMarkerAriaLabel", () => {
   it("formats accessible description for official source and location", () => {
     const item = makeItem();
     expect(getMarkerAriaLabel(item)).toBe(
-      "Cholera in Luanda (Luanda, place) — Official Source"
+      "Cholera in Luanda (Luanda, place) — Official Source",
     );
   });
 
@@ -193,10 +193,10 @@ describe("getMarkerAriaLabel", () => {
           credibility_tier: "high",
         },
       },
-      null
+      null,
     );
     expect(getMarkerAriaLabel(item)).toBe(
-      "Cholera in Luanda — High Credibility Source"
+      "Cholera in Luanda — High Credibility Source",
     );
   });
 });

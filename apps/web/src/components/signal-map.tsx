@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { RadarItem } from "../lib/api-radar";
-import { isPlottableLocation, toGeoJsonFeatures } from "../lib/radar-map-helpers";
+import {
+  isPlottableLocation,
+  toGeoJsonFeatures,
+} from "../lib/radar-map-helpers";
 
 export interface SignalMapProps {
   items: RadarItem[];
@@ -21,7 +24,9 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const plottableCount = items.filter((i) => isPlottableLocation(i.location)).length;
+  const plottableCount = items.filter((i) =>
+    isPlottableLocation(i.location),
+  ).length;
   const totalCount = items.length;
 
   const onSelectRef = useRef(onSelect);
@@ -119,7 +124,8 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
   // Update source data when items change
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
-    const source = mapRef.current.getSource("signals") as GeoJSONSource | undefined;
+    const source = mapRef.current.getSource("signals") as
+      GeoJSONSource | undefined;
     if (source && typeof source.setData === "function") {
       source.setData(toGeoJsonFeatures(items));
     }
