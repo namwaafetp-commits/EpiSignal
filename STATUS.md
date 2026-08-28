@@ -81,11 +81,11 @@ from the `E` run logged untruncated in
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 828 passed, 1 warning |
+| Python tests | 839 passed, 1 warning |
 | Web tests | 58 passed, 8 files |
-| Lint and format | `ruff check` and `eslint` clean, 187 files formatted |
-| Types | `tsc` and `mypy` clean across 96 source files |
-| Migration revision | `20260828_0008_pipeline_runs` |
+| Lint and format | `ruff check` and `eslint` clean, 189 files formatted |
+| Types | `tsc` and `mypy` clean across 97 source files |
+| Migration revision | `20260828_0009_quarantine_corrupted_signal` |
 | Live database | `db:check` passed — database=up, postgis=up |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
