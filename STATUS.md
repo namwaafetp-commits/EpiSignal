@@ -82,7 +82,7 @@ Tick each item in the same commit as its work.
 - [x] 2. Make the backfill command fail honestly
 - [x] 3. Enforce the ISO 639-1 vocabulary
 - [x] 4. Make accepted fixtures source-backed
-- [ ] 5. Replace incomplete completion evidence
+- [x] 5. Replace incomplete completion evidence
 
 ## Blockers
 
@@ -93,14 +93,14 @@ correction plan passes re-review.
 
 ## Verified baseline
 
-Everything below was true at commit `5e148ce` on `main`, tree clean. Recorded
+Everything below was true at commit `b26e794` on `main`, tree clean. Recorded
 from the `C2` run logged untruncated in
 [docs/reports/2026-08-28-subproject-c2-report.md](docs/reports/2026-08-28-subproject-c2-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 783 passed, 1 warning |
+| Python tests | 789 passed, 1 warning |
 | Web tests | 10 passed, 3 files |
 | Lint and format | `ruff check` clean, 181 files formatted |
 | Types | `mypy` clean across 93 source files |
