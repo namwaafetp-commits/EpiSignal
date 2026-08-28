@@ -24,6 +24,11 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
   const plottableCount = items.filter((i) => isPlottableLocation(i.location)).length;
   const totalCount = items.length;
 
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -81,7 +86,7 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
           const feature = e.features?.[0];
           const id = feature?.properties?.id;
           if (id && typeof id === "string") {
-            onSelect(id);
+            onSelectRef.current(id);
           }
         });
 
@@ -105,9 +110,11 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
         mapRef.current = null;
       };
     } catch {
-      setMapError(true);
+      queueMicrotask(() => {
+        setMapError(true);
+      });
     }
-  }, [items, onSelect, selectedId]);
+  }, []);
 
   // Update source data when items change
   useEffect(() => {
