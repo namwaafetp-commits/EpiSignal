@@ -42,7 +42,7 @@ small items.
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
 Band 2  GDELT discovery layer   [######--] 6/8  D2b and F remain
-Band 3  Product surface         [------] 0/6  E designing
+Band 3  Product surface         [------] 0/6  E designed
 Band 4  Operations              [#--]    1/3  M and N remain
 Band 5  Acceptance              [-]      0/1
 ```
@@ -125,7 +125,7 @@ Artifacts:
 [Geocoding]       ->  D1  geocode_runner.py      verified
 [Clustering]      ->  D2a event_runner.py        verified
 [Ambiguous match] ->  D2b ---                    not started
-[Radar surface]   ->  E   ---                    designing     <-- next
+[Radar surface]   ->  E   ---                    designed      <-- next
 
 [Runs it daily]   ->  L   pipeline_runner.py     verified
 ```
@@ -154,12 +154,15 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `designing` |
+| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `designed` |
 | `G` | Public event API | Read-only events list, event detail, observations, sources, and filters are served and contract-checked. Phase 1 spec §46. | `D2a` | `not-started` |
 | `H` | Homepage world map and event feed | A usable world map and list view render real events, responsive from the first commit. Phase 1 spec §26–§28. | `G` | `not-started` |
 | `I` | Event page: overview, timeline, sources, data | Every claim on the page shows the source that made it, the time it was made, and the previous value. Phase 1 spec §30–§34. | `G` | `not-started` |
 | `J` | Search | Structured search over disease, place, date, and status works; natural-language parsing is optional and separate. Phase 1 spec §40. | `G` | `not-started` |
 | `K` | Data export | Structured export of events and observations is downloadable with provenance intact. Phase 1 spec §47. | `G` | `not-started` |
+
+Artifacts: `E`
+[spec](docs/superpowers/specs/2026-08-28-signal-radar-design.md)
 
 ---
 

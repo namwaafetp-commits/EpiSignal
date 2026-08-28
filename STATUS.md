@@ -12,9 +12,9 @@ rules for who edits this file are in
 | --- | --- |
 | Band | 3 — Product surface |
 | Item | `E` — Signal Radar API, Signal Radar UI, admin monitoring |
-| Status | `designing` |
+| Status | `designed` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | Not yet committed |
+| Spec | [2026-08-28-signal-radar-design.md](docs/superpowers/specs/2026-08-28-signal-radar-design.md) |
 | Plan | Not yet committed |
 
 Last item completed: `C2` — English title and the five-slot brief, `verified`
@@ -32,10 +32,8 @@ second time for every article already read.
 
 ## Next action
 
-**Planner.** Resume `E` design from the settled decisions below. Inspect the
-current signal, event, location, and pipeline-run read seams; decide the smallest
-honest radar contract; then commit the design spec before writing an
-implementation plan. No worker task exists yet.
+**Operator.** Review the committed `E` design spec. After approval, the planner
+writes the implementation plan and task ledger. No worker task exists yet.
 
 ## Settled for `E`, so the next planner does not re-ask
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-28
 **Branch:** `main`
-**State:** `P0`–`P3`, `A`, `B`, `C`, `C2`, `D1`, `D2a`, and `L` are verified. `E` is **designing**. No implementation spec or plan is committed yet.
+**State:** `P0`–`P3`, `A`, `B`, `C`, `C2`, `D1`, `D2a`, and `L` are verified. `E` is **designed**. Its spec is committed; no implementation plan exists yet.
 **Role:** Planner. Do not hand this file to an implementation worker as a build plan.
 
 ---
@@ -133,11 +133,10 @@ Do not absorb these later items:
 
 ## Planner next action
 
-Use the brainstorming process to present two or three narrow `E` architectures,
-recommend one, and get operator approval. Then commit
-`docs/superpowers/specs/2026-08-28-signal-radar-design.md`, self-review it, and
-only after approval write the implementation plan. Until those artifacts exist,
-there is no worker implementation task.
+Ask the operator to review
+`docs/superpowers/specs/2026-08-28-signal-radar-design.md`. After written-spec
+approval, write the implementation plan and copy its tasks into `STATUS.md`.
+Until the plan exists, there is no worker implementation task.
 
 ---
 
