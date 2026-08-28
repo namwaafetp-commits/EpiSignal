@@ -39,7 +39,7 @@ Tick each one in the same commit as its work.
 - [x] 7. Candidate match scoring
 - [x] 8. The conservative decision — attach, create, or refuse
 - [x] 9. The early signal score
-- [ ] 10. The evidence score
+- [x] 10. The evidence score
 - [ ] 11. Verification status is derived, never scored
 - [ ] 12. The score column migration `20260828_0007_event_scores`
 - [ ] 13. Schema check follows the rename

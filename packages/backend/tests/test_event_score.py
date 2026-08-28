@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
+from episignal_backend.db.types import CredibilityTier, LocationRole, Precision, SignalType
 from episignal_backend.events.documents import (
     LocationForMatching,
     ScoreBreakdown,
@@ -92,3 +92,133 @@ def test_early_signal_score_bounds_and_weights():
 
     assert isinstance(score, ScoreBreakdown)
     assert 0.0 <= score.total <= 1.0
+
+
+def test_evidence_score_official_outscores_informal():
+    from episignal_backend.events.score import evidence_score
+
+    now = datetime.now(UTC)
+    official_sig = _make_signal(
+        source_is_official=True,
+        credibility_tier=CredibilityTier.OFFICIAL,
+        published_at=now,
+    )
+    ten_informal = [
+        _make_signal(
+            source_is_official=False,
+            credibility_tier=CredibilityTier.MEDIUM,
+            published_at=now,
+        )
+        for _ in range(10)
+    ]
+
+    score_off = evidence_score([official_sig])
+    score_inf = evidence_score(ten_informal)
+
+    assert score_off.components["official"] == 1.0
+    assert score_inf.components["official"] == 0.0
+    assert score_off.components["official"] > score_inf.components["official"]
+
+
+def test_evidence_score_contradictory_totals_lower_consistency():
+    from episignal_backend.ai.schema import Epidemiology, Extraction, GroundedCount
+    from episignal_backend.events.score import evidence_score
+
+    now = datetime.now(UTC)
+
+    # Consistent reporting: 50 -> 60
+    ext_1 = Extraction(
+        signal_type=SignalType.OUTBREAK_REPORT,
+        summary="50 cases",
+        epidemiology=Epidemiology(
+            total_cases=GroundedCount(value=50, source_span="50 cases reported")
+        ),
+        confidence=0.9,
+    )
+    ext_2 = Extraction(
+        signal_type=SignalType.OUTBREAK_REPORT,
+        summary="60 cases",
+        epidemiology=Epidemiology(
+            total_cases=GroundedCount(value=60, source_span="60 cases total")
+        ),
+        confidence=0.9,
+    )
+    sig_1 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now - timedelta(days=2),
+        first_seen_at=now - timedelta(days=2),
+        extraction=ext_1,
+    )
+    sig_2 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now,
+        first_seen_at=now,
+        extraction=ext_2,
+    )
+
+    # Contradictory reporting: 500 -> 5
+    ext_contradict = Extraction(
+        signal_type=SignalType.OUTBREAK_REPORT,
+        summary="5 cases",
+        epidemiology=Epidemiology(total_cases=GroundedCount(value=5, source_span="5 cases only")),
+        confidence=0.9,
+    )
+    ext_prior = Extraction(
+        signal_type=SignalType.OUTBREAK_REPORT,
+        summary="500 cases",
+        epidemiology=Epidemiology(
+            total_cases=GroundedCount(value=500, source_span="500 cases reported")
+        ),
+        confidence=0.9,
+    )
+    sig_contra_1 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now - timedelta(days=2),
+        first_seen_at=now - timedelta(days=2),
+        extraction=ext_prior,
+    )
+    sig_contra_2 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now,
+        first_seen_at=now,
+        extraction=ext_contradict,
+    )
+
+    score_consistent = evidence_score([sig_1, sig_2])
+    score_contra = evidence_score([sig_contra_1, sig_contra_2])
+
+    assert score_consistent.components["consistency"] > score_contra.components["consistency"]
+
+
+def test_scores_are_independent():
+    from episignal_backend.events.score import early_signal_score, evidence_score
+
+    now = datetime.now(UTC)
+    sig_today = _make_signal(published_at=now)
+    sig_30d_ago = _make_signal(published_at=now - timedelta(days=30))
+
+    # Changing recency (early-signal only) must change early_signal_score
+    early_today = early_signal_score([sig_today], now=now)
+    early_old = early_signal_score([sig_30d_ago], now=now)
+    assert early_today.total != early_old.total
+
+    # But evidence_score on both must be identical (recency does not enter evidence_score)
+    ev_today = evidence_score([sig_today])
+    ev_old = evidence_score([sig_30d_ago])
+    assert ev_today.total == ev_old.total
