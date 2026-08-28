@@ -335,6 +335,8 @@ def query_radar(
             credibility_tier=row.source_credibility_tier,
         )
 
+        assert payload.title_english is not None
+
         items.append(
             RadarItem(
                 id=row.id,
