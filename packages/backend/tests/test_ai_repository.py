@@ -212,3 +212,26 @@ def test_an_accepted_extraction_stamps_the_schema_version() -> None:
     assert stored[EXTRACTION_VERSION_KEY] == EXTRACTION_SCHEMA_VERSION
     assert stored["brief"][0]["slot"] == "what_where"
 
+
+def test_the_backfill_selects_only_extractions_below_the_current_version() -> None:
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyAiRepository(session).awaiting_backfill(limit=10)
+
+    statement = str(session.executed[0])
+    assert "processing_status IN" in statement
+    assert "ai_extraction IS NOT NULL" in statement
+    assert "raw_text IS NOT NULL" in statement
+
+
+def test_the_backfill_never_selects_a_signal_awaiting_a_human() -> None:
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyAiRepository(session).awaiting_backfill(limit=10)
+
+    compiled = session.executed[0].compile()
+    selected = [value for value in compiled.params.values() if isinstance(value, str)]
+    assert ProcessingStatus.NEEDS_REVIEW.value not in selected
+    assert ProcessingStatus.NORMALIZED.value not in selected
+
+

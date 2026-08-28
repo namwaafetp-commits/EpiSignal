@@ -30,6 +30,9 @@ class StubRepository:
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         return ()
 
+    def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]:
+        return ()
+
     def resolve_disease(self, name: str) -> UUID | None:
         return None
 

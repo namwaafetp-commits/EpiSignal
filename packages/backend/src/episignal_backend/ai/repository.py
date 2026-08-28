@@ -88,6 +88,37 @@ class SqlAlchemyAiRepository:
             for row in rows
         )
 
+    def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]:
+        """Signals whose stored extraction predates the current schema.
+
+        `needs_review` and `normalized` are not selectable here for the same
+        reason they are not selectable for extraction: one is owed a human
+        decision, and the other has not been classified yet.
+        """
+        stored_version = Signal.ai_extraction[EXTRACTION_VERSION_KEY].as_integer()
+        rows = self._session.execute(
+            select(Signal)
+            .where(
+                Signal.processing_status.in_(
+                    (
+                        ProcessingStatus.EXTRACTED,
+                        ProcessingStatus.GEOCODED,
+                        ProcessingStatus.MATCHED,
+                        ProcessingStatus.PUBLISHED,
+                    )
+                ),
+                Signal.ai_extraction.is_not(None),
+                Signal.raw_text.is_not(None),
+                or_(stored_version.is_(None), stored_version < EXTRACTION_SCHEMA_VERSION),
+            )
+            .order_by(Signal.first_seen_at)
+            .limit(limit)
+        ).scalars()
+        return tuple(
+            ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
+            for row in rows
+        )
+
     def resolve_disease(self, name: str) -> UUID | None:
         # Case-folded exact match against the reviewed vocabulary, including
         # synonyms. No fuzzy matching: guessing which disease was meant is how a

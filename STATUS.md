@@ -58,7 +58,7 @@ Tick each one in the same commit as its work.
 - [x] 5. The version, and reading what we already stored
 - [x] 6. Persistence stamps the version and writes the brief
 - [x] 7. Matching reads stored extractions tolerantly
-- [ ] 8. The backfill selection
+- [x] 8. The backfill selection
 - [ ] 9. The backfill pass
 - [ ] 10. The backfill runner
 - [ ] 11. The command and the environment
