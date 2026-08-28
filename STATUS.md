@@ -38,7 +38,7 @@ Tick each one in the same commit as its work.
 - [x] 6. Single-link cluster assembly
 - [x] 7. Candidate match scoring
 - [x] 8. The conservative decision — attach, create, or refuse
-- [ ] 9. The early signal score
+- [x] 9. The early signal score
 - [ ] 10. The evidence score
 - [ ] 11. Verification status is derived, never scored
 - [ ] 12. The score column migration `20260828_0007_event_scores`
