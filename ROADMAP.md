@@ -41,7 +41,7 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [#####--] 5/8  C2 planned, D2b and F remain
+Band 2  GDELT discovery layer   [#####--] 5/8  C2 building, D2b and F remain
 Band 3  Product surface         [------] 0/6  E designing, paused behind C2
 Band 4  Operations              [#--]    1/3  M and N remain
 Band 5  Acceptance              [-]      0/1
@@ -86,7 +86,7 @@ Umbrella architecture and shared invariants:
 | `A` | Discovery connector, query library, provenance schema | A GDELT-discovered signal is stored with its real publisher, original URL, and separated timestamps. | `P0` | `verified` |
 | `B` | Stage 0: deduplication and rule filtering | Syndicated copies and obviously irrelevant articles are rejected before any AI call. | `A` | `verified` |
 | `C` | AI classification, extraction, escalation, cost logging | Relevant signals carry schema-validated epidemiological extraction, and every AI request is costed. | `B` | `verified` |
-| `C2` | English title and the five-slot brief | Every extraction carries an English title and a five-bullet brief in fixed slot order, with source spans left in the language the publisher wrote. | `C` | `planned` |
+| `C2` | English title and the five-slot brief | Every extraction carries an English title and a five-bullet brief in fixed slot order, with source spans left in the language the publisher wrote. | `C` | `building` |
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
