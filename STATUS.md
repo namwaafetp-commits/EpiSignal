@@ -10,11 +10,11 @@ rules for who edits this file are in
 
 | Field | Value |
 | --- | --- |
-| Band | 3 — Product surface |
-| Item | `E` — Signal Radar API, Signal Radar UI, admin monitoring |
-| Status | `designing` |
-| Briefing | [HANDOFF.md](HANDOFF.md) — still briefs `L`; it is rewritten when `E` is planned |
-| Spec | Not yet committed |
+| Band | 2 — GDELT discovery layer |
+| Item | `C2` — English title and the five-slot brief |
+| Status | `designed` |
+| Briefing | [HANDOFF.md](HANDOFF.md) — still briefs `L`; it is rewritten when `C2` is planned |
+| Spec | [2026-08-28-english-brief-design.md](docs/superpowers/specs/2026-08-28-english-brief-design.md) |
 | Plan | Not yet committed |
 
 Last item completed: `L` — the scheduler, `verified` on 2026-08-28
@@ -23,25 +23,31 @@ Last item completed: `L` — the scheduler, `verified` on 2026-08-28
 0, 756 Python tests passed, 10 web tests passed, contracts diff clean, Next.js
 build clean.
 
-`E` is next because it is the only item downstream of `D2a` that does not wait
-on an OpenRouter key. See **Blockers**.
+`C2` is taken before `E` on the operator's instruction that briefs read in
+English as five bullets. An extraction is paid for once: fixing its shape now
+means the corpus grows in its final form, and fixing it after `E` means paying a
+second time for every article already read.
 
 ## Next action
 
-**Planner.** Brainstorm `E` into a design spec and commit it, then turn the spec
-into a numbered plan, then archive [HANDOFF.md](HANDOFF.md) to
-`docs/handoffs/2026-08-28-l.md` and rewrite it for `E`. No worker task exists
-until the plan is committed.
+**Planner.** Turn
+[the approved spec](docs/superpowers/specs/2026-08-28-english-brief-design.md)
+into a numbered implementation plan, commit it, then archive
+[HANDOFF.md](HANDOFF.md) to `docs/handoffs/2026-08-28-l.md` and rewrite it for
+`C2`. No worker task exists until the plan is committed.
 
-Two questions the design has to answer before the plan can be written:
+## Settled for `E`, so the next planner does not re-ask
 
-1. What `E` shows while extraction is blocked. The last runs on record left the
-   backlog at `normalized=46`, `needs_review=7`, two geocoded signals, and zero
-   events, so a radar built only on `events` renders nothing.
-2. What to do with `feat/map-hero`. That unmerged branch already vendors a
-   MapLibre map hero that draws `signal_locations` sized by recorded precision.
-   It predates `D1` landing and is far behind `main`, so it is either salvaged
-   deliberately into `E` or abandoned deliberately — not left hanging.
+- The homepage becomes the radar. `/` carries a large map of the last day or
+  two, with a list beneath it ranked by recency and heat. `H` later refines that
+  same page rather than replacing it with a second homepage.
+- `E` renders briefs, so it follows `C2`.
+- `feat/map-hero` is still unmerged and far behind `main`. It vendors a MapLibre
+  hero that draws `signal_locations` sized by recorded precision — the map `E`
+  needs. `E`'s design decides whether to salvage or abandon it; it is not left
+  hanging a third time.
+- Zero events exist, so a radar built only on `events` renders nothing. `E` is
+  designed against signals, with events as the layer above them.
 
 ## Task ledger
 
@@ -50,17 +56,15 @@ plan's numbered tasks when it lands.
 
 ## Blockers
 
-**The AI stage cannot run on this machine.** Every live `pipeline:run` fails at
-`extract` with `EPISIGNAL_OPENROUTER_API_KEY is not set`
-(`packages/backend/src/episignal_backend/schedule/stages.py:122`). The key is
-absent from `apps/api/.env` and is not documented in `apps/api/.env.example`.
-Consequence: the backlog stops at `normalized` — 46 signals at the last recorded
-run — and `geocode` and `match` have nothing new to consume, so the corpus `L`
-was built to grow does not grow. Adding the key is an operator action; it is not
-work any item on the roadmap performs.
+**Cleared on 2026-08-28.** Every live `pipeline:run` used to fail at `extract`
+with `EPISIGNAL_OPENROUTER_API_KEY is not set`
+(`packages/backend/src/episignal_backend/schedule/stages.py:122`), which is why
+the backlog stopped at `normalized` with 46 signals. The operator has since set
+the key in `apps/api/.env`; its presence is confirmed, and the first live run
+that exercises it will say whether extraction now completes.
 
-This blocks `D2b` and `F` outright. It does not block `E`, which reads what is
-already stored.
+`apps/api/.env.example` still does not document the variable. Whichever item
+next touches that file adds it, with no value beside it.
 
 Carried forward from `L`, still true: discovery stores up to 200 articles per
 run while extraction handles 100, so the un-extracted backlog grows unless both
