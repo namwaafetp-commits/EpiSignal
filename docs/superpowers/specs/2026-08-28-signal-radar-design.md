@@ -1,7 +1,7 @@
 # Signal Radar — Design
 
 **Date:** 2026-08-28
-**Status:** Approved in conversation; awaiting written-spec review
+**Status:** Approved
 **Item:** `E`
 **Depends on:** `C2`, `D1`, `D2a`, `L`
 **Phase 1 spec:** §26–§29 homepage and result card, §42–§44 operations

@@ -12,10 +12,10 @@ rules for who edits this file are in
 | --- | --- |
 | Band | 3 — Product surface |
 | Item | `E` — Signal Radar API, Signal Radar UI, admin monitoring |
-| Status | `designed` |
+| Status | `planned` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [2026-08-28-signal-radar-design.md](docs/superpowers/specs/2026-08-28-signal-radar-design.md) |
-| Plan | Not yet committed |
+| Plan | [2026-08-28-signal-radar.md](docs/superpowers/plans/2026-08-28-signal-radar.md) |
 
 Last item completed: `C2` — English title and the five-slot brief, `verified`
 on 2026-08-28
@@ -32,8 +32,10 @@ second time for every article already read.
 
 ## Next action
 
-**Operator.** Review the committed `E` design spec. After approval, the planner
-writes the implementation plan and task ledger. No worker task exists yet.
+**Worker.** Read `HANDOFF.md` and the committed `E` implementation plan. Start
+Task 1 test-first, set `E` to `building` in `ROADMAP.md`, and tick each task in
+this ledger in the same commit as the work. Stop after Task 15 and hand the
+verified report back to the planner; do not mark `E` verified.
 
 ## Settled for `E`, so the next planner does not re-ask
 
@@ -50,12 +52,25 @@ writes the implementation plan and task ledger. No worker task exists yet.
 
 ## Task ledger
 
-No `E` task ledger exists yet. The planner creates it only after the design spec
-and implementation plan are approved and committed.
+- [ ] 1. Preserve exception types in pipeline history.
+- [ ] 2. Define the radar read contracts and representative location rule.
+- [ ] 3. Query and assemble recent radar signals.
+- [ ] 4. Query counts-only pipeline history.
+- [ ] 5. Expose `GET /api/v1/radar`.
+- [ ] 6. Expose `GET /api/v1/admin/pipeline-runs`.
+- [ ] 7. Regenerate and lock the API contracts.
+- [ ] 8. Strictly validate radar responses in the web client.
+- [ ] 9. Add only the map dependencies and pure marker helpers.
+- [ ] 10. Mount a small resilient MapLibre component.
+- [ ] 11. Replace the homepage with the radar map and list.
+- [ ] 12. Wire server fetching, loading, responsive CSS, and build safety.
+- [ ] 13. Strictly validate pipeline history in the web client.
+- [ ] 14. Build the read-only pipeline monitor page.
+- [ ] 15. Review, run the full gate, capture live proof, and write the report.
 
 ## Blockers
 
-**None.** `C2` is verified. `E` is in design, not blocked.
+**None.** `C2` is verified and `E` is planned.
 
 ## Verified baseline
 
