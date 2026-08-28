@@ -83,11 +83,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     print(
-        f"examined={result.examined} extracted={result.extracted} "
-        f"review={result.reviewed} unavailable={result.unavailable} "
-        f"requests={result.requests} stopped_early={result.stopped_early}"
+        f"examined={result.examined} re_extracted={result.extracted} "
+        f"rejected={result.reviewed} unavailable={result.unavailable} "
+        f"storage_failed={result.storage_failed} requests={result.requests} "
+        f"stopped_early={result.stopped_early}"
     )
-    return 0
+    return (
+        0
+        if result.reviewed == 0
+        and result.unavailable == 0
+        and result.storage_failed == 0
+        else 1
+    )
 
 
 if __name__ == "__main__":

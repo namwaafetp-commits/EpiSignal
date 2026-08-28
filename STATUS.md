@@ -79,7 +79,7 @@ From
 Tick each item in the same commit as its work.
 
 - [x] 1. Count only committed extraction outcomes
-- [ ] 2. Make the backfill command fail honestly
+- [x] 2. Make the backfill command fail honestly
 - [ ] 3. Enforce the ISO 639-1 vocabulary
 - [ ] 4. Make accepted fixtures source-backed
 - [ ] 5. Replace incomplete completion evidence

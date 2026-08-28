@@ -3,8 +3,21 @@ from episignal_backend.ai.extract import ExtractionResult
 from episignal_backend.backfill_runner import Arguments, main, parse_arguments
 
 
-def _extraction_result() -> ExtractionResult:
-    return ExtractionResult(examined=5, extracted=5, reviewed=0, unavailable=0, requests=5)
+def _extraction_result(
+    *,
+    extracted: int = 5,
+    reviewed: int = 0,
+    unavailable: int = 0,
+    storage_failed: int = 0,
+) -> ExtractionResult:
+    return ExtractionResult(
+        examined=5,
+        extracted=extracted,
+        reviewed=reviewed,
+        unavailable=unavailable,
+        storage_failed=storage_failed,
+        requests=5,
+    )
 
 
 def test_defaults_set_no_overrides() -> None:
@@ -31,7 +44,30 @@ def test_a_successful_run_prints_counts_only(
 
     output = capsys.readouterr().out
     assert "examined=5" in output
-    assert "extracted=5" in output
+    assert "re_extracted=5" in output
+    assert "rejected=0" in output
+    assert "storage_failed=0" in output
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        _extraction_result(extracted=4, reviewed=1),
+        _extraction_result(extracted=4, unavailable=1),
+        _extraction_result(extracted=4, storage_failed=1),
+    ],
+)
+def test_any_failed_signal_makes_the_command_fail(
+    result: ExtractionResult,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "episignal_backend.backfill_runner._run",
+        lambda arguments: result,
+    )
+
+    assert main([]) == 1
+
 
 
 def test_a_missing_api_key_stops_the_run_with_a_clear_message(
