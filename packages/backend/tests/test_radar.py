@@ -1,5 +1,6 @@
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -27,6 +28,7 @@ from episignal_backend.radar import (
     RadarPage,
     RadarSource,
     choose_representative_location,
+    query_radar,
 )
 from episignal_backend.schedule.documents import StageName
 
@@ -298,3 +300,219 @@ def test_choose_representative_location_unresolved_or_missing_coords_returns_nul
     assert chosen_half_lon is not None
     assert chosen_half_lon.latitude is None
     assert chosen_half_lon.longitude is None
+
+
+class FakeResult:
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def scalars(self) -> "FakeResult":
+        return self
+
+    def all(self) -> Any:
+        return self._value
+
+    def scalar_one_or_none(self) -> Any:
+        return self._value
+
+
+class FakeSession:
+    def __init__(self, results: list[Any] | None = None) -> None:
+        self._results = results or []
+        self.executed: list[Any] = []
+
+    def execute(self, statement: Any) -> Any:
+        self.executed.append(statement)
+        return self._results.pop(0) if self._results else FakeResult([])
+
+    def scalars(self, statement: Any) -> Any:
+        self.executed.append(statement)
+        return self._results.pop(0) if self._results else FakeResult([])
+
+
+class FakeSignalRow:
+    def __init__(
+        self,
+        *,
+        id: UUID | None = None,
+        url: str = "https://publisher.com/article/1",
+        processing_status: ProcessingStatus = ProcessingStatus.EXTRACTED,
+        signal_type: SignalType = SignalType.OUTBREAK_REPORT,
+        published_at: datetime | None = None,
+        first_seen_at: datetime | None = None,
+        ai_extraction: dict[str, Any] | None = None,
+        source_name: str = "Health Ministry",
+        source_is_official: bool = True,
+        source_credibility_tier: CredibilityTier = CredibilityTier.OFFICIAL,
+    ) -> None:
+        self.id = id or uuid4()
+        self.url = url
+        self.processing_status = processing_status
+        self.signal_type = signal_type
+        self.published_at = published_at
+        self.first_seen_at = first_seen_at or datetime(2026, 8, 28, 10, 0, tzinfo=UTC)
+        self.ai_extraction = (
+            ai_extraction
+            if ai_extraction is not None
+            else {
+                "extraction_schema_version": 2,
+                "signal_type": "outbreak_report",
+                "title_english": "Cholera in Luanda",
+                "source_language": "en",
+                "confidence": 0.95,
+                "brief": [
+                    {"slot": "what_where", "text": "Cholera in Luanda.", "reported": True},
+                    {"slot": "counts", "text": "50 cases.", "reported": True},
+                    {"slot": "timing", "text": "No dates.", "reported": False},
+                    {"slot": "spread", "text": "No spread.", "reported": False},
+                    {"slot": "reporting", "text": "Reported by MoH.", "reported": True},
+                ],
+            }
+        )
+        self.source_name = source_name
+        self.source_is_official = source_is_official
+        self.source_credibility_tier = source_credibility_tier
+
+
+class FakeEventRow:
+    def __init__(
+        self,
+        *,
+        signal_id: UUID,
+        public_id: str = "EVT-2026-001",
+        verification_status: VerificationStatus = VerificationStatus.OFFICIALLY_CONFIRMED,
+        early_signal_score: float | None = 0.85,
+        evidence_score: float | None = 0.92,
+    ) -> None:
+        self.signal_id = signal_id
+        self.public_id = public_id
+        self.verification_status = verification_status
+        self.early_signal_score = early_signal_score
+        self.evidence_score = evidence_score
+
+
+def test_query_radar_statement_structure() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    session = FakeSession()
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+    assert page.items == ()
+    assert page.hours == 48
+    assert page.limit == 50
+    assert page.window_end == now
+    assert page.window_start == datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
+
+    statement = str(session.executed[0])
+    assert "FROM signals" in statement
+    assert "JOIN sources" in statement
+    assert "signals.processing_status IN" in statement
+    assert "signals.duplicate_of_signal_id IS NULL" in statement
+    assert "coalesce(signals.published_at, signals.first_seen_at)" in statement
+    assert "HAVING count(event_signals.event_id) =" in statement
+    assert "LIMIT" in statement
+
+
+def test_query_radar_assembly_unmatched_signal() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig_id = uuid4()
+    sig_row = FakeSignalRow(id=sig_id)
+
+    # 1st execute: signal rows
+    # 2nd execute: locations
+    # 3rd execute: events
+    session = FakeSession(
+        [
+            FakeResult([sig_row]),
+            FakeResult([]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+    assert len(page.items) == 1
+    item = page.items[0]
+    assert item.id == sig_id
+    assert item.title_english == "Cholera in Luanda"
+    assert len(item.brief) == 5
+    assert item.event_context_status == EventContextStatus.NONE
+    assert item.event is None
+    assert item.location is None
+    assert item.source.url == "https://publisher.com/article/1"
+
+
+def test_query_radar_assembly_attached_event() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig_id = uuid4()
+    sig_row = FakeSignalRow(id=sig_id)
+    ev_row = FakeEventRow(
+        signal_id=sig_id,
+        public_id="EVT-2026-001",
+        verification_status=VerificationStatus.OFFICIALLY_CONFIRMED,
+        early_signal_score=0.88,
+        evidence_score=0.91,
+    )
+
+    session = FakeSession(
+        [
+            FakeResult([sig_row]),
+            FakeResult([]),
+            FakeResult([ev_row]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+    assert len(page.items) == 1
+    item = page.items[0]
+    assert item.event_context_status == EventContextStatus.ATTACHED
+    assert item.event is not None
+    assert item.event.public_id == "EVT-2026-001"
+    assert item.event.verification_status == VerificationStatus.OFFICIALLY_CONFIRMED
+    assert item.event.early_signal_score == 0.88
+    assert item.event.evidence_score == 0.91
+
+
+def test_query_radar_assembly_ambiguous_events() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig_id = uuid4()
+    sig_row = FakeSignalRow(id=sig_id)
+    ev1 = FakeEventRow(signal_id=sig_id, public_id="EVT-001")
+    ev2 = FakeEventRow(signal_id=sig_id, public_id="EVT-002")
+
+    session = FakeSession(
+        [
+            FakeResult([sig_row]),
+            FakeResult([]),
+            FakeResult([ev1, ev2]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+    assert len(page.items) == 1
+    item = page.items[0]
+    assert item.event_context_status == EventContextStatus.AMBIGUOUS
+    assert item.event is None
+
+
+def test_query_radar_assembly_malformed_extraction_is_omitted() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig1 = FakeSignalRow(
+        id=uuid4(),
+        ai_extraction={
+            "extraction_schema_version": 2,
+            "title_english": "",  # Blank title: malformed!
+            "brief": [],
+        },
+    )
+    sig2 = FakeSignalRow(id=uuid4())
+
+    session = FakeSession(
+        [
+            FakeResult([sig1, sig2]),
+            FakeResult([]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+    assert len(page.items) == 1
+    assert page.items[0].id == sig2.id

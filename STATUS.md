@@ -54,7 +54,7 @@ verified report back to the planner; do not mark `E` verified.
 
 - [x] 1. Preserve exception types in pipeline history.
 - [x] 2. Define the radar read contracts and representative location rule.
-- [ ] 3. Query and assemble recent radar signals.
+- [x] 3. Query and assemble recent radar signals.
 - [ ] 4. Query counts-only pipeline history.
 - [ ] 5. Expose `GET /api/v1/radar`.
 - [ ] 6. Expose `GET /api/v1/admin/pipeline-runs`.
