@@ -79,9 +79,11 @@ class ScriptedModel:
     def __init__(self, script: list[object]) -> None:
         self.script = script
         self.asked: list[str] = []
+        self.requests: list[ChatRequest] = []
 
     def complete(self, request: ChatRequest) -> ChatResponse:
         self.asked.append(request.model_id)
+        self.requests.append(request)
         answer = self.script.pop(0)
         if isinstance(answer, Exception):
             raise answer

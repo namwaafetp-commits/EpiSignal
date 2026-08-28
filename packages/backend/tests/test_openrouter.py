@@ -50,6 +50,80 @@ def test_the_request_names_the_model_and_carries_both_messages() -> None:
     assert [message["role"] for message in seen[0]["messages"]] == ["system", "user"]
 
 
+def test_structured_outputs_payload_format_when_schema_provided_for_supported_model() -> None:
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=body("{}"))
+
+    req = ChatRequest(
+        model_id="deepseek/deepseek-chat",
+        system="rules",
+        user="article",
+        response_schema={"type": "object", "properties": {"cases": {"type": "integer"}}},
+        schema_name="extraction_response",
+        temperature=0.0,
+    )
+    model(handler).complete(req)
+
+    assert seen[0]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "extraction_response",
+            "strict": True,
+            "schema": {"type": "object", "properties": {"cases": {"type": "integer"}}},
+        },
+    }
+    assert seen[0]["temperature"] == 0.0
+
+
+def test_fallback_to_json_object_for_unsupported_models() -> None:
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=body("{}"))
+
+    req = ChatRequest(
+        model_id="google/gemma-4-31b-it:free",
+        system="rules",
+        user="article",
+        response_schema={"type": "object"},
+        schema_name="extraction_response",
+    )
+    model(handler).complete(req)
+
+    assert seen[0]["response_format"] == {"type": "json_object"}
+
+
+def test_dynamic_fallback_to_json_object_on_400_unsupported_schema_error() -> None:
+    attempts: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = json.loads(request.content)
+        attempts.append(data)
+        if len(attempts) == 1:
+            return httpx.Response(
+                400,
+                json={"error": {"message": "json_schema is not supported for this model"}},
+            )
+        return httpx.Response(200, json=body('{"recovered": true}'))
+
+    req = ChatRequest(
+        model_id="deepseek/deepseek-chat",
+        system="rules",
+        user="article",
+        response_schema={"type": "object"},
+        schema_name="extraction_response",
+    )
+    res = model(handler).complete(req)
+
+    assert res.content == '{"recovered": true}'
+    assert len(attempts) == 2
+    assert attempts[1]["response_format"] == {"type": "json_object"}
+
+
 def test_the_api_key_travels_in_the_authorization_header() -> None:
     seen: list[str] = []
 

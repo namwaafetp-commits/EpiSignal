@@ -1,26 +1,26 @@
 [
   {
     "tier": 1,
-    "model_id": "google/gemma-4-31b-it:free",
-    "label": "Gemma 4 31B IT (free)",
-    "prompt_price_per_million": "0",
-    "completion_price_per_million": "0",
+    "model_id": "deepseek/deepseek-chat",
+    "label": "DeepSeek V3",
+    "prompt_price_per_million": "0.26",
+    "completion_price_per_million": "1.03",
     "active": true
   },
   {
     "tier": 2,
-    "model_id": "minimax/minimax-m2.7:free",
-    "label": "MiniMax M2.7 (free)",
-    "prompt_price_per_million": "0",
-    "completion_price_per_million": "0",
+    "model_id": "mistralai/mistral-small-24b-instruct-2501",
+    "label": "Mistral Small 24B",
+    "prompt_price_per_million": "0.05",
+    "completion_price_per_million": "0.08",
     "active": true
   },
   {
     "tier": 3,
-    "model_id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "label": "NVIDIA Nemotron 3 Nano Omni 30B Reasoning (free)",
-    "prompt_price_per_million": "0",
-    "completion_price_per_million": "0",
+    "model_id": "anthropic/claude-haiku-4.5",
+    "label": "Claude Haiku 4.5",
+    "prompt_price_per_million": "1.00",
+    "completion_price_per_million": "5.00",
     "active": true
   }
 ]

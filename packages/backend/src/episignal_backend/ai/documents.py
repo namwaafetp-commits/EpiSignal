@@ -11,6 +11,7 @@ This module imports neither SQLAlchemy nor httpx.
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -128,6 +129,9 @@ class ChatRequest(BaseModel):
     model_id: str = Field(min_length=1)
     system: str = Field(min_length=1)
     user: str = Field(min_length=1)
+    response_schema: dict[str, Any] | None = None
+    schema_name: str | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
 
 
 class ChatResponse(BaseModel):

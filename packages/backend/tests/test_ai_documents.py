@@ -88,6 +88,21 @@ def test_a_chat_request_names_the_model_it_is_for() -> None:
     assert request.model_id.endswith(":free")
 
 
+def test_a_chat_request_can_carry_schema_and_temperature() -> None:
+    request = ChatRequest(
+        model_id="deepseek/deepseek-chat",
+        system="You extract facts.",
+        user="Article text.",
+        response_schema={"type": "object"},
+        schema_name="custom_schema",
+        temperature=0.0,
+    )
+
+    assert request.response_schema == {"type": "object"}
+    assert request.schema_name == "custom_schema"
+    assert request.temperature == 0.0
+
+
 def test_a_cost_row_can_describe_a_call_that_never_answered() -> None:
     record = AiRequestRecord(
         ai_model_id=uuid4(),

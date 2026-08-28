@@ -115,12 +115,12 @@ def test_the_seeded_roster_covers_all_three_tiers() -> None:
     assert {model.tier for model in models} == {1, 2, 3}
 
 
-def test_every_seeded_model_is_free() -> None:
+def test_every_seeded_model_has_non_negative_prices() -> None:
     from episignal_backend.seeds import load_ai_models
 
     for model in load_ai_models():
-        assert model.prompt_price_per_million == Decimal("0")
-        assert model.completion_price_per_million == Decimal("0")
+        assert model.prompt_price_per_million >= Decimal("0")
+        assert model.completion_price_per_million >= Decimal("0")
 
 
 def test_no_two_seeded_models_share_an_identifier() -> None:

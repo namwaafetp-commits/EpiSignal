@@ -29,7 +29,7 @@ from episignal_backend.ai.ladder import (
 )
 from episignal_backend.ai.prompts import extraction_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
-from episignal_backend.ai.schema import Extraction
+from episignal_backend.ai.schema import Extraction, extraction_json_schema
 from episignal_backend.ai.validate import validate_extraction
 from episignal_backend.db.types import AiPurpose
 
@@ -37,6 +37,8 @@ DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
 DEFAULT_MAX_INPUT_CHARACTERS = 12000
 DEFAULT_MIN_CONFIDENCE = 0.5
+EXTRACTION_TEMPERATURE = 0.0
+EXTRACTION_SCHEMA_NAME = "extraction_response"
 
 logger = logging.getLogger("episignal_backend.ai.extract")
 
@@ -53,8 +55,17 @@ class ExtractionResult:
 
 
 def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
+    schema = extraction_json_schema()
+
     def _request(spec: ModelSpec) -> ChatRequest:
-        return ChatRequest(model_id=spec.model_id, system=system, user=user)
+        return ChatRequest(
+            model_id=spec.model_id,
+            system=system,
+            user=user,
+            response_schema=schema,
+            schema_name=EXTRACTION_SCHEMA_NAME,
+            temperature=EXTRACTION_TEMPERATURE,
+        )
 
     return _request
 

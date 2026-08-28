@@ -138,6 +138,18 @@ def test_a_grounded_extraction_is_stored_with_its_model_and_time() -> None:
     )
 
 
+def test_extraction_requests_carry_schema_and_low_temperature() -> None:
+    repository = ExtractRepository((english(),))
+    model = ScriptedModel([GOOD])
+
+    run(repository, model)
+
+    assert len(model.requests) == 1
+    assert model.requests[0].response_schema is not None
+    assert model.requests[0].schema_name == "extraction_response"
+    assert model.requests[0].temperature == 0.0
+
+
 def test_the_resolved_disease_is_attached_when_the_vocabulary_knows_it() -> None:
     repository = ExtractRepository((english(),), diseases={"cholera": CHOLERA})
 
