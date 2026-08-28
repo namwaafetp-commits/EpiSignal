@@ -40,7 +40,7 @@ Tick each one in the same commit as its work.
 - [x] 1. Contracts across the seams — `schedule/documents.py`
 - [x] 2. The daily chain and its order
 - [x] 3. The catch-up window
-- [ ] 4. The `PipelineRunRepository` boundary
+- [x] 4. The `PipelineRunRepository` boundary
 - [ ] 5. The persisted vocabularies
 - [ ] 6. The chain runner and its failure policy
 - [ ] 7. The `PipelineRun` model
