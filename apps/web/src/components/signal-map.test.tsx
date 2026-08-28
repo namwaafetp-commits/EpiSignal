@@ -165,4 +165,48 @@ describe("SignalMap", () => {
 
     expect(screen.getByText(/map unavailable/i)).toBeInTheDocument();
   });
+
+  it("renders accessible marker detail popup when a plottable signal is selected", () => {
+    const onSelect = vi.fn();
+    render(
+      <SignalMap
+        items={sampleItems}
+        selectedId="11111111-1111-1111-1111-111111111111"
+        onSelect={onSelect}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: /selected signal details/i,
+    });
+    expect(dialog).toBeInTheDocument();
+
+    // English title
+    expect(screen.getByText("Cholera in Luanda")).toBeInTheDocument();
+
+    // Source standing and tier
+    expect(screen.getByText("Official Source")).toBeInTheDocument();
+    expect(screen.getByText("Tier: official")).toBeInTheDocument();
+
+    // Location precision and label
+    expect(screen.getByText(/📍 Luanda \(place\)/i)).toBeInTheDocument();
+
+    // Confidence
+    expect(screen.getByText(/95% extraction confidence/i)).toBeInTheDocument();
+
+    // Event verification status and separate scores
+    expect(screen.getByText("Event: EVT-2026-00042")).toBeInTheDocument();
+    expect(screen.getByText("officially confirmed")).toBeInTheDocument();
+    expect(screen.getByText(/Surveillance:/i)).toBeInTheDocument();
+    expect(screen.getByText(/88%/i)).toBeInTheDocument();
+    expect(screen.getByText(/Evidence:/i)).toBeInTheDocument();
+    expect(screen.getByText(/94%/i)).toBeInTheDocument();
+
+    // Close button
+    const closeBtn = screen.getByRole("button", {
+      name: /close signal details/i,
+    });
+    closeBtn.click();
+    expect(onSelect).toHaveBeenCalledWith("");
+  });
 });

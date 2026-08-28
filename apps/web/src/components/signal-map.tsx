@@ -206,6 +206,89 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
       ) : (
         <div ref={mapContainerRef} className="w-full h-full" />
       )}
+
+      {selectedId &&
+        (() => {
+          const selectedItem = items.find((i) => i.id === selectedId);
+          if (!selectedItem || !isPlottableLocation(selectedItem.location)) {
+            return null;
+          }
+          return (
+            <div
+              role="dialog"
+              aria-label="Selected signal details"
+              className="absolute bottom-2 left-2 right-2 sm:right-auto sm:max-w-sm z-20 bg-white/95 backdrop-blur-sm p-3.5 rounded-lg shadow-md border border-slate-200 text-xs space-y-2"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="font-bold text-slate-900 text-sm leading-tight">
+                  {selectedItem.title_english}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => onSelect("")}
+                  className="text-slate-400 hover:text-slate-600 font-bold px-1 rounded hover:bg-slate-100"
+                  aria-label="Close signal details"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-medium">
+                  {selectedItem.source.is_official
+                    ? "Official Source"
+                    : "Media Source"}
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                  Tier: {selectedItem.source.credibility_tier}
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+                  📍 {selectedItem.location.label} (
+                  {selectedItem.location.precision})
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 font-medium">
+                  {Math.round(selectedItem.extraction_confidence * 100)}%
+                  extraction confidence
+                </span>
+              </div>
+
+              {selectedItem.event && (
+                <div className="mt-1 pt-1.5 border-t border-slate-100 bg-amber-50/70 p-2 rounded border border-amber-200">
+                  <div className="flex items-center justify-between font-semibold text-amber-950">
+                    <span>Event: {selectedItem.event.public_id}</span>
+                    <span className="font-normal capitalize text-amber-900">
+                      {selectedItem.event.verification_status.replace(
+                        /_/g,
+                        " ",
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex gap-3 text-amber-900 mt-1">
+                    {selectedItem.event.early_signal_score !== null && (
+                      <span>
+                        Surveillance:{" "}
+                        <strong>
+                          {Math.round(
+                            selectedItem.event.early_signal_score * 100,
+                          )}
+                          %
+                        </strong>
+                      </span>
+                    )}
+                    {selectedItem.event.evidence_score !== null && (
+                      <span>
+                        Evidence:{" "}
+                        <strong>
+                          {Math.round(selectedItem.event.evidence_score * 100)}%
+                        </strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
     </section>
   );
 }

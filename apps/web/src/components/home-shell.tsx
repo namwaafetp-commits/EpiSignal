@@ -21,18 +21,8 @@ const SLOT_TITLES: Record<string, string> = {
   reporting: "Reporting Source",
 };
 
-function formatTierBadge(tier: string, isOfficial: boolean) {
-  if (isOfficial) return "Official Source";
-  switch (tier) {
-    case "official":
-      return "Official Source";
-    case "high":
-      return "High Credibility Source";
-    case "medium":
-      return "Medium Credibility Source";
-    default:
-      return "Unknown Credibility Source";
-  }
+function formatSourceBadge(isOfficial: boolean) {
+  return isOfficial ? "Official Source" : "Media Source";
 }
 
 function formatVerificationStatus(status: string) {
@@ -110,7 +100,8 @@ export function HomeShell({
           <h1 id="hero-title">Early Signal Radar</h1>
           <p className="hero-intro">
             Continuous surveillance and 5-slot brief extraction of infectious
-            disease signals from official and regional health agencies.
+            disease signals from official public health agencies and global
+            media sources.
           </p>
         </section>
 
@@ -161,13 +152,23 @@ export function HomeShell({
                         if (el) cardRefs.current.set(item.id, el);
                         else cardRefs.current.delete(item.id);
                       }}
-                      className={`evidence-card cursor-pointer transition-all duration-200 ${
+                      tabIndex={0}
+                      role="button"
+                      aria-pressed={isSelected}
+                      aria-label={`Select signal: ${item.title_english}`}
+                      className={`evidence-card cursor-pointer transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         isSelected
                           ? "ring-2 ring-blue-600 bg-blue-50/20"
                           : "hover:border-slate-300"
                       }`}
                       data-selected={isSelected ? "true" : "false"}
                       onClick={() => setSelectedId(item.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedId(item.id);
+                        }
+                      }}
                     >
                       <div className="evidence-meta">
                         <span className="font-semibold text-slate-900">
@@ -185,14 +186,18 @@ export function HomeShell({
 
                       <div className="flex flex-wrap gap-2 my-2">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800">
-                          {formatTierBadge(
-                            item.source.credibility_tier,
-                            item.source.is_official,
-                          )}
+                          {formatSourceBadge(item.source.is_official)}
                         </span>
-                        {item.location && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                          Tier: {item.source.credibility_tier}
+                        </span>
+                        {item.location ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
                             📍 {item.location.label} ({item.location.precision})
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            📍 Location unresolved
                           </span>
                         )}
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">
@@ -302,7 +307,8 @@ export function HomeShell({
           <p className="text-sm text-slate-600 max-w-2xl">
             EpiSignal never shows a claim or metric without traceable source
             provenance. 5-slot briefs and representative locations preserve the
-            exact chain of evidence from official reports.
+            exact chain of evidence from official agency bulletins and media
+            reports.
           </p>
         </section>
       </main>

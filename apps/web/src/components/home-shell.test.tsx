@@ -219,13 +219,69 @@ describe("HomeShell", () => {
     expect(screen.getByText(/ambiguous signal/i)).toBeInTheDocument();
   });
 
-  it("allows selecting a signal card on click", async () => {
+  it("allows selecting a signal card on click and via keyboard Enter/Space", async () => {
     const user = userEvent.setup();
     render(<HomeShell apiStatus="ready" radarFeed={SAMPLE_READY_RADAR} />);
 
-    const card = screen.getByRole("article");
-    await user.click(card);
+    const card = screen.getByRole("button", {
+      name: /select signal: cholera outbreak in luanda province/i,
+    });
+    expect(card).toHaveAttribute("data-selected", "false");
 
+    // Click selection
+    await user.click(card);
     expect(card).toHaveAttribute("data-selected", "true");
+
+    // Keyboard selection with Enter
+    await user.keyboard("{Enter}");
+    expect(card).toHaveAttribute("data-selected", "true");
+
+    // Keyboard selection with Space
+    await user.keyboard(" ");
+    expect(card).toHaveAttribute("data-selected", "true");
+  });
+
+  it("strictly derives official standing from is_official and renders credibility tier separately", () => {
+    // Non-official source even if credibility_tier is "official"
+    const feedNonOfficial: RadarFeedState = {
+      status: "ready",
+      data: {
+        ...SAMPLE_READY_RADAR.data!,
+        items: [
+          {
+            ...SAMPLE_READY_RADAR.data!.items[0],
+            source: {
+              name: "Independent Health Blog",
+              url: "https://blog.health/1",
+              is_official: false,
+              credibility_tier: "official",
+            },
+          },
+        ],
+      },
+    };
+
+    render(<HomeShell apiStatus="ready" radarFeed={feedNonOfficial} />);
+    expect(screen.getByText("Media Source")).toBeInTheDocument();
+    expect(screen.getByText("Tier: official")).toBeInTheDocument();
+    expect(screen.queryByText("Official Source")).not.toBeInTheDocument();
+  });
+
+  it("renders location unresolved when location is null", () => {
+    const feedNoLoc: RadarFeedState = {
+      status: "ready",
+      data: {
+        ...SAMPLE_READY_RADAR.data!,
+        items: [
+          {
+            ...SAMPLE_READY_RADAR.data!.items[0],
+            location: null,
+          },
+        ],
+      },
+    };
+
+    render(<HomeShell apiStatus="ready" radarFeed={feedNoLoc} />);
+    expect(screen.getByText("📍 Location unresolved")).toBeInTheDocument();
   });
 });
