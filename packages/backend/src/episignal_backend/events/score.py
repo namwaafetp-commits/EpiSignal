@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from episignal_backend.db.types import CredibilityTier
+from episignal_backend.db.types import CredibilityTier, VerificationStatus
 from episignal_backend.events.cluster import precision_weight
 from episignal_backend.events.documents import ScoreBreakdown, SignalForMatching
 
@@ -266,3 +266,19 @@ def evidence_score(
     )
     total_clamped = max(0.0, min(1.0, total))
     return ScoreBreakdown(components=components, total=total_clamped)
+
+
+def verification_status(signals: Sequence[SignalForMatching]) -> VerificationStatus:
+    """Derive verification status purely from source standing.
+
+    - officially_confirmed: any signal's source has is_official True.
+    - high_credibility: any signal's source credibility tier is high.
+    - signal: all other cases.
+
+    No model confidence or computed score can raise this status.
+    """
+    if any(s.source_is_official for s in signals):
+        return VerificationStatus.OFFICIALLY_CONFIRMED
+    if any(s.credibility_tier == CredibilityTier.HIGH for s in signals):
+        return VerificationStatus.HIGH_CREDIBILITY
+    return VerificationStatus.SIGNAL

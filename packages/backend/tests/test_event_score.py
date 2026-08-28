@@ -222,3 +222,44 @@ def test_scores_are_independent():
     ev_today = evidence_score([sig_today])
     ev_old = evidence_score([sig_30d_ago])
     assert ev_today.total == ev_old.total
+
+
+def test_verification_status_derived_from_sources_only():
+    from episignal_backend.ai.schema import Extraction
+    from episignal_backend.db.types import VerificationStatus
+    from episignal_backend.events.score import verification_status
+
+    now = datetime.now(UTC)
+
+    # 1. Official source -> OFFICIALLY_CONFIRMED
+    sig_official = _make_signal(
+        source_is_official=True,
+        credibility_tier=CredibilityTier.OFFICIAL,
+        published_at=now,
+    )
+    assert verification_status([sig_official]) == VerificationStatus.OFFICIALLY_CONFIRMED
+
+    # 2. High credibility source -> HIGH_CREDIBILITY
+    sig_high = _make_signal(
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now,
+    )
+    assert verification_status([sig_high]) == VerificationStatus.HIGH_CREDIBILITY
+
+    # 3. Medium/low credibility source with perfect AI extraction -> still SIGNAL
+    sig_informal = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        extraction=Extraction(
+            signal_type=SignalType.OUTBREAK_REPORT,
+            summary="Confirmed outbreak by blog",
+            confidence=1.0,
+        ),
+    )
+    assert verification_status([sig_informal]) == VerificationStatus.SIGNAL
