@@ -7,10 +7,17 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import math
+from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from episignal_backend.db.types import LocationRole, Precision
-from episignal_backend.events.documents import LocationForMatching, SignalForMatching
+from episignal_backend.events.documents import (
+    LocationForMatching,
+    SignalForMatching,
+    StoryCluster,
+)
 
 PRECISION_WEIGHTS: dict[Precision, float] = {
     Precision.PLACE: 1.0,
@@ -146,3 +153,94 @@ def compatible(
         return False
 
     return spatially_compatible(loc_a, loc_b, distance_km=distance_km)
+
+
+class _UnionFind:
+    def __init__(self, size: int) -> None:
+        self.parent = list(range(size))
+
+    def find(self, i: int) -> int:
+        path = []
+        while self.parent[i] != i:
+            path.append(i)
+            i = self.parent[i]
+        for node in path:
+            self.parent[node] = i
+        return i
+
+    def union(self, i: int, j: int) -> None:
+        root_i = self.find(i)
+        root_j = self.find(j)
+        if root_i != root_j:
+            self.parent[root_i] = root_j
+
+
+def build_clusters(
+    signals: Sequence[SignalForMatching],
+    *,
+    window_days: int = 14,
+    distance_km: float = 50.0,
+) -> tuple[tuple[StoryCluster, ...], tuple[SignalForMatching, ...]]:
+    """Assemble signals into story clusters using single-link agglomeration.
+
+    Returns:
+        A tuple of (clusters, unclusterable_signals).
+    """
+    clusterable: list[SignalForMatching] = []
+    unclusterable: list[SignalForMatching] = []
+
+    for sig in signals:
+        rep_loc = representative_location(sig)
+        if sig.disease_id is None or rep_loc is None or rep_loc.precision == Precision.UNRESOLVED:
+            unclusterable.append(sig)
+        else:
+            clusterable.append(sig)
+
+    # Group by disease
+    by_disease: dict[UUID, list[SignalForMatching]] = defaultdict(list)
+    for sig in clusterable:
+        assert sig.disease_id is not None
+        by_disease[sig.disease_id].append(sig)
+
+    clusters: list[StoryCluster] = []
+
+    for disease_signals in by_disease.values():
+        n = len(disease_signals)
+        uf = _UnionFind(n)
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if compatible(
+                    disease_signals[i],
+                    disease_signals[j],
+                    window_days=window_days,
+                    distance_km=distance_km,
+                ):
+                    uf.union(i, j)
+
+        groups: dict[int, list[SignalForMatching]] = defaultdict(list)
+        for idx, sig in enumerate(disease_signals):
+            root = uf.find(idx)
+            groups[root].append(sig)
+
+        for group_signals in groups.values():
+            sorted_group = sorted(
+                group_signals,
+                key=lambda s: (_signal_timestamp(s), s.signal_id.bytes),
+            )
+            clusters.append(StoryCluster(signals=tuple(sorted_group)))
+
+    sorted_clusters = sorted(
+        clusters,
+        key=lambda c: (
+            c.disease_id.bytes if c.disease_id else b"",
+            c.span[0],
+            c.signals[0].signal_id.bytes,
+        ),
+    )
+    sorted_unclusterable = sorted(
+        unclusterable,
+        key=lambda s: (_signal_timestamp(s), s.signal_id.bytes),
+    )
+
+    return tuple(sorted_clusters), tuple(sorted_unclusterable)

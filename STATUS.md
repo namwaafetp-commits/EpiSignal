@@ -35,7 +35,7 @@ Tick each one in the same commit as its work.
 - [x] 3. Spatial compatibility at the coarsest shared precision
 - [x] 4. Temporal compatibility
 - [x] 5. A signal with no disease is not clustered
-- [ ] 6. Single-link cluster assembly
+- [x] 6. Single-link cluster assembly
 - [ ] 7. Candidate match scoring
 - [ ] 8. The conservative decision — attach, create, or refuse
 - [ ] 9. The early signal score

@@ -316,3 +316,194 @@ def test_compatible_requires_equal_non_null_disease():
     assert compatible(sig_disease_a, sig_disease_b, window_days=14, distance_km=50) is False
     assert compatible(sig_no_disease_1, sig_no_disease_2, window_days=14, distance_km=50) is False
     assert compatible(sig_disease_a, sig_no_disease_1, window_days=14, distance_km=50) is False
+
+
+def test_build_clusters_single_link_transitivity():
+    from episignal_backend.events.cluster import build_clusters
+
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        admin1="North Kivu",
+        admin2="Beni",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+
+    # Signal A at Day 0, B at Day 8, C at Day 16.
+    # Window = 10 days.
+    # A links B (8 <= 10).
+    # B links C (8 <= 10).
+    # A does not link C directly (16 > 10).
+    sig_a = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_id,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    sig_b = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_id,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now + timedelta(days=8),
+        first_seen_at=now + timedelta(days=8),
+        locations=(loc,),
+    )
+    sig_c = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_id,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now + timedelta(days=16),
+        first_seen_at=now + timedelta(days=16),
+        locations=(loc,),
+    )
+
+    clusters, unclusterable = build_clusters(
+        [sig_a, sig_b, sig_c],
+        window_days=10,
+        distance_km=50.0,
+    )
+
+    assert len(unclusterable) == 0
+    assert len(clusters) == 1
+    assert len(clusters[0].signals) == 3
+    sig_ids = {s.signal_id for s in clusters[0].signals}
+    assert sig_ids == {sig_a.signal_id, sig_b.signal_id, sig_c.signal_id}
+
+
+def test_build_clusters_different_diseases_and_unclusterable():
+    from episignal_backend.events.cluster import build_clusters
+
+    now = datetime.now(UTC)
+    disease_a = uuid4()
+    disease_b = uuid4()
+
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        admin1="North Kivu",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+
+    sig_a = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_a,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    sig_b = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_b,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    sig_no_disease = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+
+    clusters, unclusterable = build_clusters(
+        [sig_a, sig_b, sig_no_disease],
+        window_days=14,
+        distance_km=50.0,
+    )
+
+    assert len(clusters) == 2
+    assert {c.disease_id for c in clusters} == {disease_a, disease_b}
+    assert len(unclusterable) == 1
+    assert unclusterable[0].signal_id == sig_no_disease.signal_id
+
+
+def test_build_clusters_deterministic_under_shuffling():
+    import random
+
+    from episignal_backend.events.cluster import build_clusters
+
+    now = datetime.now(UTC)
+    disease_1 = uuid4()
+    disease_2 = uuid4()
+
+    loc_cd = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    loc_ug = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="UG",
+        place_name="Kampala",
+        latitude=0.34,
+        longitude=32.58,
+    )
+
+    signals = [
+        SignalForMatching(
+            signal_id=uuid4(),
+            disease_id=disease_1,
+            source_id=uuid4(),
+            source_is_official=False,
+            credibility_tier=CredibilityTier.MEDIUM,
+            published_at=now + timedelta(days=i),
+            first_seen_at=now + timedelta(days=i),
+            locations=(loc_cd,),
+        )
+        for i in range(5)
+    ] + [
+        SignalForMatching(
+            signal_id=uuid4(),
+            disease_id=disease_2,
+            source_id=uuid4(),
+            source_is_official=False,
+            credibility_tier=CredibilityTier.MEDIUM,
+            published_at=now + timedelta(days=i),
+            first_seen_at=now + timedelta(days=i),
+            locations=(loc_ug,),
+        )
+        for i in range(3)
+    ]
+
+    clusters_1, unclusterable_1 = build_clusters(signals, window_days=14, distance_km=50.0)
+
+    # Shuffled input
+    shuffled = list(signals)
+    random.Random(42).shuffle(shuffled)
+    clusters_2, unclusterable_2 = build_clusters(shuffled, window_days=14, distance_km=50.0)
+
+    assert len(clusters_1) == len(clusters_2)
+    for c1, c2 in zip(clusters_1, clusters_2, strict=True):
+        assert c1.disease_id == c2.disease_id
+        assert [s.signal_id for s in c1.signals] == [s.signal_id for s in c2.signals]
