@@ -56,7 +56,7 @@ verified report back to the planner; do not mark `E` verified.
 - [x] 2. Define the radar read contracts and representative location rule.
 - [x] 3. Query and assemble recent radar signals.
 - [x] 4. Query counts-only pipeline history.
-- [ ] 5. Expose `GET /api/v1/radar`.
+- [x] 5. Expose `GET /api/v1/radar`.
 - [ ] 6. Expose `GET /api/v1/admin/pipeline-runs`.
 - [ ] 7. Regenerate and lock the API contracts.
 - [ ] 8. Strictly validate radar responses in the web client.
