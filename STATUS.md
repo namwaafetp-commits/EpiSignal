@@ -77,12 +77,11 @@ are not blockers.
 
 ## Verified baseline
 
-Everything below was true at commit `7c78c78` on `main`, plus an uncommitted
-documentation-only working tree.
+Everything below was true at commit `291e3cf` on `main`, tree clean.
 
 | Fact | Value |
 | --- | --- |
-| Verification command | `corepack pnpm verify` |
+| Verification command | `corepack pnpm verify` — exit code 0 |
 | Python tests | 618 passed, 1 warning |
 | Web tests | 10 passed |
 | Lint and format | `ruff check` clean, 139 files formatted |
