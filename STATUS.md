@@ -43,7 +43,7 @@ Tick each one in the same commit as its work.
 - [x] 11. Verification status is derived, never scored
 - [x] 12. The score column migration `20260828_0007_event_scores`
 - [x] 13. Schema check follows the rename
-- [ ] 14. The `EventRepository` boundary
+- [x] 14. The `EventRepository` boundary
 - [ ] 15. Selecting geocoded signals
 - [ ] 16. Candidate event retrieval
 - [ ] 17. Creating events and attaching signals
