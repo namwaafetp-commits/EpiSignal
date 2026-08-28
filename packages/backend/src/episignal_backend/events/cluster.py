@@ -9,7 +9,7 @@ This module imports neither SQLAlchemy nor httpx.
 import math
 from datetime import datetime, timedelta
 
-from episignal_backend.db.types import Precision
+from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 
 PRECISION_WEIGHTS: dict[Precision, float] = {
@@ -109,3 +109,40 @@ def temporally_compatible(
     ts_b = _signal_timestamp(b)
     diff = abs(ts_a - ts_b)
     return diff <= timedelta(days=window_days)
+
+
+def representative_location(signal: SignalForMatching) -> LocationForMatching | None:
+    """Return the highest-precision primary location in the signal, falling back to any role."""
+    if not signal.locations:
+        return None
+    primary_locs = [loc for loc in signal.locations if loc.location_role == LocationRole.PRIMARY]
+    candidates = primary_locs if primary_locs else list(signal.locations)
+    return max(candidates, key=lambda loc: _PRECISION_RANK.get(loc.precision, -1))
+
+
+def compatible(
+    a: SignalForMatching,
+    b: SignalForMatching,
+    *,
+    window_days: int = 14,
+    distance_km: float = 50.0,
+) -> bool:
+    """Evaluate whether two signals report the same outbreak.
+
+    Requires:
+    1. Equal, non-null disease_id.
+    2. Temporal compatibility within window_days.
+    3. Spatial compatibility between their representative locations within distance_km.
+    """
+    if a.disease_id is None or b.disease_id is None or a.disease_id != b.disease_id:
+        return False
+
+    if not temporally_compatible(a, b, window_days=window_days):
+        return False
+
+    loc_a = representative_location(a)
+    loc_b = representative_location(b)
+    if loc_a is None or loc_b is None:
+        return False
+
+    return spatially_compatible(loc_a, loc_b, distance_km=distance_km)

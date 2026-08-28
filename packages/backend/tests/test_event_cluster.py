@@ -1,7 +1,15 @@
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
-from episignal_backend.db.types import Precision
-from episignal_backend.events.cluster import precision_weight
+import pytest
+from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
+from episignal_backend.events.cluster import (
+    compatible,
+    precision_weight,
+    spatially_compatible,
+    temporally_compatible,
+)
+from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 
 
 def test_precision_weights():
@@ -26,11 +34,6 @@ def test_precision_weights_strictly_decreasing():
 
 
 def test_spatially_compatible_place_precision_distance():
-    from episignal_backend.db.types import LocationRole
-    from episignal_backend.events.cluster import spatially_compatible
-    from episignal_backend.events.documents import LocationForMatching
-
-    # Beni and Butembo (~50 km apart)
     beni = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -41,7 +44,6 @@ def test_spatially_compatible_place_precision_distance():
         latitude=0.49,
         longitude=29.47,
     )
-    # 5 km away from Beni
     near_beni = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -52,7 +54,6 @@ def test_spatially_compatible_place_precision_distance():
         latitude=0.53,
         longitude=29.47,
     )
-    # Kinshasa (~1500 km away)
     kinshasa = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -63,18 +64,11 @@ def test_spatially_compatible_place_precision_distance():
         longitude=15.31,
     )
 
-    # 5 km apart passes with default 50 km distance threshold
     assert spatially_compatible(beni, near_beni, distance_km=50) is True
-    # 500+ km apart fails
     assert spatially_compatible(beni, kinshasa, distance_km=50) is False
 
 
 def test_spatially_compatible_admin1_precision_compares_codes_never_distance():
-    from episignal_backend.db.types import LocationRole
-    from episignal_backend.events.cluster import spatially_compatible
-    from episignal_backend.events.documents import LocationForMatching
-
-    # Place in Province A (North Kivu)
     place_in_kivu = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -83,7 +77,6 @@ def test_spatially_compatible_admin1_precision_compares_codes_never_distance():
         latitude=0.50,
         longitude=29.50,
     )
-    # Province centroid of North Kivu (same admin1)
     kivu_province = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.ADMIN1,
@@ -92,7 +85,6 @@ def test_spatially_compatible_admin1_precision_compares_codes_never_distance():
         latitude=0.50,
         longitude=29.50,
     )
-    # Province centroid of Ituri (different admin1, but geographically adjacent/close)
     ituri_province_close = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.ADMIN1,
@@ -102,17 +94,11 @@ def test_spatially_compatible_admin1_precision_compares_codes_never_distance():
         longitude=29.50,
     )
 
-    # Same admin1 code matches
     assert spatially_compatible(place_in_kivu, kivu_province, distance_km=50) is True
-    # Different admin1 code fails even if distance is only ~1 km
     assert spatially_compatible(place_in_kivu, ituri_province_close, distance_km=50) is False
 
 
 def test_spatially_compatible_country_precision_compares_country_code():
-    from episignal_backend.db.types import LocationRole
-    from episignal_backend.events.cluster import spatially_compatible
-    from episignal_backend.events.documents import LocationForMatching
-
     place_in_cd = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -141,10 +127,6 @@ def test_spatially_compatible_country_precision_compares_country_code():
 
 
 def test_spatially_compatible_unresolved_returns_false_and_never_raises():
-    from episignal_backend.db.types import LocationRole
-    from episignal_backend.events.cluster import spatially_compatible
-    from episignal_backend.events.documents import LocationForMatching
-
     unresolved = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.UNRESOLVED,
@@ -166,11 +148,6 @@ def test_spatially_compatible_unresolved_returns_false_and_never_raises():
 
 
 def test_spatially_compatible_different_country_codes_always_fail():
-    from episignal_backend.db.types import LocationRole
-    from episignal_backend.events.cluster import spatially_compatible
-    from episignal_backend.events.documents import LocationForMatching
-
-    # Border towns: Goma (CD) and Gisenyi (RW) are < 5 km apart
     goma = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -188,18 +165,10 @@ def test_spatially_compatible_different_country_codes_always_fail():
         longitude=29.26,
     )
 
-    # Different country codes must return False regardless of close distance
     assert spatially_compatible(goma, gisenyi, distance_km=50) is False
 
 
 def test_temporally_compatible_within_and_outside_window():
-    from datetime import UTC, datetime, timedelta
-    from uuid import uuid4
-
-    from episignal_backend.db.types import CredibilityTier
-    from episignal_backend.events.cluster import temporally_compatible
-    from episignal_backend.events.documents import SignalForMatching
-
     now = datetime.now(UTC)
     sig1 = SignalForMatching(
         signal_id=uuid4(),
@@ -226,21 +195,13 @@ def test_temporally_compatible_within_and_outside_window():
         first_seen_at=now - timedelta(days=20),
     )
 
-    # Window of 14 days
     assert temporally_compatible(sig1, sig2_inside, window_days=14) is True
-    assert temporally_compatible(sig2_inside, sig1, window_days=14) is True  # symmetric
+    assert temporally_compatible(sig2_inside, sig1, window_days=14) is True
     assert temporally_compatible(sig1, sig3_outside, window_days=14) is False
     assert temporally_compatible(sig3_outside, sig1, window_days=14) is False
 
 
 def test_temporally_compatible_fallback_to_first_seen_at():
-    from datetime import UTC, datetime, timedelta
-    from uuid import uuid4
-
-    from episignal_backend.db.types import CredibilityTier
-    from episignal_backend.events.cluster import temporally_compatible
-    from episignal_backend.events.documents import SignalForMatching
-
     now = datetime.now(UTC)
     sig_with_pub = SignalForMatching(
         signal_id=uuid4(),
@@ -264,19 +225,9 @@ def test_temporally_compatible_fallback_to_first_seen_at():
 
 
 def test_temporally_compatible_rejects_naive_datetimes():
-    from datetime import datetime
-    from uuid import uuid4
-
-    import pytest
-    from episignal_backend.db.types import CredibilityTier
-    from episignal_backend.events.cluster import temporally_compatible
-    from episignal_backend.events.documents import SignalForMatching
-
-    # Ensure naive datetime is rejected or raises ValueError
     naive_dt = datetime(2026, 8, 28, 10, 0, 0)
     aware_dt = datetime(2026, 8, 28, 10, 0, 0, tzinfo=UTC)
 
-    # Ensure naive datetime is rejected or raises ValueError
     sig_aware = SignalForMatching(
         signal_id=uuid4(),
         source_id=uuid4(),
@@ -286,10 +237,82 @@ def test_temporally_compatible_rejects_naive_datetimes():
         first_seen_at=aware_dt,
     )
 
-    # If a signal somehow has a naive datetime, temporally_compatible raises ValueError
     class MockSignal:
         published_at = naive_dt
         first_seen_at = naive_dt
 
     with pytest.raises(ValueError, match="Timezone-aware"):
         temporally_compatible(sig_aware, MockSignal(), window_days=14)  # type: ignore[arg-type]
+
+
+def test_compatible_requires_equal_non_null_disease():
+    now = datetime.now(UTC)
+    disease_a = uuid4()
+    disease_b = uuid4()
+
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        admin1="North Kivu",
+        admin2="Beni",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+
+    sig_disease_a = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_a,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    sig_disease_a_2 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_a,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now - timedelta(days=2),
+        first_seen_at=now - timedelta(days=2),
+        locations=(loc,),
+    )
+    sig_disease_b = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_b,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    sig_no_disease_1 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+    sig_no_disease_2 = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(loc,),
+    )
+
+    assert compatible(sig_disease_a, sig_disease_a_2, window_days=14, distance_km=50) is True
+    assert compatible(sig_disease_a, sig_disease_b, window_days=14, distance_km=50) is False
+    assert compatible(sig_no_disease_1, sig_no_disease_2, window_days=14, distance_km=50) is False
+    assert compatible(sig_disease_a, sig_no_disease_1, window_days=14, distance_km=50) is False
