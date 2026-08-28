@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260827_0006"]
+    assert scripts.get_heads() == ["20260828_0007"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -82,8 +82,8 @@ def test_offline_upgrade_declares_every_core_invariant() -> None:
         "relationship_type_values",
         "location_role_values",
         "ck_signals_relevance_score_range",
-        "ck_events_attention_score_range",
-        "ck_events_confidence_score_range",
+        "early_signal_score_range",
+        "evidence_score_range",
         "ck_event_signals_match_score_range",
         "ck_event_observations_suspected_cases_non_negative",
         "ck_event_observations_probable_cases_non_negative",
@@ -215,3 +215,15 @@ def test_the_geocoding_migration_does_not_touch_the_extraction_column() -> None:
     # This sub-project records its answer beside it and never edits it.
     source = _revision_source("20260827_0006_geocoding")
     assert "ai_extraction" not in source
+
+
+def test_the_event_scores_revision_follows_geocoding_revision() -> None:
+    module = _load_revision("20260828_0007_event_scores")
+    assert module.revision == "20260828_0007"
+    assert module.down_revision == "20260827_0006"
+
+
+def test_the_event_scores_migration_renames_columns_and_constraints() -> None:
+    sql = render_offline("upgrade", "head")
+    assert "early_signal_score" in sql
+    assert "evidence_score" in sql

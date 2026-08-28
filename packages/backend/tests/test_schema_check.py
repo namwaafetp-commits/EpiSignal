@@ -38,3 +38,12 @@ def test_the_expected_tables_include_the_geocoding_tables() -> None:
 
     assert "gazetteer_places" in EXPECTED_TABLES
     assert "signal_locations" in EXPECTED_TABLES
+
+
+def test_the_expected_event_columns_include_renamed_scores_and_neither_old_name() -> None:
+    from episignal_backend.schema_check import EXPECTED_EVENT_COLUMNS
+
+    assert "early_signal_score" in EXPECTED_EVENT_COLUMNS
+    assert "evidence_score" in EXPECTED_EVENT_COLUMNS
+    assert "attention_score" not in EXPECTED_EVENT_COLUMNS
+    assert "confidence_score" not in EXPECTED_EVENT_COLUMNS

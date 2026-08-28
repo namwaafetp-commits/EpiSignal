@@ -28,6 +28,32 @@ EXPECTED_TABLES = (
     "signal_locations",
 )
 
+EXPECTED_EVENT_COLUMNS = (
+    "id",
+    "public_id",
+    "slug",
+    "title",
+    "disease_id",
+    "pathogen_id",
+    "event_type",
+    "status",
+    "verification_status",
+    "country_code",
+    "admin1",
+    "admin2",
+    "latitude",
+    "longitude",
+    "geometry",
+    "first_signal_at",
+    "event_start_date",
+    "last_updated_at",
+    "early_signal_score",
+    "evidence_score",
+    "ai_summary",
+    "created_at",
+    "updated_at",
+)
+
 
 def missing_tables(present: set[str]) -> list[str]:
     return [table for table in EXPECTED_TABLES if table not in present]
