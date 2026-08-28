@@ -49,7 +49,7 @@ Tick each one in the same commit as its work.
 - [x] 17. Creating events and attaching signals
 - [x] 18. Observations are inserted, never updated
 - [x] 19. The assembly pass — `run_event_assembly`
-- [ ] 20. Configuration
+- [x] 20. Configuration
 - [ ] 21. The runner, the script, and the seam guard
 - [ ] 22. Live database verification and the completion report
 

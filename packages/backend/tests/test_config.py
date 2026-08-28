@@ -215,3 +215,22 @@ def test_the_geocoding_batch_must_fit_the_run() -> None:
 def test_the_gazetteer_source_must_not_be_blank() -> None:
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_GAZETTEER_SOURCE="   ")
+
+
+def test_event_matching_defaults_are_set() -> None:
+    settings = build_settings()
+    assert settings.event_cluster_window_days == 7
+    assert settings.event_cluster_distance_km == 50.0
+    assert settings.event_match_threshold == 0.6
+    assert settings.event_match_recency_days == 90.0
+    assert settings.event_match_distance_km == 50.0
+    assert settings.event_match_batch_size == 100
+    assert settings.event_match_stale is False
+
+
+def test_event_match_threshold_must_be_between_zero_and_one() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_EVENT_MATCH_THRESHOLD="1.5")
+
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_EVENT_MATCH_THRESHOLD="-0.1")

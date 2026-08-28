@@ -97,6 +97,14 @@ class Settings(BaseSettings):
     # gazetteer reaches only signals processed after it.
     gazetteer_source: str = Field(default="geonames-2026-08-27", min_length=1)
 
+    event_cluster_window_days: int = Field(default=7, ge=1, le=365)
+    event_cluster_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
+    event_match_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
+    event_match_recency_days: float = Field(default=90.0, ge=1.0, le=3650.0)
+    event_match_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
+    event_match_batch_size: int = Field(default=100, ge=1, le=5000)
+    event_match_stale: bool = False
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:
