@@ -45,7 +45,7 @@ Tick each one in the same commit as its work.
 - [x] 13. Schema check follows the rename
 - [x] 14. The `EventRepository` boundary
 - [x] 15. Selecting geocoded signals
-- [ ] 16. Candidate event retrieval
+- [x] 16. Candidate event retrieval
 - [ ] 17. Creating events and attaching signals
 - [ ] 18. Observations are inserted, never updated
 - [ ] 19. The assembly pass — `run_event_assembly`

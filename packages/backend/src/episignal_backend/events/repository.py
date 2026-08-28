@@ -8,13 +8,16 @@ Maps between ORM models and pure domain contracts across the boundary.
 
 from collections import defaultdict
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, select, update
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.ai.schema import Extraction
 from episignal_backend.db.types import (
+    Precision,
     ProcessingStatus,
     RelationshipType,
     VerificationStatus,
@@ -26,10 +29,27 @@ from episignal_backend.events.documents import (
     StoryCluster,
 )
 from episignal_backend.models import (
+    Event,
+    EventLocation,
     Signal,
     SignalLocation,
     Source,
 )
+
+
+def _infer_precision(loc: Any) -> Precision:
+    prec = getattr(loc, "precision", None)
+    if isinstance(prec, Precision):
+        return prec
+    if getattr(loc, "place_name", None):
+        return Precision.PLACE
+    if getattr(loc, "admin2", None):
+        return Precision.ADMIN2
+    if getattr(loc, "admin1", None):
+        return Precision.ADMIN1
+    if getattr(loc, "country_code", None):
+        return Precision.COUNTRY
+    return Precision.UNRESOLVED
 
 
 class SqlAlchemyEventRepository:
@@ -110,7 +130,75 @@ class SqlAlchemyEventRepository:
         recency_days: float = 90.0,
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
-        return ()
+        if cluster.disease_id is None:
+            return ()
+
+        rep_loc = cluster.representative_location
+        if rep_loc is None or rep_loc.country_code is None:
+            return ()
+
+        cutoff = cluster.span[0] - timedelta(days=recency_days)
+
+        conditions: list[ColumnElement[bool]] = [
+            Event.disease_id == cluster.disease_id,
+            Event.last_updated_at >= cutoff,
+        ]
+
+        if (
+            rep_loc.precision in (Precision.PLACE, Precision.ADMIN2)
+            and rep_loc.latitude is not None
+            and rep_loc.longitude is not None
+        ):
+            ref_point = func.ST_SetSRID(
+                func.ST_MakePoint(rep_loc.longitude, rep_loc.latitude), 4326
+            )
+            conditions.append(func.ST_DWithin(Event.geometry, ref_point, distance_km * 1000.0))
+        else:
+            conditions.append(Event.country_code == rep_loc.country_code)
+
+        event_query = select(Event).where(*conditions)
+        events = self._session.execute(event_query).scalars().all()
+        if not events:
+            return ()
+
+        event_ids = [ev.id for ev in events]
+        loc_query = select(EventLocation).where(EventLocation.event_id.in_(event_ids))
+        loc_rows = self._session.execute(loc_query).scalars().all()
+
+        locs_by_event: dict[UUID, list[LocationForMatching]] = defaultdict(list)
+        for loc in loc_rows:
+            locs_by_event[loc.event_id].append(
+                LocationForMatching(
+                    location_role=loc.location_role,
+                    precision=_infer_precision(loc),
+                    country_code=loc.country_code,
+                    admin1=loc.admin1,
+                    admin2=loc.admin2,
+                    place_name=loc.place_name,
+                    latitude=loc.latitude,
+                    longitude=loc.longitude,
+                )
+            )
+
+        candidates: list[CandidateEvent] = []
+        for ev in events:
+            assert ev.disease_id is not None
+            first_sig: datetime = (
+                ev.first_signal_at
+                if ev.first_signal_at is not None
+                else (ev.created_at if ev.created_at is not None else datetime.now(UTC))
+            )
+            candidates.append(
+                CandidateEvent(
+                    event_id=ev.id,
+                    disease_id=ev.disease_id,
+                    locations=tuple(locs_by_event.get(ev.id, ())),
+                    first_signal_at=first_sig,
+                    last_updated_at=ev.last_updated_at,
+                )
+            )
+
+        return tuple(candidates)
 
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
         raise NotImplementedError
