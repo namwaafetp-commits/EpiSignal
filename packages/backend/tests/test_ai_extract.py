@@ -33,7 +33,7 @@ FRENCH_ANSWER = json.dumps(
             {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
             {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
             {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
-            {"slot": "reporting", "text": "Reported by local media.", "reported": True},
+            {"slot": "reporting", "text": "Reported by Angola's health ministry.", "reported": True},
         ],
         "disease": {"name": "Cholera", "confidence": 0.96},
         "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
@@ -128,6 +128,10 @@ def test_a_grounded_extraction_is_stored_with_its_model_and_time() -> None:
     )
     assert repository.stored[FIRST].processed_at == NOW
     assert repository.stored[FIRST].model_id == "vendor1/model:free"
+    assert (
+        repository.stored[FIRST].extraction.brief[-1].text
+        == "Reported by Angola's health ministry."
+    )
 
 
 def test_the_resolved_disease_is_attached_when_the_vocabulary_knows_it() -> None:
@@ -175,6 +179,10 @@ def test_a_french_article_with_a_grounded_answer_makes_exactly_one_request() -> 
 
     assert len(model.asked) == 1
     assert result.extracted == 1
+    assert (
+        repository.stored[SECOND].extraction.brief[-1].text
+        == "Reported by Angola's health ministry."
+    )
 
 
 def test_an_unreachable_provider_leaves_the_signal_selectable() -> None:

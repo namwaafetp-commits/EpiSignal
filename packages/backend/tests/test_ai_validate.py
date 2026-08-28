@@ -24,7 +24,7 @@ GROUNDED = {
         {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
         {
             "slot": "reporting",
-            "text": "Reported by the health ministry; not independently verified.",
+            "text": "Reported by Angola's health ministry.",
             "reported": True,
         },
     ],
@@ -126,7 +126,7 @@ def grounded_payload() -> dict[str, object]:
             {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
             {
                 "slot": "reporting",
-                "text": "Reported by the health ministry; not independently verified.",
+                "text": "Reported by Angola's health ministry.",
                 "reported": True,
             },
         ],

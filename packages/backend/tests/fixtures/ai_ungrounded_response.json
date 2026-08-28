@@ -9,7 +9,7 @@
     { "slot": "spread", "text": "All cases were acquired locally.", "reported": true },
     {
       "slot": "reporting",
-      "text": "Reported by Angola's health ministry; not independently verified.",
+      "text": "Reported by Angola's health ministry.",
       "reported": true
     }
   ],

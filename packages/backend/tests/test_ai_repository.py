@@ -59,7 +59,7 @@ def extraction() -> Extraction:
                 {"slot": "counts", "text": "No case count reported.", "reported": False},
                 {"slot": "timing", "text": "No date reported.", "reported": False},
                 {"slot": "spread", "text": "No transmission detail reported.", "reported": False},
-                {"slot": "reporting", "text": "Reported by local media.", "reported": True},
+                {"slot": "reporting", "text": "Reported by Angola's health ministry.", "reported": True},
             ],
             "confidence": 0.9,
         }
@@ -190,7 +190,7 @@ def test_an_accepted_extraction_stores_the_brief_as_the_signal_summary() -> None
         "No case count reported.",
         "No date reported.",
         "No transmission detail reported.",
-        "Reported by local media.",
+        "Reported by Angola's health ministry.",
     ]
 
 
