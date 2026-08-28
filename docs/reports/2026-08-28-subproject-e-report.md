@@ -62,32 +62,25 @@ $ uv run ruff check .
 All checks passed!
 $ corepack pnpm typecheck:web && uv run mypy apps/api/src packages/backend/src
 $ tsc --noEmit
-Success: no issues found in 47 source files
+Success: no issues found in 96 source files
 $ corepack pnpm test:web && uv run pytest
 $ vitest run
 
  RUN  v4.1.11 D:/Projects/Side Project/EpiSignal/apps/web
 
+ ✓ src/lib/api-radar.test.ts (15 tests) 33ms
  ✓ src/lib/api-health.test.ts (2 tests) 14ms
- ✓ src/lib/api-signals.test.ts (3 tests) 18ms
- ✓ src/lib/api-radar.test.ts (15 tests) 37ms
- ✓ src/lib/radar-map-helpers.test.ts (7 tests) 18ms
- ✓ src/lib/api-pipeline.test.ts (11 tests) 20ms
- ✓ src/components/signal-map.test.tsx (3 tests) 203ms
- ✓ src/components/pipeline-monitor.test.tsx (5 tests) 272ms
- ✓ src/components/home-shell.test.tsx (6 tests) 378ms
+ ✓ src/lib/radar-map-helpers.test.ts (7 tests) 19ms
+ ✓ src/lib/api-pipeline.test.ts (11 tests) 32ms
+ ✓ src/lib/api-signals.test.ts (3 tests) 16ms
+ ✓ src/components/signal-map.test.tsx (3 tests) 365ms
+ ✓ src/components/pipeline-monitor.test.tsx (5 tests) 465ms
+ ✓ src/components/home-shell.test.tsx (6 tests) 622ms
 
  Test Files  8 passed (8)
       Tests  52 passed (52)
-   Start at  15:35:48
-   Duration  4.70s (transform 3.09s, setup 2.05s, import 4.10s, tests 300ms, environment 10.96s)
-============================= test session starts =============================
-platform win32 -- Python 3.12.10, pytest-9.0.2, pluggy-1.6.0
-rootdir: D:\Projects\Side Project\EpiSignal
-configfile: pyproject.toml
-plugins: anyio-4.12.1, asyncio-1.3.0
-asyncio: mode=Mode.STRICT, default_loop_scope=None
-collected 196 items
+
+826 passed, 1 warning in 31.16s
 
 apps\api\tests\test_admin.py .......                                     [  3%]
 apps\api\tests\test_api.py .........                                     [  8%]
