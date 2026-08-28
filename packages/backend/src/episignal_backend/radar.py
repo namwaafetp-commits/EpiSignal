@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -30,6 +31,7 @@ from episignal_backend.db.types import (
 from episignal_backend.models import (
     Event,
     EventSignal,
+    PipelineRun,
     Signal,
     SignalLocation,
     Source,
@@ -339,3 +341,90 @@ def query_radar(
         hours=hours,
         limit=limit,
     )
+
+
+def _normalize_stage_counts(raw: Any) -> dict[str, dict[str, int]]:
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, dict[str, int]] = {}
+    for stage_name, counts in raw.items():
+        if isinstance(stage_name, str) and isinstance(counts, dict):
+            valid_counts: dict[str, int] = {}
+            for k, v in counts.items():
+                if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool):
+                    valid_counts[k] = v
+            normalized[stage_name] = valid_counts
+    return normalized
+
+
+def _normalize_backlog(raw: Any) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, int] = {}
+    for k, v in raw.items():
+        if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool):
+            normalized[k] = v
+    return normalized
+
+
+def _normalize_failures(raw: Any) -> tuple[PipelineFailure, ...]:
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    failures: list[PipelineFailure] = []
+    for item in raw:
+        if isinstance(item, str):
+            try:
+                stage = StageName(item)
+                failures.append(PipelineFailure(stage=stage, error=None))
+            except ValueError:
+                continue
+        elif isinstance(item, dict):
+            stage_val = item.get("stage")
+            if not isinstance(stage_val, str):
+                continue
+            try:
+                stage = StageName(stage_val)
+            except ValueError:
+                continue
+            error_val = item.get("error")
+            error_str = str(error_val) if isinstance(error_val, str) else None
+            failures.append(PipelineFailure(stage=stage, error=error_str))
+    return tuple(failures)
+
+
+def query_pipeline_runs(
+    session: Session,
+    *,
+    now: datetime,
+    stale_after_minutes: int,
+    limit: int = 20,
+) -> PipelineRunPage:
+    """Query recent pipeline runs for read-only operational monitoring."""
+    statement = select(PipelineRun).order_by(PipelineRun.started_at.desc()).limit(limit)
+    runs = session.execute(statement).scalars().all()
+
+    items: list[PipelineRunItem] = []
+    for run in runs:
+        is_stale = (
+            run.status == PipelineRunStatus.RUNNING
+            and run.finished_at is None
+            and (now - run.started_at).total_seconds() > 2 * stale_after_minutes * 60
+        )
+        items.append(
+            PipelineRunItem(
+                id=run.id,
+                chain=run.chain,
+                trigger=run.trigger,
+                status=run.status,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                window_start=run.window_start,
+                window_end=run.window_end,
+                stage_counts=_normalize_stage_counts(run.stage_counts),
+                backlog=_normalize_backlog(run.backlog),
+                failures=_normalize_failures(run.failed_stages),
+                is_stale=is_stale,
+            )
+        )
+
+    return PipelineRunPage(items=tuple(items), limit=limit)

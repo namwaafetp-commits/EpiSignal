@@ -16,7 +16,7 @@ from episignal_backend.db.types import (
     SignalType,
     VerificationStatus,
 )
-from episignal_backend.models import SignalLocation
+from episignal_backend.models import PipelineRun, SignalLocation
 from episignal_backend.radar import (
     EventContextStatus,
     PipelineFailure,
@@ -28,6 +28,7 @@ from episignal_backend.radar import (
     RadarPage,
     RadarSource,
     choose_representative_location,
+    query_pipeline_runs,
     query_radar,
 )
 from episignal_backend.schedule.documents import StageName
@@ -516,3 +517,133 @@ def test_query_radar_assembly_malformed_extraction_is_omitted() -> None:
     page = query_radar(session, now=now, hours=48, limit=50)
     assert len(page.items) == 1
     assert page.items[0].id == sig2.id
+
+
+def test_query_pipeline_runs_ordering_and_limit() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    session = FakeSession()
+
+    page = query_pipeline_runs(session, now=now, stale_after_minutes=60, limit=20)
+    assert page.items == ()
+    assert page.limit == 20
+
+    statement = str(session.executed[0])
+    assert "FROM pipeline_runs" in statement
+    assert "ORDER BY pipeline_runs.started_at DESC" in statement
+    assert "LIMIT" in statement
+
+
+def test_query_pipeline_runs_normalizes_stage_counts_and_backlog() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    run_id = uuid4()
+    run = PipelineRun(
+        chain=PipelineChain.DAILY,
+        trigger=PipelineTrigger.SCHEDULED,
+        status=PipelineRunStatus.SUCCEEDED,
+        started_at=now,
+        finished_at=now,
+        window_start=None,
+        window_end=None,
+        stage_counts={
+            "extract": {"extracted": 5, "invalid_count": "three", "bad_bool": True},
+            "invalid_stage": "not_a_dict",
+        },
+        backlog={"extracted": 10, "bad_val": None, "bool_val": False},
+        failed_stages=[],
+    )
+    run.id = run_id
+
+    session = FakeSession([FakeResult([run])])
+    page = query_pipeline_runs(session, now=now, stale_after_minutes=60, limit=20)
+    assert len(page.items) == 1
+    item = page.items[0]
+    assert item.stage_counts == {"extract": {"extracted": 5}}
+    assert item.backlog == {"extracted": 10}
+    assert item.failures == ()
+    assert item.is_stale is False
+
+
+def test_query_pipeline_runs_compatibility_with_legacy_and_new_failures() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    run = PipelineRun(
+        chain=PipelineChain.DAILY,
+        trigger=PipelineTrigger.SCHEDULED,
+        status=PipelineRunStatus.FAILED,
+        started_at=now,
+        finished_at=now,
+        window_start=None,
+        window_end=None,
+        stage_counts={},
+        backlog={},
+        failed_stages=[
+            "extract",  # Legacy string
+            {"stage": "geocode", "error": "TimeoutError"},  # New object
+            {"stage": "unknown_future_stage", "error": "Something"},  # Unknown stage: ignore
+            12345,  # Malformed: ignore
+        ],
+    )
+    run.id = uuid4()
+
+    session = FakeSession([FakeResult([run])])
+    page = query_pipeline_runs(session, now=now, stale_after_minutes=60, limit=20)
+    assert len(page.items) == 1
+    failures = page.items[0].failures
+    assert len(failures) == 2
+    assert failures[0] == PipelineFailure(stage=StageName.EXTRACT, error=None)
+    assert failures[1] == PipelineFailure(stage=StageName.GEOCODE, error="TimeoutError")
+
+
+def test_query_pipeline_runs_is_stale_flag() -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+
+    # 1. Running and started 3 hours ago with stale_after_minutes=60 -> stale!
+    stale_run = PipelineRun(
+        chain=PipelineChain.DAILY,
+        trigger=PipelineTrigger.SCHEDULED,
+        status=PipelineRunStatus.RUNNING,
+        started_at=datetime(2026, 8, 28, 9, 0, tzinfo=UTC),
+        finished_at=None,
+        window_start=None,
+        window_end=None,
+        stage_counts={},
+        backlog={},
+        failed_stages=[],
+    )
+    stale_run.id = uuid4()
+
+    # 2. Running and started 30 mins ago -> not stale
+    fresh_run = PipelineRun(
+        chain=PipelineChain.DAILY,
+        trigger=PipelineTrigger.SCHEDULED,
+        status=PipelineRunStatus.RUNNING,
+        started_at=datetime(2026, 8, 28, 11, 30, tzinfo=UTC),
+        finished_at=None,
+        window_start=None,
+        window_end=None,
+        stage_counts={},
+        backlog={},
+        failed_stages=[],
+    )
+    fresh_run.id = uuid4()
+
+    # 3. Finished run from 5 hours ago -> not stale
+    finished_run = PipelineRun(
+        chain=PipelineChain.DAILY,
+        trigger=PipelineTrigger.SCHEDULED,
+        status=PipelineRunStatus.SUCCEEDED,
+        started_at=datetime(2026, 8, 28, 7, 0, tzinfo=UTC),
+        finished_at=datetime(2026, 8, 28, 7, 10, tzinfo=UTC),
+        window_start=None,
+        window_end=None,
+        stage_counts={},
+        backlog={},
+        failed_stages=[],
+    )
+    finished_run.id = uuid4()
+
+    session = FakeSession([FakeResult([stale_run, fresh_run, finished_run])])
+    page = query_pipeline_runs(session, now=now, stale_after_minutes=60, limit=20)
+    assert len(page.items) == 3
+    assert page.items[0].is_stale is True
+    assert page.items[1].is_stale is False
+    assert page.items[2].is_stale is False
