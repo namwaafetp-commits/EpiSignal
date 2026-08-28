@@ -42,8 +42,8 @@ small items.
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
 Band 2  GDELT discovery layer   [#####-] 5/7  D2b and F remain
-Band 3  Product surface         [------] 0/6
-Band 4  Operations              [---]    0/3  L building
+Band 3  Product surface         [------] 0/6  E designing
+Band 4  Operations              [#--]    1/3  M and N remain
 Band 5  Acceptance              [-]      0/1
 ```
 
@@ -119,15 +119,22 @@ Artifacts:
 [Geocoding]       ->  D1  geocode_runner.py      verified
 [Clustering]      ->  D2a event_runner.py        verified
 [Ambiguous match] ->  D2b ---                    not started
-[Radar surface]   ->  E   ---                    not started
+[Radar surface]   ->  E   ---                    designing     <-- next
 
-[Runs it daily]   ->  L   pipeline_runner.py     building      <-- next
+[Runs it daily]   ->  L   pipeline_runner.py     verified
 ```
 
-Every stage above is verified and every one of them is invoked by hand, which is
-why the live database holds two geocoded signals and zero events. `L` is next
-because `D2b` would tune a threshold against zero refusals and `E` would render
-an empty list; both need the corpus that running daily produces.
+The chain now runs unattended, which is what `L` was for. Running it also showed
+where it stops: `extract` raised `EPISIGNAL_OPENROUTER_API_KEY is not set` on
+every live run, so the last recorded backlog was 46 signals sitting at
+`normalized` with nothing downstream of them to do. That is a configuration
+blocker on the machine, recorded in [STATUS.md](STATUS.md), not a defect in any
+item on this map.
+
+`E` is next because it is the item that does not wait on that key. It reads what
+`D2a` writes and the run records `L` now keeps, and `M` has nowhere to put a
+review queue until it exists. `D2b` would still tune a threshold against zero
+refusals, and `F` cannot measure a model it cannot call.
 
 ---
 
@@ -138,7 +145,7 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `not-started` |
+| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `designing` |
 | `G` | Public event API | Read-only events list, event detail, observations, sources, and filters are served and contract-checked. Phase 1 spec §46. | `D2a` | `not-started` |
 | `H` | Homepage world map and event feed | A usable world map and list view render real events, responsive from the first commit. Phase 1 spec §26–§28. | `G` | `not-started` |
 | `I` | Event page: overview, timeline, sources, data | Every claim on the page shows the source that made it, the time it was made, and the previous value. Phase 1 spec §30–§34. | `G` | `not-started` |
@@ -151,7 +158,7 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `building` |
+| `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `verified` |
 | `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `not-started` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
 
@@ -160,8 +167,9 @@ Artifacts:
 [plan](docs/superpowers/plans/2026-08-28-scheduler.md) ·
 [report](docs/reports/2026-08-28-subproject-l-report.md)
 
-`L` is scheduled ahead of Band 3 deliberately. It depends only on `D2a`, and the
+`L` was taken ahead of Band 3 deliberately. It depends only on `D2a`, and the
 items that follow it are worth more once real events exist to build against.
+`M` stays where it is: it depends on `E`, because a review queue needs a surface.
 
 ---
 
