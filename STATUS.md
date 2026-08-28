@@ -74,25 +74,25 @@ verified report back to the planner; do not mark `E` verified.
 
 ## Verified baseline
 
-Everything below was true at commit `1a31480` on `main`, tree clean. Recorded
-from the `E` run logged untruncated in
-[docs/reports/2026-08-28-subproject-e-report.md](docs/reports/2026-08-28-subproject-e-report.md).
+Everything below was true at commit `117d0c8` on `fix/extraction-structured-outputs`, tree clean. Recorded
+from the extraction stall resolution run logged untruncated in
+[docs/reports/2026-08-28-extraction-stall-fix-report.md](docs/reports/2026-08-28-extraction-stall-fix-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 842 passed, 1 warning |
+| Python tests | 848 passed, 1 warning |
 | Web tests | 58 passed, 8 files |
-| Lint and format | `ruff check` and `eslint` clean, 189 files formatted |
+| Lint and format | `ruff check` and `eslint` clean, 190 files formatted |
 | Types | `tsc` and `mypy` clean across 97 source files |
 | Migration revision | `20260828_0009_quarantine_corrupted_signal` |
 | Live database | `db:check` passed — database=up, postgis=up |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
-| Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title |
+| Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title, OpenRouter structured outputs (`json_schema`) |
+| Model ladder | `deepseek/deepseek-chat` (T1), `mistralai/mistral-small-24b-instruct-2501` (T2), `anthropic/claude-haiku-4.5` (T3) |
 | Radar endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs` |
-| Live radar proof | `hours=168, limit=10` — 5 signals retrieved, 5-slot briefs, 0 raw-text leak |
-| Live pipeline monitor proof | 2 runs recorded, safe failure stages, counts-only |
+| Live extraction & pipeline proof | 28 signals extracted in live run (0 shape rejections), 32 geocoded, 3 events created (EVT-EEA92838, EVT-1BAC05A1, EVT-F00791B8) |
 
 Reproduce with:
 
