@@ -1,4 +1,4 @@
-﻿"""Entry point for `pnpm extract:backfill`.
+"""Entry point for `pnpm extract:backfill`.
 
 Re-extracts signals whose stored extraction predates the current schema. Counts
 only on stdout, no secrets or article bodies in logs or errors, and safe to

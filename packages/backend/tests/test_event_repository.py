@@ -2,15 +2,15 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from episignal_backend.ai.schema import (
+    EXTRACTION_SCHEMA_VERSION,
+    EXTRACTION_VERSION_KEY,
+)
 from episignal_backend.db.types import (
     CredibilityTier,
     LocationRole,
     Precision,
     SignalType,
-)
-from episignal_backend.ai.schema import (
-    EXTRACTION_SCHEMA_VERSION,
-    EXTRACTION_VERSION_KEY,
 )
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 from episignal_backend.events.protocol import EventRepository
@@ -506,4 +506,3 @@ def test_a_stored_extraction_survives_its_version_key() -> None:
 
 def test_an_unreadable_extraction_is_absence_rather_than_an_exception() -> None:
     assert read_stored_extraction({"signal_type": "not_a_type"}) is None
-

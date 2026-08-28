@@ -107,4 +107,3 @@ def test_the_extraction_prompt_carries_the_five_slots() -> None:
 
     for slot in ("what_where", "counts", "timing", "spread", "reporting"):
         assert slot in system
-

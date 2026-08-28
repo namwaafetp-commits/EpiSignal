@@ -233,5 +233,3 @@ def test_the_backfill_never_selects_a_signal_awaiting_a_human() -> None:
     selected = [value for value in compiled.params.values() if isinstance(value, str)]
     assert ProcessingStatus.NEEDS_REVIEW.value not in selected
     assert ProcessingStatus.NORMALIZED.value not in selected
-
-

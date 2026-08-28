@@ -7,8 +7,6 @@ from episignal_backend.ai.schema import (
     BriefPoint,
     BriefSlot,
     Extraction,
-    GroundedCount,
-    GroundedFlag,
     StoredExtractionPayload,
 )
 from pydantic import ValidationError
@@ -41,8 +39,9 @@ def test_a_point_must_say_something_even_when_nothing_was_reported() -> None:
 
 def test_a_point_rejects_a_slot_nobody_defined() -> None:
     with pytest.raises(ValidationError):
-        BriefPoint.model_validate({"slot": "vibes", "text": "Something happened.", "reported": True})
-
+        BriefPoint.model_validate(
+            {"slot": "vibes", "text": "Something happened.", "reported": True}
+        )
 
 
 def brief() -> list[dict[str, object]]:
@@ -219,4 +218,3 @@ def test_the_strict_model_still_refuses_the_version_key() -> None:
 
     with pytest.raises(ValidationError):
         Extraction.model_validate(stored)
-

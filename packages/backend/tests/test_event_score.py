@@ -126,7 +126,6 @@ def test_evidence_score_contradictory_totals_lower_consistency():
         BriefPoint,
         BriefSlot,
         Epidemiology,
-        Extraction,
         GroundedCount,
     )
     from episignal_backend.events.score import evidence_score
@@ -245,7 +244,6 @@ def test_scores_are_independent():
 
 
 def test_verification_status_derived_from_sources_only():
-    from episignal_backend.ai.schema import Extraction
     from episignal_backend.db.types import VerificationStatus
     from episignal_backend.events.score import verification_status
 

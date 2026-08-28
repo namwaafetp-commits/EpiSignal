@@ -249,4 +249,3 @@ def test_a_rejected_first_extraction_still_goes_to_review() -> None:
     result = run_extraction(repository, model, guards=guards(), now=lambda: NOW)
 
     assert result.reviewed == 1
-
