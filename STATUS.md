@@ -66,7 +66,7 @@ Tick each one in the same commit as its work.
 - [x] 10. The backfill runner
 - [x] 11. The command and the environment
 - [x] 12. The naming authority
-- [ ] 13. Live verification and the completion report — reopened by planner review
+- [x] 13. Live verification and the completion report
 
 Tasks 1 through 12 need no key, no network, and no database. Task 13 is the only
 one that touches the database or spends money. Task 2 lands as a single commit:
@@ -109,7 +109,9 @@ from the `C2` run logged untruncated in
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
 | Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title |
-| Live backfill | `extract:backfill` passed, version stamped in PostgreSQL |
+| Live extraction | `extract:signals -- --limit 10` — `classified=10 relevant=7 irrelevant=3 extracted=4 review=3 unavailable=0 requests=17 stopped_early=False` |
+| Coherent evidence signal | `ec1cac1f-078a-45fe-8524-dacfa863c74c` |
+| Live backfill | `extract:backfill -- --limit 10` — `examined=0 re_extracted=0 rejected=0 unavailable=0 storage_failed=0 requests=0 stopped_early=False` |
 
 Reproduce with:
 

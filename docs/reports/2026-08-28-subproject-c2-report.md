@@ -1,11 +1,11 @@
 # Sub-Project C2 Completion Report: English Title and Five-Slot Brief
 
-**Date:** 2026-08-28  
-**Repository:** `EpiSignal` (`namwaafetp-commits/EpiSignal`)  
-**Base Commit:** `b78f51d`  
-**Initial Completion Head:** `5e148ce`  
-**Correction Commit Range:** `3ecda02`..`b26e794`  
-**Verification Gate Commit:** `b26e794`  
+**Date:** 2026-08-28
+**Repository:** `EpiSignal` (`namwaafetp-commits/EpiSignal`)
+**Base Commit:** `b78f51d`
+**Initial Completion Head:** `5e148ce`
+**Correction Commit Range:** `3ecda02`..`b26e794`
+**Verification Gate Commit:** `b26e794`
 
 ---
 
@@ -161,6 +161,8 @@ $ corepack pnpm extract:signals -- --limit 10
 classified=10 relevant=7 irrelevant=3 extracted=4 review=3 unavailable=0 requests=17 stopped_early=False
 ```
 
+Correction verification used `--limit 10` rather than the planned limit of 5 to process the already-classified bounded queue in one run. The command remained within configured request and cost guards. No additional paid run was performed.
+
 ### 4.3 Backfill Execution Chronology and Idempotence
 
 1. **Initial Backfill Pass (pre-correction run):**
@@ -297,4 +299,3 @@ The previous draft report referenced row `852aa204-846d-4aa6-a256-82c187fdeaef` 
 ## 7. Next Action
 
 Ready for planner re-review; the worker has not changed ROADMAP.md or HANDOFF.md.
-
