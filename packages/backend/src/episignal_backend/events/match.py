@@ -6,7 +6,8 @@ and deciding whether to attach, create, or refuse.
 This module imports neither SQLAlchemy nor httpx.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from uuid import UUID
 
 from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.events.cluster import (
@@ -17,6 +18,8 @@ from episignal_backend.events.cluster import (
 from episignal_backend.events.documents import (
     CandidateEvent,
     LocationForMatching,
+    MatchAction,
+    MatchDecision,
     StoryCluster,
 )
 
@@ -126,3 +129,53 @@ def match_score(
 
     total = w_d * disease_score + w_s * spatial_score + w_t * temporal_score + w_p * prec_score
     return max(0.0, min(1.0, total))
+
+
+def decide(
+    cluster: StoryCluster,
+    candidates: Sequence[CandidateEvent],
+    *,
+    threshold: float = 0.70,
+    weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
+    distance_km: float = 50.0,
+    recency_days: float = 90.0,
+) -> MatchDecision:
+    """Make the conservative matching decision for a story cluster.
+
+    - attach: exactly one candidate event scores >= threshold.
+    - create: no candidate event scores >= threshold.
+    - refuse: two or more candidate events score >= threshold.
+    """
+    candidate_scores: dict[UUID, float] = {}
+    qualifiers: list[tuple[CandidateEvent, float]] = []
+
+    for cand in candidates:
+        score = match_score(
+            cluster,
+            cand,
+            weights=weights,
+            distance_km=distance_km,
+            recency_days=recency_days,
+        )
+        candidate_scores[cand.event_id] = score
+        if score >= threshold:
+            qualifiers.append((cand, score))
+
+    if len(qualifiers) == 1:
+        chosen_cand, chosen_score = qualifiers[0]
+        return MatchDecision(
+            action=MatchAction.ATTACH,
+            event_id=chosen_cand.event_id,
+            match_score=chosen_score,
+            candidate_scores=candidate_scores,
+        )
+    elif len(qualifiers) == 0:
+        return MatchDecision(
+            action=MatchAction.CREATE,
+            candidate_scores=candidate_scores,
+        )
+    else:
+        return MatchDecision(
+            action=MatchAction.REFUSE,
+            candidate_scores=candidate_scores,
+        )

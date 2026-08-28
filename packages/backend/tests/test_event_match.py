@@ -5,11 +5,13 @@ from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
 from episignal_backend.events.documents import (
     CandidateEvent,
     LocationForMatching,
+    MatchAction,
     SignalForMatching,
     StoryCluster,
 )
 from episignal_backend.events.match import (
     DEFAULT_MATCH_WEIGHTS,
+    decide,
     match_score,
 )
 
@@ -164,3 +166,135 @@ def test_match_score_bounds_and_weights():
 
     score = match_score(cluster, candidate, weights=DEFAULT_MATCH_WEIGHTS)
     assert 0.0 <= score <= 1.0
+
+
+def test_decide_attach_when_exactly_one_candidate_qualifies():
+
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    cluster = _make_cluster(disease_id, loc, now)
+
+    event_1_id = uuid4()
+    candidate_1 = CandidateEvent(
+        event_id=event_1_id,
+        disease_id=disease_id,
+        locations=(loc,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+    )
+    candidate_2 = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=uuid4(),  # Different disease -> score 0.0
+        locations=(loc,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+    )
+
+    decision = decide(cluster, [candidate_1, candidate_2], threshold=0.70)
+    assert decision.action == MatchAction.ATTACH
+    assert decision.event_id == event_1_id
+    assert decision.match_score is not None
+    assert decision.match_score >= 0.70
+
+
+def test_decide_create_when_zero_candidates_qualify():
+
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    cluster = _make_cluster(disease_id, loc, now)
+
+    candidate = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=uuid4(),  # Different disease -> score 0.0
+        locations=(loc,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+    )
+
+    decision = decide(cluster, [candidate], threshold=0.70)
+    assert decision.action == MatchAction.CREATE
+    assert decision.event_id is None
+    assert decision.match_score is None
+
+
+def test_decide_refuse_when_two_or_more_candidates_qualify():
+
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    cluster = _make_cluster(disease_id, loc, now)
+
+    candidate_1 = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(loc,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+    )
+    candidate_2 = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(loc,),
+        first_signal_at=now - timedelta(days=3),
+        last_updated_at=now - timedelta(days=1),
+    )
+
+    # Both candidates have score >= 0.70
+    decision = decide(cluster, [candidate_1, candidate_2], threshold=0.70)
+    assert decision.action == MatchAction.REFUSE
+    assert decision.event_id is None
+    assert decision.match_score is None
+    # Verify candidate_scores has both scores
+    assert len(decision.candidate_scores) == 2
+
+
+def test_decide_candidate_exactly_at_threshold_qualifies():
+
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    cluster = _make_cluster(disease_id, loc, now)
+    event_id = uuid4()
+    candidate = CandidateEvent(
+        event_id=event_id,
+        disease_id=disease_id,
+        locations=(loc,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+    )
+
+    actual_score = match_score(cluster, candidate)
+    decision = decide(cluster, [candidate], threshold=actual_score)
+    assert decision.action == MatchAction.ATTACH
+    assert decision.event_id == event_id
+    assert decision.match_score == actual_score

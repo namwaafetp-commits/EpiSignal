@@ -37,7 +37,7 @@ Tick each one in the same commit as its work.
 - [x] 5. A signal with no disease is not clustered
 - [x] 6. Single-link cluster assembly
 - [x] 7. Candidate match scoring
-- [ ] 8. The conservative decision — attach, create, or refuse
+- [x] 8. The conservative decision — attach, create, or refuse
 - [ ] 9. The early signal score
 - [ ] 10. The evidence score
 - [ ] 11. Verification status is derived, never scored
