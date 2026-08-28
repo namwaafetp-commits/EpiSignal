@@ -100,7 +100,7 @@ def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv(
         "EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/database"
     )
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.gdelt_poll_interval_minutes == 15
     assert settings.gdelt_query_window_minutes == 20
     assert settings.gdelt_max_articles_per_run == 200
@@ -117,8 +117,8 @@ def test_the_query_window_must_cover_the_poll_interval(monkeypatch: pytest.Monke
     monkeypatch.setenv("EPISIGNAL_GDELT_POLL_INTERVAL_MINUTES", "30")
     monkeypatch.setenv("EPISIGNAL_GDELT_QUERY_WINDOW_MINUTES", "20")
     # A window narrower than the interval opens a gap no later run ever revisits.
-    with pytest.raises(ValidationError, match="window"):
-        Settings()  # type: ignore[call-arg]
+    with pytest.raises(ValidationError, match="(?i)window"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 DATABASE_URL = "postgresql://user:secret@host/db"
