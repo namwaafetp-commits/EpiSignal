@@ -60,7 +60,7 @@ verified report back to the planner; do not mark `E` verified.
 - [x] 6. Expose `GET /api/v1/admin/pipeline-runs`.
 - [x] 7. Regenerate and lock the API contracts.
 - [x] 8. Strictly validate radar responses in the web client.
-- [ ] 9. Add only the map dependencies and pure marker helpers.
+- [x] 9. Add only the map dependencies and pure marker helpers.
 - [ ] 10. Mount a small resilient MapLibre component.
 - [ ] 11. Replace the homepage with the radar map and list.
 - [ ] 12. Wire server fetching, loading, responsive CSS, and build safety.
