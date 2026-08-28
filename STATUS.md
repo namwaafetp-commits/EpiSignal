@@ -77,18 +77,22 @@ are not blockers.
 
 ## Verified baseline
 
-Everything below was true at commit `291e3cf` on `main`, tree clean.
+Everything below was true at commit `0b777bc` on `main`, tree clean. Recorded
+from the `D2a` run logged untruncated in
+[docs/reports/2026-08-28-subproject-d2a-report.md](docs/reports/2026-08-28-subproject-d2a-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 618 passed, 1 warning |
-| Web tests | 10 passed |
-| Lint and format | `ruff check` clean, 139 files formatted |
-| Types | `mypy` clean across 73 source files |
-| Migration revision | `20260827_0006_geocoding` |
-| Gazetteer places seeded | 208,059 |
-| Country aliases seeded | 75 |
+| Python tests | 694 passed, 1 warning |
+| Web tests | 10 passed, 3 files |
+| Lint and format | `ruff check` clean, 158 files formatted |
+| Types | `mypy` clean across 82 source files |
+| Migration revision | `20260828_0007_event_scores` |
+| Live database | `scripts/verify-live-database.ps1` passed — 8 core tables, PostGIS up |
+| Canonical diseases | 29 stable of 29 rows |
+| Canonical sources | 2 stable and inactive |
+| `match:events` on live data | `seen=2 clusters=0 created=0 attached=0 refused=0 unclusterable=2` |
 
 Reproduce with:
 
