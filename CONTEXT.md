@@ -61,6 +61,24 @@ A model's own estimate of how sure it is. One input among several, never a
 reason on its own to accept a fact or to promote a signal.
 _Avoid_: score, certainty, probability.
 
+**English title**:
+An English title for the signal, translated when the source article is not in
+English and preserving the original headline when it is. Produced by the
+extraction pass so every downstream reader sees what the signal is about in a
+common language.
+_Avoid_: headline, translated title.
+
+**Brief**:
+A five-slot structured English summary of an extraction (`what_where`, `counts`,
+`timing`, `spread`, `reporting`). Every slot is filled; unmentioned facts state
+their absence honestly.
+_Avoid_: summary, bullet points, narrative.
+
+**Slot**:
+One fixed category within a brief (`what_where`, `counts`, `timing`, `spread`,
+`reporting`). Slots are ordered and non-optional.
+_Avoid_: section, field, category.
+
 ### The model ladder
 
 **Tier**:

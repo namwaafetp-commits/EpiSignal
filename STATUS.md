@@ -62,7 +62,7 @@ Tick each one in the same commit as its work.
 - [x] 9. The backfill pass
 - [x] 10. The backfill runner
 - [x] 11. The command and the environment
-- [ ] 12. The naming authority
+- [x] 12. The naming authority
 - [ ] 13. Live verification and the completion report
 
 Tasks 1 through 12 need no key, no network, and no database. Task 13 is the only
