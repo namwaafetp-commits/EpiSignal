@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "ai_requests",
     "gazetteer_places",
     "signal_locations",
+    "pipeline_runs",
 }
 
 
@@ -80,7 +81,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 16
+    assert len(enum_columns) == 19
 
     for column in enum_columns:
         enum_class = column.type.enum_class
@@ -316,3 +317,26 @@ def test_event_exposes_renamed_score_columns_and_constraints() -> None:
 
     assert "early_signal_score >= 0" in early_sql and "early_signal_score <= 1" in early_sql
     assert "evidence_score >= 0" in evidence_sql and "evidence_score <= 1" in evidence_sql
+
+
+def test_a_pipeline_run_records_the_window_it_asked_for() -> None:
+    table = Base.metadata.tables["pipeline_runs"]
+
+    assert {"window_start", "window_end"} <= set(table.columns.keys())
+    assert table.columns["window_start"].nullable is True
+
+
+def test_a_pipeline_run_starts_before_it_finishes() -> None:
+    table = Base.metadata.tables["pipeline_runs"]
+
+    assert table.columns["started_at"].nullable is False
+    # Null until the run closes out, which is how a killed run is recognised.
+    assert table.columns["finished_at"].nullable is True
+
+
+def test_stage_counts_and_backlog_default_to_empty_rather_than_null() -> None:
+    table = Base.metadata.tables["pipeline_runs"]
+
+    for name in ("stage_counts", "backlog", "failed_stages"):
+        assert table.columns[name].nullable is False
+
