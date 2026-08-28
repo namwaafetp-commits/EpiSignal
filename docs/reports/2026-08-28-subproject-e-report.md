@@ -76,7 +76,7 @@ $ uv run pytest packages/backend/tests apps/api/tests && corepack pnpm --filter 
 ........................................................................ [ 86%]
 ........................................................................ [ 95%]
 .....................................                                    [100%]
-829 passed, 1 warning in 10.97s
+828 passed, 1 warning in 10.97s
 
  RUN  v4.1.11 D:/Projects/Side Project/EpiSignal/apps/web
 

@@ -81,7 +81,7 @@ from the `E` run logged untruncated in
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 829 passed, 1 warning |
+| Python tests | 828 passed, 1 warning |
 | Web tests | 58 passed, 8 files |
 | Lint and format | `ruff check` and `eslint` clean, 187 files formatted |
 | Types | `tsc` and `mypy` clean across 96 source files |
