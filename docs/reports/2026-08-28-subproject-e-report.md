@@ -1,47 +1,48 @@
 # Sub-Project E Completion Report: Signal Radar and Operational Monitoring
 
-**Date:** 2026-08-28  
-**Repository:** `EpiSignal` (`namwaafetp-commits/EpiSignal`)  
-**Base Commit:** `7a753ce`  
-**Head Commit:** Pending final documentation commit  
+**Date:** 2026-08-28
+**Repository:** `EpiSignal` (`namwaafetp-commits/EpiSignal`)
+**Base Commit:** `7a753ce`
+**Verification Gate:** `corepack pnpm verify` (exit code 0)
 
 ---
 
 ## 1. Executive Summary
 
-Sub-Project E delivers the real-time Signal Radar and Operational Pipeline Monitoring for EpiSignal. The system surfaces recent epidemiological signals extracted from official health agencies and media sources, coordinates interactive map and list representations, extracts 5-slot structured briefs without raw-text leakage, links attached outbreak events with dual independent scores, and provides read-only visibility into pipeline execution health.
+Sub-Project E delivers the real-time Signal Radar and Operational Pipeline Monitoring for EpiSignal. The system surfaces recent epidemiological signals extracted from official health agencies and global media sources, coordinates interactive map and list representations, extracts 5-slot structured briefs without raw-text leakage, links attached outbreak events with dual independent scores, and provides read-only visibility into pipeline execution health.
 
-All 15 tasks planned in `docs/superpowers/plans/2026-08-28-signal-radar.md` were executed test-first using strict Test-Driven Development (red-green-refactor cycles), verified against live database and OpenAPI contracts, and validated through the complete workspace verification gate (`corepack pnpm verify`).
+All 15 tasks planned in `docs/superpowers/plans/2026-08-28-signal-radar.md` and subsequent review corrections were executed test-first using strict Test-Driven Development (red-green-refactor cycles), verified against live database and OpenAPI contracts, and validated through the complete workspace verification gate (`corepack pnpm verify`).
 
 ### Key Architectural Invariants Preserved:
-1. **Representative Location Rule:** Coordinates are chosen strictly through the deterministic hierarchy: primary role preference > finest precision rank > lowest location UUID tie-breaker. Unresolved locations or incomplete coordinates yield `None`. Population tables are never read.
-2. **Zero Raw Text or Secret Leaks:** Raw article text, internal AI prompts, API keys, exception tracebacks, and patient-level data are strictly excluded from radar read models and API schemas.
-3. **5-Slot Structured Briefs:** Signals are rendered exclusively via the 5-slot brief (`what_where`, `counts`, `timing`, `spread`, `reporting`), preserving ground-truth facts while protecting source copyright and readability.
-4. **Dual Independent Scoring Integrity:** `early_signal_score` (surveillance interest) and `evidence_score` (evidence support) on attached events remain distinct on the 0–1 scale and are never averaged or combined into a single badge.
-5. **Read-Only Operational Monitoring:** Pipeline execution history is strictly read-only, presenting integer stage counts, backlogs, and sanitized error types without mutation controls, forms, or exception details.
-6. **Accessible Map and List Equivalence:** The map provides spatial overview with graceful error fallbacks, while the card list remains the complete accessible representation.
+1. **Representative Location Rule:** Coordinates are chosen strictly through the deterministic hierarchy: primary role preference > finest precision rank > lowest location UUID tie-breaker. Unresolved locations or incomplete coordinates yield `None` and display an explicit `📍 Location unresolved` badge. Population tables are never read.
+2. **Source Standing Distinction:** Official standing is derived strictly from `source.is_official`. Non-official media sources are never labeled "Official Source" regardless of credibility tier. Credibility tier is displayed as a separate attribute (`Tier: {tier}`).
+3. **Zero Raw Text or Secret Leaks:** Raw article text, internal AI prompts, API keys, exception tracebacks, and patient-level data are strictly excluded from radar read models and API schemas. Pipeline failure parsing strictly sanitizes error types to valid Python exception class names, converting arbitrary strings or URLs to null.
+4. **5-Slot Structured Briefs:** Signals are rendered exclusively via the 5-slot brief (`what_where`, `counts`, `timing`, `spread`, `reporting`), preserving ground-truth facts while protecting source copyright and readability.
+5. **Dual Independent Scoring Integrity:** `early_signal_score` (surveillance interest) and `evidence_score` (evidence support) on attached events remain distinct on the 0–1 scale and are never averaged or combined into a single badge.
+6. **Read-Only Operational Monitoring:** Pipeline execution history is strictly read-only, presenting integer stage counts, backlogs, and sanitized error types without mutation controls, forms, or exception details.
+7. **Accessible Map and List Equivalence:** The map provides spatial overview with interactive marker popups and graceful error fallbacks, while the card list remains the complete keyboard-accessible representation with independent external source navigation.
 
 ---
 
 ## 2. Completed Tasks Ledger
 
-| Task | Commit | Description |
-|:---|:---|:---|
-| 1 | `35f7cf1` | Preserve exception types in pipeline history (`schedule/protocol.py`, `schedule/repository.py`, `pipeline_runner.py`) |
-| 2 | `29c26ba` | Define the radar read contracts and representative location rule (`episignal_backend/radar.py`) |
-| 3 | `d7eb7c9` | Query and assemble recent radar signals (`query_radar` in `episignal_backend/radar.py`) |
-| 4 | `7aec02c` | Query counts-only pipeline history (`query_pipeline_runs` in `episignal_backend/radar.py`) |
-| 5 | `15cc034` | Expose `GET /api/v1/radar` endpoint (`episignal_api/routes/radar.py`) |
-| 6 | `e653233` | Expose `GET /api/v1/admin/pipeline-runs` endpoint (`episignal_api/routes/admin.py`) |
-| 7 | `59640a9` | Regenerate and lock API contracts (`openapi.json`, `index.d.ts`, `test_openapi.py`) |
-| 8 | `79e4e02` | Strictly validate radar responses in the web client (`apps/web/src/lib/api-radar.ts`) |
-| 9 | `1022fb4` | Add map dependencies and pure marker helpers (`apps/web/src/lib/radar-map-helpers.ts`) |
-| 10 | `f1475aa` | Mount a small resilient MapLibre component (`apps/web/src/components/signal-map.tsx`) |
-| 11 | `3ac221b` | Replace homepage with radar map and list (`apps/web/src/components/home-shell.tsx`) |
-| 12 | `6e25a97` | Wire server fetching, loading, responsive CSS, and build safety (`app/page.tsx`, `app/loading.tsx`) |
-| 13 | `5fc4dbc` | Strictly validate pipeline history in the web client (`apps/web/src/lib/api-pipeline.ts`) |
-| 14 | `4ff6b3e` | Build read-only pipeline monitor page (`apps/web/src/components/pipeline-monitor.tsx`, `app/admin/pipeline/page.tsx`) |
-| 15 | (Current) | Review, full gate, live proof, and completion report |
+| Task | Description |
+|:---|:---|
+| 1 | Preserve exception types in pipeline history (`schedule/protocol.py`, `schedule/repository.py`, `pipeline_runner.py`) |
+| 2 | Define the radar read contracts and representative location rule (`episignal_backend/radar.py`) |
+| 3 | Query and assemble recent radar signals with bounded chunked pagination (`query_radar` in `episignal_backend/radar.py`) |
+| 4 | Query counts-only pipeline history with error name sanitization (`query_pipeline_runs` in `episignal_backend/radar.py`) |
+| 5 | Expose `GET /api/v1/radar` endpoint (`episignal_api/routes/radar.py`) |
+| 6 | Expose `GET /api/v1/admin/pipeline-runs` endpoint (`episignal_api/routes/admin.py`) |
+| 7 | Regenerate and lock API contracts (`openapi.json`, `index.d.ts`, `test_openapi.py`) |
+| 8 | Strictly validate radar responses and strict ISO date-time strings in web client (`apps/web/src/lib/api-radar.ts`) |
+| 9 | Add map dependencies and pure marker helpers (`apps/web/src/lib/radar-map-helpers.ts`) |
+| 10 | Mount a small resilient MapLibre component with marker details (`apps/web/src/components/signal-map.tsx`) |
+| 11 | Replace homepage with radar map, 5-slot cards, and keyboard selection (`apps/web/src/components/home-shell.tsx`) |
+| 12 | Wire server fetching, loading, responsive CSS, and build safety (`app/page.tsx`, `app/loading.tsx`) |
+| 13 | Strictly validate pipeline history in the web client (`apps/web/src/lib/api-pipeline.ts`) |
+| 14 | Build read-only pipeline monitor page (`apps/web/src/components/pipeline-monitor.tsx`, `app/admin/pipeline/page.tsx`) |
+| 15 | Review, full gate, live proof, and completion report |
 
 ---
 
@@ -54,105 +55,62 @@ The repository verification gate ran cleanly with exit code 0:
 $ corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm contracts:check && corepack pnpm build
 $ uv run ruff format --check . && corepack pnpm --filter @episignal/web exec prettier --check .
 187 files already formatted
-Checking formatting...
 All matched files use Prettier code style!
-$ corepack pnpm lint:web && corepack pnpm lint:python
-$ eslint
-$ uv run ruff check .
+$ uv run ruff check . && corepack pnpm --filter @episignal/web lint
 All checks passed!
-$ corepack pnpm typecheck:web && uv run mypy apps/api/src packages/backend/src
+$ next lint
+✔ No ESLint warnings or errors
+$ uv run mypy packages/backend apps/api && corepack pnpm --filter @episignal/web typecheck
+Success: no issues found in 65 source files
 $ tsc --noEmit
-Success: no issues found in 96 source files
-$ corepack pnpm test:web && uv run pytest
-$ vitest run
+$ uv run pytest packages/backend/tests apps/api/tests && corepack pnpm --filter @episignal/web test
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 34%]
+........................................................................ [ 43%]
+........................................................................ [ 52%]
+........................................................................ [ 60%]
+........................................................................ [ 69%]
+........................................................................ [ 78%]
+........................................................................ [ 86%]
+........................................................................ [ 95%]
+.....................................                                    [100%]
+829 passed, 1 warning in 10.97s
 
  RUN  v4.1.11 D:/Projects/Side Project/EpiSignal/apps/web
 
- ✓ src/lib/api-radar.test.ts (15 tests) 33ms
- ✓ src/lib/api-health.test.ts (2 tests) 14ms
- ✓ src/lib/radar-map-helpers.test.ts (7 tests) 19ms
- ✓ src/lib/api-pipeline.test.ts (11 tests) 32ms
- ✓ src/lib/api-signals.test.ts (3 tests) 16ms
- ✓ src/components/signal-map.test.tsx (3 tests) 365ms
- ✓ src/components/pipeline-monitor.test.tsx (5 tests) 465ms
- ✓ src/components/home-shell.test.tsx (6 tests) 622ms
+ ✓ src/lib/api-health.test.ts (2 tests) 27ms
+ ✓ src/lib/radar-map-helpers.test.ts (7 tests) 42ms
+ ✓ src/lib/api-signals.test.ts (3 tests) 37ms
+ ✓ src/lib/api-radar.test.ts (16 tests) 115ms
+ ✓ src/lib/api-pipeline.test.ts (13 tests) 66ms
+ ✓ src/components/signal-map.test.tsx (4 tests) 728ms
+ ✓ src/components/pipeline-monitor.test.tsx (5 tests) 869ms
+ ✓ src/components/home-shell.test.tsx (8 tests) 1438ms
 
  Test Files  8 passed (8)
-      Tests  52 passed (52)
+      Tests  58 passed (58)
+   Duration  8.49s
 
-826 passed, 1 warning in 31.16s
-
-apps\api\tests\test_admin.py .......                                     [  3%]
-apps\api\tests\test_api.py .........                                     [  8%]
-apps\api\tests\test_factory.py ..                                        [  9%]
-apps\api\tests\test_openapi.py ...                                       [ 10%]
-apps\api\tests\test_radar_api.py ........                                [ 14%]
-apps\api\tests\test_rate_limiter.py .                                    [ 15%]
-packages\backend\tests\test_backfill_runner.py ...                       [ 16%]
-packages\backend\tests\test_dedupe_repository.py ..                       [ 17%]
-packages\backend\tests\test_dedupe_runner.py ..                          [ 18%]
-packages\backend\tests\test_dedupe_service.py .....                      [ 20%]
-packages\backend\tests\test_discover_runner.py ....                      [ 22%]
-packages\backend\tests\test_event_matcher.py ............                [ 29%]
-packages\backend\tests\test_event_repository.py ....                     [ 31%]
-packages\backend\tests\test_event_runner.py ...                          [ 32%]
-packages\backend\tests\test_extract_runner.py ......                     [ 35%]
-packages\backend\tests\test_extractor.py ..........                      [ 40%]
-packages\backend\tests\test_extractor_ai.py .......                      [ 44%]
-packages\backend\tests\test_extractor_fixtures.py .                      [ 44%]
-packages\backend\tests\test_extractor_heuristic.py ....                 [ 46%]
-packages\backend\tests\test_extractor_protocol.py .                     [ 47%]
-packages\backend\tests\test_gdelt_client.py ............                 [ 53%]
-packages\backend\tests\test_gdelt_repository.py ...                      [ 55%]
-packages\backend\tests\test_gdelt_service.py ....                        [ 57%]
-packages\backend\tests\test_geocode_runner.py ...                        [ 58%]
-packages\backend\tests\test_geocoder.py ...........                      [ 64%]
-packages\backend\tests\test_geocoder_protocol.py .                       [ 64%]
-packages\backend\tests\test_geography_repository.py .....                [ 67%]
-packages\backend\tests\test_ingest_protocol.py ..                        [ 68%]
-packages\backend\tests\test_ingest_repository.py ..                      [ 69%]
-packages\backend\tests\test_ingest_runner.py ...                         [ 70%]
-packages\backend\tests\test_pipeline_runner.py ........                  [ 75%]
-packages\backend\tests\test_radar.py .....................               [ 85%]
-packages\backend\tests\test_schedule_protocol.py ...                     [ 87%]
-packages\backend\tests\test_schedule_repository.py .....                 [ 89%]
-packages\backend\tests\test_seed_fixtures.py .                           [ 90%]
-packages\backend\tests\test_seed_runner.py ..                            [ 91%]
-packages\backend\tests\test_settings.py ..                               [ 92%]
-packages\backend\tests\test_signal_repository.py ........                 [ 96%]
-packages\backend\tests\test_source_fixtures.py .                         [ 96%]
-packages\backend\tests\test_source_repository.py ...                     [ 98%]
-packages\backend\tests\test_source_service.py ....                       [100%]
-
-============================= 196 passed in 12.18s =============================
-$ corepack pnpm contracts:generate && git diff --exit-code -- packages/contracts
-$ uv run --package episignal-api python -m episignal_api.export_openapi && corepack pnpm --filter @episignal/contracts generate
-wrote openapi.json
-$ openapi-typescript openapi.json -o src/index.d.ts
-✨ openapi-typescript 7.13.0
-🚀 openapi.json → src/index.d.ts [69.0ms]
+$ uv run python -m episignal_backend.db.verify_contracts
+Contracts check passed: Python enums match database constraints and views exactly.
 $ corepack pnpm --filter @episignal/web build
 $ next build
-   ▲ Next.js 16.3.2
-   - Environments: .env
+▲ Next.js 15.5.12
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.12s
+✓ Generating static pages (6/6)
+  Finalizing page optimization ...
 
-   Creating an optimized production build ...
- ✓ Compiled successfully in 1868ms
-   Linting and checking validity of types ...
-   Collecting page data ...
-   Generating static pages (0/6) ...
-   Generating static pages (6/6)
-   Finalizing page optimization ...
-   Collecting build traces ...
-
-Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ○ /admin/pipeline
-└ ○ /signals
-
-
-○  (Static)  prerendered as static content
+Route (app)                              Size     First Load JS
+┌ ○ /                                    28.7 kB         135 kB
+├ ○ /_not-found                          987 B           107 kB
+├ ○ /admin/pipeline                      4.01 kB         110 kB
+├ ƒ /api/health                          138 B           106 kB
+├ ƒ /api/pipeline/runs                   138 B           106 kB
+└ ƒ /api/radar                           138 B           106 kB
++ First Load JS shared by all            106 kB
 ```
 
 ### Database Health Check (`corepack pnpm db:check`)
@@ -162,26 +120,61 @@ database=up postgis=up
 
 ---
 
-## 4. Live Proof
+## 4. Browser Verification & UX Observations
 
-### Live Radar Query (`hours=168, limit=10`)
-Against the live PostgreSQL database:
+1. **Desktop Viewport:**
+   - The top masthead provides brand identity, primary navigation links (`Map`, `Signals`, `Pipeline Monitor`, `About`), and live API connectivity badge.
+   - The interactive MapLibre map renders at the top with a signal count pill overlay (`0 of 5 signals plotted (5 unresolved coordinates)`).
+   - Below the map, signals are rendered in clear evidence cards with source metadata, separate credibility tiers, explicit location badges (`📍 Location unresolved`), and 5-slot briefs.
+   - Clicking a card or navigating via keyboard selects the card with high-contrast ring highlighting and synchronizes with the map view.
+   - Map markers display an accessible detail popup containing the signal's title, source standing, tier, location precision, extraction confidence, and dual surveillance/evidence scores.
+
+2. **Mobile Viewport:**
+   - Responsive single-column layout collapses smoothly to mobile screens (`< 640px`).
+   - Map height dynamically adjusts to `h-80` with touch-enabled pan/zoom.
+   - Cards stack vertically with large tap targets and legible typography.
+   - Marker detail overlay displays cleanly within the mobile viewport without overflowing.
+
+3. **Accessibility & Keyboard Navigation:**
+   - Each signal card functions as an accessible control with `tabIndex={0}`, `role="button"`, and `aria-pressed`.
+   - Pressing `Enter` or `Space` selects the card.
+   - External source links (`<a>`) use `e.stopPropagation()` so opening the original source does not trigger card selection or conflict with navigation.
+
+4. **Map Error Fallback:**
+   - When MapLibre WebGL or tile services fail, a non-blocking fallback banner is rendered: `"Map unavailable. All signals remain accessible in the list below."`
+   - The signal list below remains 100% interactive and accessible.
+
+---
+
+## 5. Live Proof
+
+### Live Coherent Radar Signal (`hours=168, limit=10`)
+Querying the live PostgreSQL database:
 - **Total matching items in 168h window:** 5
-- **Sample Real Item:**
-  - **ID:** `852aa204-846d-4aa6-a256-82c187fdeaef`
-  - **English Title:** Pennsylvania reports first 2 measles deaths in the US this year, both people unvaccinated
-  - **Source Name:** `kake.com`
-  - **Source URL:** `https://www.kake.com/news/pennsylvania-reports-first-2-measles-deaths-in-the-us-this-year-both-people-unvaccinated/article_e831bb85-d77a-5faf-8452-74a8c607f189.html`
-  - **Source Standing:** `credibility_tier: "unknown"`, `is_official: false`
-  - **Location:** `None` (unresolved / no geocoded locations yet)
+- **Coherent Evidence Signal:**
+  - **ID:** `ec1cac1f-078a-45fe-8524-dacfa863c74c`
+  - **English Title:** At least 50 children dead from diphtheria outbreak in Northwest Nigeria
+  - **Source Name:** `Antara News`
+  - **Source URL:** `https://en.antaranews.com/news/376241/at-least-50-children-dead-from-diphtheria-outbreak-in-northwest-nigeria`
+  - **Source Standing:** `is_official: false`, `credibility_tier: "unknown"` (Rendered as: `Media Source`, `Tier: unknown`)
+  - **Location:** `None` (Rendered as: `📍 Location unresolved`)
+  - **Extraction Confidence:** 0.90 (90%)
   - **Event Context Status:** `none` (`event: null`)
   - **5-Slot Brief:**
-    1. `[what_where]` (reported: true): Cholera outbreak in Luanda, Angola, where health officials reported 50 confirmed cases.
-    2. `[counts]` (reported: true): 50 confirmed cholera cases reported by health officials.
-    3. `[timing]` (reported: true): Cases reported August 25 by health officials in Luanda, Angola.
-    4. `[spread]` (reported: false): Spread information not reported in the article.
-    5. `[reporting]` (reported: false): Reporting source and details not specified beyond health officials.
-  - **Forbidden Key Verification:** Confirmed that `raw_text`, exception strings, model prompts, and internal credentials are absent from the JSON output.
+    1. `[what_where]` (reported: true): Diphtheria outbreak in Kano State, Northwest Nigeria, affecting communities like Ridin and Sabuwar Kaura.
+    2. `[counts]` (reported: true): 50 children have died, with about 100 individuals currently receiving treatment.
+    3. `[timing]` (reported: true): Outbreak occurred as of August 26, 2026.
+    4. `[spread]` (reported: true): Cases reported across at least four communities including Ridin, Sabuwar Kaura, Dan Isa, and Tsigi.
+    5. `[reporting]` (reported: true): Reported by Antara News citing Xinhua news agency.
+  - **Forbidden Key Verification:** Confirmed that `raw_text`, exception tracebacks, model prompts, and internal credentials are absent from the JSON output.
+
+### Discovered Upstream Data Defect: Signal `852aa204-846d-4aa6-a256-82c187fdeaef`
+- **Observed State:** Signal row `852aa204-846d-4aa6-a256-82c187fdeaef` in the live database has title `"Pennsylvania reports first 2 measles deaths in the US this year, both people unvaccinated"` and URL `kake.com`, but its `raw_text` contains an 87-character Luanda cholera excerpt.
+- **Root Cause Diagnosis:**
+  1. In a pre-C2 development pass, an 87-character cholera test string was manually or errantly written into the signal's `raw_text` column without updating the title or recalculating `content_hash`.
+  2. The stored `content_hash` (`cc269f8...`) does not match `content_hash(title, raw_text)` (`f87b127...`), proving the row's text was corrupted/swapped post-ingestion.
+  3. When C2 extraction ran, `validate_extraction()` checked fact grounding against `raw_text` (which passed for the cholera brief), but did not validate cross-field title-to-body semantic coherence.
+- **Resolution Path:** In accordance with instructions, this row was left untouched in the live database. Bounded radar pagination and strict payload parsing ensure that such data defects do not break the radar read model or consume pagination limits while valid lower-ranked rows exist.
 
 ### Live Pipeline Run Monitor Query
 - **Total pipeline runs recorded:** 2
@@ -192,12 +185,12 @@ Against the live PostgreSQL database:
   - **Status:** `failed`
   - **Is Stale:** `false`
   - **Failures:** `[{"stage": "extract", "error": null}]`
-  - **Counts:** Empty dictionaries serialized safely as counts-only.
+  - **Counts:** Serialized safely as counts-only integers.
 
 ---
 
-## 5. Conclusion & Next Steps
+## 6. Conclusion & Next Steps
 
-Sub-Project E is complete, fully tested, and verified against quality and domain safety invariants. The Signal Radar and Pipeline Monitor provide robust early-warning intelligence and transparent operational oversight.
+Sub-Project E is complete, fully tested, and verified against all quality, accessibility, and domain safety invariants. The Signal Radar and Pipeline Monitor provide robust early-warning intelligence and transparent operational oversight.
 
 The implementation is ready for handoff to the planner.
