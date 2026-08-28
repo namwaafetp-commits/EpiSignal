@@ -1,6 +1,45 @@
 import pytest
-from episignal_backend.ai.schema import Extraction, GroundedCount, GroundedFlag
+from episignal_backend.ai.schema import (
+    BRIEF_SLOT_COUNT,
+    BRIEF_SLOTS,
+    BriefPoint,
+    BriefSlot,
+    Extraction,
+    GroundedCount,
+    GroundedFlag,
+)
 from pydantic import ValidationError
+
+
+def test_the_slots_are_ordered_as_an_epidemiologist_reads_them() -> None:
+    assert BRIEF_SLOTS == (
+        BriefSlot.WHAT_WHERE,
+        BriefSlot.COUNTS,
+        BriefSlot.TIMING,
+        BriefSlot.SPREAD,
+        BriefSlot.REPORTING,
+    )
+    assert BRIEF_SLOT_COUNT == 5
+
+
+def test_a_point_may_report_an_absence() -> None:
+    point = BriefPoint.model_validate(
+        {"slot": "counts", "text": "No case count reported.", "reported": False}
+    )
+
+    assert point.reported is False
+    assert point.slot is BriefSlot.COUNTS
+
+
+def test_a_point_must_say_something_even_when_nothing_was_reported() -> None:
+    with pytest.raises(ValidationError):
+        BriefPoint.model_validate({"slot": "counts", "text": "   ", "reported": False})
+
+
+def test_a_point_rejects_a_slot_nobody_defined() -> None:
+    with pytest.raises(ValidationError):
+        BriefPoint.model_validate({"slot": "vibes", "text": "Something happened.", "reported": True})
+
 
 
 def minimal(**overrides: object) -> dict[str, object]:

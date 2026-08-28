@@ -9,6 +9,7 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 from datetime import date
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +19,8 @@ from episignal_backend.db.types import LocationRole, SignalType
 
 SUMMARY_MAX_CHARACTERS = 400
 SPAN_MAX_CHARACTERS = 300
+BRIEF_POINT_MAX_CHARACTERS = 200
+TITLE_MAX_CHARACTERS = 300
 
 
 def _require_span(value: str) -> str:
@@ -25,6 +28,45 @@ def _require_span(value: str) -> str:
     if not collapsed:
         raise ValueError("source_span must quote the article, not be blank")
     return collapsed
+
+
+class BriefSlot(StrEnum):
+    """One of the five questions a brief answers, in the order it is asked."""
+
+    WHAT_WHERE = "what_where"
+    COUNTS = "counts"
+    TIMING = "timing"
+    SPREAD = "spread"
+    REPORTING = "reporting"
+
+
+# Declaration order is the required order of a brief, so the enum is the
+# authority on both which slots exist and what sequence they come in.
+BRIEF_SLOTS: tuple[BriefSlot, ...] = tuple(BriefSlot)
+BRIEF_SLOT_COUNT = len(BRIEF_SLOTS)
+
+
+class BriefPoint(BaseModel):
+    """One bullet of a brief.
+
+    `reported` is false when the article never addressed this slot. The text
+    still has to say something — it says what is missing — because an empty
+    bullet and an unreported fact would look identical to a reader.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    slot: BriefSlot
+    text: str = Field(min_length=1, max_length=BRIEF_POINT_MAX_CHARACTERS)
+    reported: bool
+
+    @field_validator("text")
+    @classmethod
+    def text_is_not_blank(cls, value: str) -> str:
+        collapsed = " ".join(value.split())
+        if not collapsed:
+            raise ValueError("a brief point must say something, including an absence")
+        return collapsed
 
 
 class GroundedCount(BaseModel):

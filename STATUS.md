@@ -51,7 +51,7 @@ first. Set `C2` to `building` in [ROADMAP.md](ROADMAP.md) when task 1 begins.
 From [docs/superpowers/plans/2026-08-28-english-brief.md](docs/superpowers/plans/2026-08-28-english-brief.md).
 Tick each one in the same commit as its work.
 
-- [ ] 1. The slot vocabulary — `BriefSlot`, `BriefPoint`
+- [x] 1. The slot vocabulary — `BriefSlot`, `BriefPoint`
 - [ ] 2. The extraction carries an English title and a brief
 - [ ] 3. Privacy scans the title and the brief
 - [ ] 4. The prompt asks for English and for five slots
