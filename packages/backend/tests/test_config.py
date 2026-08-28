@@ -264,4 +264,3 @@ def test_a_catch_up_clamp_shorter_than_the_query_window_is_refused() -> None:
             pipeline_catch_up_max_minutes=600,
             _env_file=None,
         )
-

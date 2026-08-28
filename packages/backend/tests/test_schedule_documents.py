@@ -30,9 +30,7 @@ def test_a_window_shorter_than_a_minute_still_asks_for_one() -> None:
 
 def test_a_chain_with_no_failures_is_ok() -> None:
     outcome = ChainOutcome(
-        outcomes=(
-            StageOutcome(stage=StageName.DEDUPE, ok=True, counts={"examined": 3}),
-        )
+        outcomes=(StageOutcome(stage=StageName.DEDUPE, ok=True, counts={"examined": 3}),)
     )
 
     assert outcome.ok is True

@@ -29,9 +29,7 @@ def run_chain(
             # The type name only. An exception raised near the session can carry
             # the connection string, and one raised near a prompt can carry the
             # article.
-            outcomes.append(
-                StageOutcome(stage=stage, ok=False, error=type(error).__name__)
-            )
+            outcomes.append(StageOutcome(stage=stage, ok=False, error=type(error).__name__))
             continue
         outcomes.append(StageOutcome(stage=stage, ok=True, counts=dict(counts)))
 

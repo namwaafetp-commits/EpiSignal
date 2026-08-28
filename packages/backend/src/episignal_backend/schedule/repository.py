@@ -38,9 +38,7 @@ class SqlAlchemyPipelineRunRepository:
     def unlock(self) -> None:
         if not self._locked:
             return
-        self._session.execute(
-            text("SELECT pg_advisory_unlock(:key)"), {"key": PIPELINE_LOCK_KEY}
-        )
+        self._session.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": PIPELINE_LOCK_KEY})
         self._locked = False
 
     def last_window_end(self, chain: PipelineChain) -> datetime | None:

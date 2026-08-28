@@ -45,9 +45,7 @@ from episignal_backend.schedule.run import StageRunner
 
 def _ingest(connector: SourceConnector) -> Mapping[str, int]:
     with session_scope() as session:
-        result = run_ingestion(
-            SqlAlchemySignalRepository(session), connector, since=None
-        )
+        result = run_ingestion(SqlAlchemySignalRepository(session), connector, since=None)
     return {
         "inserted": result.inserted,
         "skipped": result.skipped,

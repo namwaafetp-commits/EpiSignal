@@ -35,9 +35,7 @@ def test_a_pure_module_touches_no_network(name: str) -> None:
 
 def test_only_the_repository_imports_sqlalchemy() -> None:
     importers = {
-        path.name
-        for path in SCHEDULE.glob("*.py")
-        if "sqlalchemy" in _imported_top_levels(path)
+        path.name for path in SCHEDULE.glob("*.py") if "sqlalchemy" in _imported_top_levels(path)
     }
     assert importers == {"repository.py"}
 

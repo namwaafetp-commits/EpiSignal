@@ -21,10 +21,7 @@ def catch_up_window(
 ) -> DiscoveryWindow:
     earliest = now - timedelta(minutes=max_minutes)
 
-    if last_window_end is None:
-        start = now - timedelta(minutes=default_minutes)
-    else:
-        start = last_window_end
+    start = now - timedelta(minutes=default_minutes) if last_window_end is None else last_window_end
 
     # The clamp loses news. It loses it loudly: the run records the window it
     # actually asked for, so a truncated catch-up is a row rather than a hole.

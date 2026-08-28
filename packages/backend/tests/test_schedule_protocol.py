@@ -55,9 +55,11 @@ def test_a_repository_missing_the_lock_does_not_satisfy_the_protocol() -> None:
 
 
 def test_the_protocol_imports_no_database_driver() -> None:
+    from pathlib import Path
+
     import episignal_backend.schedule.protocol as module
 
-    source = open(module.__file__, encoding="utf-8").read()
+    source = Path(module.__file__).read_text(encoding="utf-8")
     assert "sqlalchemy" not in source.lower()
 
 

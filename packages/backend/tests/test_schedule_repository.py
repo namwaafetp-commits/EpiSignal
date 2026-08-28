@@ -49,9 +49,7 @@ class FakeSession:
 
 
 def test_the_repository_satisfies_the_protocol() -> None:
-    assert isinstance(
-        SqlAlchemyPipelineRunRepository(FakeSession()), PipelineRunRepository
-    )
+    assert isinstance(SqlAlchemyPipelineRunRepository(FakeSession()), PipelineRunRepository)
 
 
 def test_taking_the_lock_asks_postgres_and_reports_the_answer() -> None:

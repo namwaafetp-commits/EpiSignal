@@ -339,4 +339,3 @@ def test_stage_counts_and_backlog_default_to_empty_rather_than_null() -> None:
 
     for name in ("stage_counts", "backlog", "failed_stages"):
         assert table.columns[name].nullable is False
-

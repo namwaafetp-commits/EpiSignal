@@ -6,9 +6,7 @@ NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
 
 def test_the_first_run_ever_falls_back_to_the_configured_window() -> None:
-    window = catch_up_window(
-        now=NOW, last_window_end=None, default_minutes=1500, max_minutes=10080
-    )
+    window = catch_up_window(now=NOW, last_window_end=None, default_minutes=1500, max_minutes=10080)
 
     assert window.end == NOW
     assert window.start == NOW - timedelta(minutes=1500)

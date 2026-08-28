@@ -62,4 +62,3 @@ def test_a_database_without_pipeline_runs_is_reported_as_missing_it() -> None:
     present = {table for table in EXPECTED_TABLES if table != "pipeline_runs"}
 
     assert missing_tables(present) == ["pipeline_runs"]
-

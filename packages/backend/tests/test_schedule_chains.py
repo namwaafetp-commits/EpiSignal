@@ -1,5 +1,4 @@
 import pytest
-
 from episignal_backend.schedule.chains import CHAINS, DAILY_CHAIN, chain_for
 from episignal_backend.schedule.documents import StageName
 
