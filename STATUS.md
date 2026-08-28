@@ -61,7 +61,7 @@ Tick each one in the same commit as its work.
 - [x] 8. The backfill selection
 - [x] 9. The backfill pass
 - [x] 10. The backfill runner
-- [ ] 11. The command and the environment
+- [x] 11. The command and the environment
 - [ ] 12. The naming authority
 - [ ] 13. Live verification and the completion report
 
