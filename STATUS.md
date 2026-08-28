@@ -53,7 +53,7 @@ Tick each one in the same commit as its work.
 - [x] 14. The script and the shell wrapper
 - [x] 15. The environment example
 - [x] 16. The seam guard
-- [ ] 17. The scheduling document
+- [x] 17. The scheduling document
 - [ ] 18. Live verification and the completion report
 
 Tasks 1 through 17 need no key, no network, and no database. Task 18 is the only
