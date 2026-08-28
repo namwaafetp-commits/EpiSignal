@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/pipeline-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pipeline Runs */
+        get: operations["list_pipeline_runs_api_v1_admin_pipeline_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/radar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Radar */
+        get: operations["get_radar_api_v1_radar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/signals": {
         parameters: {
             query?: never;
@@ -76,6 +110,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * BriefPoint
+         * @description One bullet of a brief.
+         *
+         *     `reported` is false when the article never addressed this slot. The text
+         *     still has to say something — it says what is missing — because an empty
+         *     bullet and an unreported fact would look identical to a reader.
+         */
+        BriefPoint: {
+            /** Reported */
+            reported: boolean;
+            slot: components["schemas"]["BriefSlot"];
+            /** Text */
+            text: string;
+        };
+        /**
+         * BriefSlot
+         * @description One of the five questions a brief answers, in the order it is asked.
+         * @enum {string}
+         */
+        BriefSlot: "what_where" | "counts" | "timing" | "spread" | "reporting";
         /** Components */
         Components: {
             /**
@@ -89,6 +144,16 @@ export interface components {
              */
             postgis: "up" | "down" | "unknown";
         };
+        /**
+         * CredibilityTier
+         * @enum {string}
+         */
+        CredibilityTier: "official" | "high" | "medium" | "unknown";
+        /**
+         * EventContextStatus
+         * @enum {string}
+         */
+        EventContextStatus: "none" | "attached" | "ambiguous";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -102,6 +167,11 @@ export interface components {
              */
             status: "alive";
         };
+        /**
+         * LocationRole
+         * @enum {string}
+         */
+        LocationRole: "primary" | "exposure" | "diagnosis" | "travel" | "reporting" | "affected_area";
         /** NotReadyResponse */
         NotReadyResponse: {
             components: components["schemas"]["Components"];
@@ -115,6 +185,164 @@ export interface components {
              * @constant
              */
             status: "not_ready";
+        };
+        /**
+         * PipelineChain
+         * @enum {string}
+         */
+        PipelineChain: "daily";
+        /** PipelineFailureResponse */
+        PipelineFailureResponse: {
+            /** Error */
+            error: string | null;
+            stage: components["schemas"]["StageName"];
+        };
+        /** PipelineRunListResponse */
+        PipelineRunListResponse: {
+            /** Items */
+            items: components["schemas"]["PipelineRunResponse"][];
+            /** Limit */
+            limit: number;
+        };
+        /** PipelineRunResponse */
+        PipelineRunResponse: {
+            /** Backlog */
+            backlog: {
+                [key: string]: number;
+            };
+            chain: components["schemas"]["PipelineChain"];
+            /** Failures */
+            failures: components["schemas"]["PipelineFailureResponse"][];
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Stale */
+            is_stale: boolean;
+            /** Stage Counts */
+            stage_counts: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            status: components["schemas"]["PipelineRunStatus"];
+            trigger: components["schemas"]["PipelineTrigger"];
+            /** Window End */
+            window_end: string | null;
+            /** Window Start */
+            window_start: string | null;
+        };
+        /**
+         * PipelineRunStatus
+         * @enum {string}
+         */
+        PipelineRunStatus: "running" | "succeeded" | "failed";
+        /**
+         * PipelineTrigger
+         * @enum {string}
+         */
+        PipelineTrigger: "scheduled" | "manual";
+        /**
+         * Precision
+         * @description How specific a resolved location actually is.
+         *
+         *     Ordered from most to least specific. `unresolved` is a real answer, not a
+         *     missing one: the article named a place the gazetteer could not match, which
+         *     is different from the article naming no place at all.
+         * @enum {string}
+         */
+        Precision: "place" | "admin2" | "admin1" | "country" | "unresolved";
+        /**
+         * ProcessingStatus
+         * @enum {string}
+         */
+        ProcessingStatus: "fetched" | "normalized" | "classified" | "extracted" | "geocoded" | "matched" | "published" | "duplicate" | "failed" | "needs_review";
+        /** RadarEventContextResponse */
+        RadarEventContextResponse: {
+            /** Early Signal Score */
+            early_signal_score: number | null;
+            /** Evidence Score */
+            evidence_score: number | null;
+            /** Public Id */
+            public_id: string;
+            verification_status: components["schemas"]["VerificationStatus"];
+        };
+        /** RadarItemResponse */
+        RadarItemResponse: {
+            /** Brief */
+            brief: components["schemas"]["BriefPoint"][];
+            event: components["schemas"]["RadarEventContextResponse"] | null;
+            event_context_status: components["schemas"]["EventContextStatus"];
+            /** Extraction Confidence */
+            extraction_confidence: number;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            location: components["schemas"]["RadarLocationResponse"] | null;
+            processing_status: components["schemas"]["ProcessingStatus"];
+            /** Published At */
+            published_at: string | null;
+            signal_type: components["schemas"]["SignalType"];
+            source: components["schemas"]["RadarSourceResponse"];
+            /** Title English */
+            title_english: string;
+        };
+        /** RadarLocationResponse */
+        RadarLocationResponse: {
+            /** Country Code */
+            country_code: string | null;
+            /** Label */
+            label: string;
+            /** Latitude */
+            latitude: number | null;
+            /** Longitude */
+            longitude: number | null;
+            precision: components["schemas"]["Precision"];
+            role: components["schemas"]["LocationRole"];
+        };
+        /** RadarResponse */
+        RadarResponse: {
+            /** Hours */
+            hours: number;
+            /** Items */
+            items: components["schemas"]["RadarItemResponse"][];
+            /** Limit */
+            limit: number;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+        };
+        /** RadarSourceResponse */
+        RadarSourceResponse: {
+            credibility_tier: components["schemas"]["CredibilityTier"];
+            /** Is Official */
+            is_official: boolean;
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
         };
         /** ReadinessResponse */
         ReadinessResponse: {
@@ -161,6 +389,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * SignalType
+         * @enum {string}
+         */
+        SignalType: "outbreak_report" | "surveillance_update" | "case_report" | "imported_case" | "public_health_action" | "vaccination_campaign" | "risk_assessment" | "situation_report" | "research" | "rumor" | "unknown";
+        /**
+         * StageName
+         * @description One step of the pipeline. Never a rung of the model ladder: that is a tier.
+         * @enum {string}
+         */
+        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "dedupe" | "extract" | "geocode" | "match";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -174,6 +413,11 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * VerificationStatus
+         * @enum {string}
+         */
+        VerificationStatus: "officially_confirmed" | "high_credibility" | "signal" | "unverified" | "rumor_monitoring";
         /** VersionResponse */
         VersionResponse: {
             /** Name */
@@ -206,6 +450,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+        };
+    };
+    list_pipeline_runs_api_v1_admin_pipeline_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_radar_api_v1_radar_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

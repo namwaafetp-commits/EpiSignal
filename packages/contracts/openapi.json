@@ -1,6 +1,44 @@
 {
   "components": {
     "schemas": {
+      "BriefPoint": {
+        "additionalProperties": false,
+        "description": "One bullet of a brief.\n\n`reported` is false when the article never addressed this slot. The text\nstill has to say something \u2014 it says what is missing \u2014 because an empty\nbullet and an unreported fact would look identical to a reader.",
+        "properties": {
+          "reported": {
+            "title": "Reported",
+            "type": "boolean"
+          },
+          "slot": {
+            "$ref": "#/components/schemas/BriefSlot"
+          },
+          "text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "text",
+          "reported"
+        ],
+        "title": "BriefPoint",
+        "type": "object"
+      },
+      "BriefSlot": {
+        "description": "One of the five questions a brief answers, in the order it is asked.",
+        "enum": [
+          "what_where",
+          "counts",
+          "timing",
+          "spread",
+          "reporting"
+        ],
+        "title": "BriefSlot",
+        "type": "string"
+      },
       "Components": {
         "properties": {
           "database": {
@@ -29,6 +67,25 @@
         "title": "Components",
         "type": "object"
       },
+      "CredibilityTier": {
+        "enum": [
+          "official",
+          "high",
+          "medium",
+          "unknown"
+        ],
+        "title": "CredibilityTier",
+        "type": "string"
+      },
+      "EventContextStatus": {
+        "enum": [
+          "none",
+          "attached",
+          "ambiguous"
+        ],
+        "title": "EventContextStatus",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -56,6 +113,18 @@
         "title": "LivenessResponse",
         "type": "object"
       },
+      "LocationRole": {
+        "enum": [
+          "primary",
+          "exposure",
+          "diagnosis",
+          "travel",
+          "reporting",
+          "affected_area"
+        ],
+        "title": "LocationRole",
+        "type": "string"
+      },
       "NotReadyResponse": {
         "properties": {
           "components": {
@@ -78,6 +147,458 @@
           "error_code"
         ],
         "title": "NotReadyResponse",
+        "type": "object"
+      },
+      "PipelineChain": {
+        "enum": [
+          "daily"
+        ],
+        "title": "PipelineChain",
+        "type": "string"
+      },
+      "PipelineFailureResponse": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/StageName"
+          }
+        },
+        "required": [
+          "stage",
+          "error"
+        ],
+        "title": "PipelineFailureResponse",
+        "type": "object"
+      },
+      "PipelineRunListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit"
+        ],
+        "title": "PipelineRunListResponse",
+        "type": "object"
+      },
+      "PipelineRunResponse": {
+        "properties": {
+          "backlog": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Backlog",
+            "type": "object"
+          },
+          "chain": {
+            "$ref": "#/components/schemas/PipelineChain"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineFailureResponse"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_stale": {
+            "title": "Is Stale",
+            "type": "boolean"
+          },
+          "stage_counts": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Stage Counts",
+            "type": "object"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PipelineRunStatus"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PipelineTrigger"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "id",
+          "chain",
+          "trigger",
+          "status",
+          "started_at",
+          "finished_at",
+          "window_start",
+          "window_end",
+          "stage_counts",
+          "backlog",
+          "failures",
+          "is_stale"
+        ],
+        "title": "PipelineRunResponse",
+        "type": "object"
+      },
+      "PipelineRunStatus": {
+        "enum": [
+          "running",
+          "succeeded",
+          "failed"
+        ],
+        "title": "PipelineRunStatus",
+        "type": "string"
+      },
+      "PipelineTrigger": {
+        "enum": [
+          "scheduled",
+          "manual"
+        ],
+        "title": "PipelineTrigger",
+        "type": "string"
+      },
+      "Precision": {
+        "description": "How specific a resolved location actually is.\n\nOrdered from most to least specific. `unresolved` is a real answer, not a\nmissing one: the article named a place the gazetteer could not match, which\nis different from the article naming no place at all.",
+        "enum": [
+          "place",
+          "admin2",
+          "admin1",
+          "country",
+          "unresolved"
+        ],
+        "title": "Precision",
+        "type": "string"
+      },
+      "ProcessingStatus": {
+        "enum": [
+          "fetched",
+          "normalized",
+          "classified",
+          "extracted",
+          "geocoded",
+          "matched",
+          "published",
+          "duplicate",
+          "failed",
+          "needs_review"
+        ],
+        "title": "ProcessingStatus",
+        "type": "string"
+      },
+      "RadarEventContextResponse": {
+        "properties": {
+          "early_signal_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early Signal Score"
+          },
+          "evidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Score"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus"
+          }
+        },
+        "required": [
+          "public_id",
+          "verification_status",
+          "early_signal_score",
+          "evidence_score"
+        ],
+        "title": "RadarEventContextResponse",
+        "type": "object"
+      },
+      "RadarItemResponse": {
+        "properties": {
+          "brief": {
+            "items": {
+              "$ref": "#/components/schemas/BriefPoint"
+            },
+            "title": "Brief",
+            "type": "array"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarEventContextResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_context_status": {
+            "$ref": "#/components/schemas/EventContextStatus"
+          },
+          "extraction_confidence": {
+            "title": "Extraction Confidence",
+            "type": "number"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarLocationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/ProcessingStatus"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "signal_type": {
+            "$ref": "#/components/schemas/SignalType"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RadarSourceResponse"
+          },
+          "title_english": {
+            "title": "Title English",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title_english",
+          "brief",
+          "signal_type",
+          "processing_status",
+          "published_at",
+          "first_seen_at",
+          "source",
+          "extraction_confidence",
+          "location",
+          "event_context_status",
+          "event"
+        ],
+        "title": "RadarItemResponse",
+        "type": "object"
+      },
+      "RadarLocationResponse": {
+        "properties": {
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/Precision"
+          },
+          "role": {
+            "$ref": "#/components/schemas/LocationRole"
+          }
+        },
+        "required": [
+          "role",
+          "precision",
+          "label",
+          "country_code",
+          "latitude",
+          "longitude"
+        ],
+        "title": "RadarLocationResponse",
+        "type": "object"
+      },
+      "RadarResponse": {
+        "properties": {
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RadarItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "window_start",
+          "window_end",
+          "hours",
+          "limit"
+        ],
+        "title": "RadarResponse",
+        "type": "object"
+      },
+      "RadarSourceResponse": {
+        "properties": {
+          "credibility_tier": {
+            "$ref": "#/components/schemas/CredibilityTier"
+          },
+          "is_official": {
+            "title": "Is Official",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "is_official",
+          "credibility_tier"
+        ],
+        "title": "RadarSourceResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -187,6 +708,37 @@
         "title": "SignalListResponse",
         "type": "object"
       },
+      "SignalType": {
+        "enum": [
+          "outbreak_report",
+          "surveillance_update",
+          "case_report",
+          "imported_case",
+          "public_health_action",
+          "vaccination_campaign",
+          "risk_assessment",
+          "situation_report",
+          "research",
+          "rumor",
+          "unknown"
+        ],
+        "title": "SignalType",
+        "type": "string"
+      },
+      "StageName": {
+        "description": "One step of the pipeline. Never a rung of the model ladder: that is a tier.",
+        "enum": [
+          "ingest_who",
+          "ingest_ecdc",
+          "discover",
+          "dedupe",
+          "extract",
+          "geocode",
+          "match"
+        ],
+        "title": "StageName",
+        "type": "string"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -226,6 +778,17 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VerificationStatus": {
+        "enum": [
+          "officially_confirmed",
+          "high_credibility",
+          "signal",
+          "unverified",
+          "rumor_monitoring"
+        ],
+        "title": "VerificationStatus",
+        "type": "string"
       },
       "VersionResponse": {
         "properties": {
@@ -271,6 +834,108 @@
         "summary": "Version",
         "tags": [
           "version"
+        ]
+      }
+    },
+    "/api/v1/admin/pipeline-runs": {
+      "get": {
+        "operationId": "list_pipeline_runs_api_v1_admin_pipeline_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Pipeline Runs",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/radar": {
+      "get": {
+        "operationId": "get_radar_api_v1_radar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 48,
+              "maximum": 168,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RadarResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Radar",
+        "tags": [
+          "radar"
         ]
       }
     },
