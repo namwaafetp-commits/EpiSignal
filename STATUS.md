@@ -113,7 +113,7 @@ purpose-specific model routing.
 - [x] 9. Add secret admin authentication and safe configuration.
 - [x] 10. Expose authenticated queue reads.
 - [x] 11. Expose transactional resolution and regenerate contracts.
-- [ ] 12. Strictly validate the review API in the web client.
+- [x] 12. Strictly validate the review API in the web client.
 - [ ] 13. Build the accessible cause-specific review queue.
 - [ ] 14. Mount the inspired review workspace in the existing web shell.
 - [ ] 15. Review, verify, capture safe live proof, and report.
