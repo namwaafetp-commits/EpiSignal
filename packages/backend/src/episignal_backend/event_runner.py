@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
-from episignal_backend.ai.routing import NoProviderKey, RoutedChatModel, build_adapters
+from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import AssemblySummary, run_event_assembly
@@ -51,29 +51,15 @@ def _run(arguments: Arguments) -> AssemblySummary:
     settings = get_settings()
     limit = arguments.limit or settings.event_match_batch_size
     stale = arguments.stale or settings.event_match_stale
-    try:
-        adapters = build_adapters(
-            openrouter_api_key=(
-                settings.openrouter_api_key.get_secret_value()
-                if settings.openrouter_api_key
-                else None
-            ),
-            gemini_api_key=(
-                settings.gemini_api_key.get_secret_value() if settings.gemini_api_key else None
-            ),
-            openrouter_base_url=settings.openrouter_base_url,
-            gemini_base_url=settings.gemini_base_url,
-            timeout_seconds=settings.ai_request_timeout_seconds,
-            max_attempts=settings.ai_max_attempts_per_tier,
-        )
-    except NoProviderKey:
-        # The delta pass is enrichment; an assembly without it is still a
-        # complete assembly. No key, no delta, and the run proceeds.
-        adapters = {}
     with session_scope() as session:
         specs = list(SqlAlchemyAiRepository(session).models())
+        try:
+            model = routed_from_settings(settings, specs)
+        except NoProviderKey:
+            # The delta pass is enrichment; an assembly without it is still a
+            # complete assembly. No key, no delta, and the run proceeds.
+            model = None
         delta_spec = next((spec for spec in specs if spec.tier == 1), None)
-        delta_model = RoutedChatModel.from_specs(specs, adapters) if adapters else None
         return run_event_assembly(
             SqlAlchemyEventRepository(session),
             limit=limit,
@@ -83,7 +69,7 @@ def _run(arguments: Arguments) -> AssemblySummary:
             match_threshold=settings.event_match_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
-            delta_model=delta_model,
+            delta_model=model,
             delta_spec=delta_spec,
             followup_window_days=settings.event_followup_window_days,
         )

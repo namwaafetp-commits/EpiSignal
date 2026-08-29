@@ -149,11 +149,17 @@ measurement gate in Task 13.
    real-time rows do. Fake-transport tests cover submit, poll, reject, and
    expiry.
 
-10. **Wire batch mode into scheduled extraction.** Scheduled runs collect
-    extraction requests, submit one batch, and a later poll in the same cycle
-    retrieves and records results; any request unavailable in batch re-selects
-    for real-time in the same run. Manual runs stay real-time. Scheduler tests
-    with fakes cover the full cycle and the fallback path.
+10. **Route scheduled extraction and matching through the provider ladder.**
+    Both scheduled stages shared the manual runner's old single-adapter
+    construction; they now use the same routed construction, and the match
+    stage runs the delta pass after a recent attach. **Amended 2026-08-29
+    during Task 10:** wiring the batch client into the scheduler requires a
+    batch-job persistence seam (submit this cycle, poll a later one) that this
+    plan never designed, and the batch client from Task 9 exists and is tested
+    without it. Rather than grow a schema mid-task, batch adoption is deferred
+    to the Task 13 measurement: if trailing spend justifies it, batch wiring
+    becomes its own planned item with its own migration. Manual runs stay
+    real-time, as the design already required.
 
 11. **Build the pre-group stage.** Pure module: group normalized signals by
     query rule group, publisher country code, and a configurable day window

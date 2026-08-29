@@ -14,8 +14,8 @@ from collections.abc import Mapping
 from episignal_backend.ai.classify import run_classification
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards
-from episignal_backend.ai.openrouter import OpenRouterChatModel
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
+from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import run_event_assembly
@@ -118,15 +118,6 @@ def _dedupe() -> Mapping[str, int]:
 
 def _extract() -> Mapping[str, int]:
     settings = get_settings()
-    if settings.openrouter_api_key is None:
-        raise RuntimeError("EPISIGNAL_OPENROUTER_API_KEY is not set")
-
-    model = OpenRouterChatModel(
-        settings.openrouter_api_key.get_secret_value(),
-        base_url=settings.openrouter_base_url,
-        timeout_seconds=settings.ai_request_timeout_seconds,
-        max_attempts=settings.ai_max_attempts_per_tier,
-    )
     guards = Guards(
         max_requests=settings.ai_max_requests_per_run,
         max_cost_usd=settings.ai_max_cost_usd_per_run,
@@ -134,6 +125,10 @@ def _extract() -> Mapping[str, int]:
 
     with session_scope() as session:
         repository = SqlAlchemyAiRepository(session)
+        try:
+            model = routed_from_settings(settings, list(repository.models()))
+        except NoProviderKey as error:
+            raise RuntimeError(str(error)) from error
         classified = run_classification(
             repository,
             model,
@@ -185,8 +180,16 @@ def _geocode() -> Mapping[str, int]:
 def _match() -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
+        event_repository = SqlAlchemyEventRepository(session)
+        specs = list(SqlAlchemyAiRepository(session).models())
+        # The delta pass is enrichment: without a provider key the assembly
+        # still runs, it simply never records what changed.
+        try:
+            model = routed_from_settings(settings, specs)
+        except NoProviderKey:
+            model = None
         summary = run_event_assembly(
-            SqlAlchemyEventRepository(session),
+            event_repository,
             limit=settings.event_match_batch_size,
             stale=False,
             cluster_window_days=settings.event_cluster_window_days,
@@ -194,6 +197,9 @@ def _match() -> Mapping[str, int]:
             match_threshold=settings.event_match_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
+            delta_model=model,
+            delta_spec=next((spec for spec in specs if spec.tier == 1), None),
+            followup_window_days=settings.event_followup_window_days,
         )
     return {
         "seen": summary.signals_seen,
@@ -202,6 +208,7 @@ def _match() -> Mapping[str, int]:
         "attached": summary.signals_attached,
         "refused": summary.signals_refused,
         "unclusterable": summary.unclusterable,
+        "deltas": summary.deltas_applied,
     }
 
 

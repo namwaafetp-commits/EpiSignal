@@ -13,6 +13,7 @@ from episignal_backend.ai.documents import ChatRequest, ChatResponse, ModelSpec
 from episignal_backend.ai.gemini import GeminiChatModel
 from episignal_backend.ai.openrouter import OpenRouterChatModel
 from episignal_backend.ai.protocol import ChatModel, ModelUnavailable
+from episignal_backend.config import Settings
 from episignal_backend.db.types import AiProvider
 
 
@@ -80,3 +81,25 @@ class RoutedChatModel:
         if adapter is None:
             raise ModelUnavailable(f"no adapter for {request.model_id}")
         return adapter.complete(request)
+
+
+def routed_from_settings(settings: Settings, specs: list[ModelSpec]) -> RoutedChatModel:
+    """One construction shared by the manual runner and the scheduled stage.
+
+    Raises `NoProviderKey` when neither provider key is configured; callers
+    decide whether that is fatal (extraction) or a degraded run (the delta
+    pass inside event assembly).
+    """
+    adapters = build_adapters(
+        openrouter_api_key=(
+            settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+        ),
+        gemini_api_key=(
+            settings.gemini_api_key.get_secret_value() if settings.gemini_api_key else None
+        ),
+        openrouter_base_url=settings.openrouter_base_url,
+        gemini_base_url=settings.gemini_base_url,
+        timeout_seconds=settings.ai_request_timeout_seconds,
+        max_attempts=settings.ai_max_attempts_per_tier,
+    )
+    return RoutedChatModel.from_specs(specs, adapters)

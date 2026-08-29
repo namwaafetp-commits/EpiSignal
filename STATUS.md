@@ -107,7 +107,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [x] 7. Add the delta pass.
 - [x] 8. Wire the delta pass after attach.
 - [x] 9. Build the Gemini batch client.
-- [ ] 10. Wire batch mode into scheduled extraction.
+- [x] 10. Route scheduled stages through the provider ladder.
 - [ ] 11. Build the pre-group stage.
 - [ ] 12. Store pre-groups and change selection.
 - [ ] 13. Add the measurement gate.

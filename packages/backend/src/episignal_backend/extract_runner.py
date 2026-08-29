@@ -19,7 +19,7 @@ from episignal_backend.ai.classify import ClassificationResult, run_classificati
 from episignal_backend.ai.extract import ExtractionResult, run_extraction
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
-from episignal_backend.ai.routing import NoProviderKey, RoutedChatModel, build_adapters
+from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 
@@ -63,23 +63,6 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
 
 def _run(arguments: Arguments) -> tuple[ClassificationResult, ExtractionResult]:
     settings = get_settings()
-    try:
-        adapters = build_adapters(
-            openrouter_api_key=(
-                settings.openrouter_api_key.get_secret_value()
-                if settings.openrouter_api_key
-                else None
-            ),
-            gemini_api_key=(
-                settings.gemini_api_key.get_secret_value() if settings.gemini_api_key else None
-            ),
-            openrouter_base_url=settings.openrouter_base_url,
-            gemini_base_url=settings.gemini_base_url,
-            timeout_seconds=settings.ai_request_timeout_seconds,
-            max_attempts=settings.ai_max_attempts_per_tier,
-        )
-    except NoProviderKey as error:
-        raise RuntimeError(str(error)) from error
 
     guards = Guards(
         max_requests=settings.ai_max_requests_per_run,
@@ -93,7 +76,10 @@ def _run(arguments: Arguments) -> tuple[ClassificationResult, ExtractionResult]:
 
     with session_scope() as session:
         repository = SqlAlchemyAiRepository(session)
-        model = RoutedChatModel.from_specs(list(repository.models()), adapters)
+        try:
+            model = routed_from_settings(settings, list(repository.models()))
+        except NoProviderKey as error:
+            raise RuntimeError(str(error)) from error
         if arguments.stage in {"classify", "both"}:
             classified = run_classification(
                 repository,
