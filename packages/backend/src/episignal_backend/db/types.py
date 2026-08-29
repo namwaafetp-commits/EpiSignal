@@ -63,6 +63,11 @@ class ProcessingStatus(StrEnum):
     DUPLICATE = "duplicate"
     FAILED = "failed"
     NEEDS_REVIEW = "needs_review"
+    # Terminal, like DUPLICATE: the keyword gate found no evidence in the
+    # title that this article concerns a public health event. The row and its
+    # title are preserved so a widened keyword list can re-gate it.
+    FILTERED = "filtered"
+
     # Terminal, like FAILED/DUPLICATE: a dismissed signal is preserved for
     # provenance and audit, but no automated stage selects it.
     DISMISSED = "dismissed"

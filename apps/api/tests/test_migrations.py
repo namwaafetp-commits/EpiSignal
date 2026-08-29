@@ -26,7 +26,8 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260829_0015"]
+    assert scripts.get_heads() == ["20260829_0016"]
+
 
 
 def render_offline(*arguments: str) -> str:
@@ -260,3 +261,16 @@ def test_manual_review_migration_is_ordered_and_non_destructive() -> None:
 def test_manual_review_downgrade_refuses_to_erase_audit_history() -> None:
     source = _revision_source("20260829_0014_manual_review_cases")
     assert "Cannot downgrade manual review schema after review data exists" in source
+
+
+def test_the_filtered_status_widens_the_check_constraint() -> None:
+    sql = render_offline("upgrade", "20260829_0015:20260829_0016")
+    assert "processing_status_values" in sql
+    assert "'filtered'" in sql
+
+
+def test_the_filtered_downgrade_returns_rows_to_fetched() -> None:
+    source = _revision_source("20260829_0016_filtered_status")
+    assert "processing_status = 'fetched'" in source
+    assert "processing_status = 'filtered'" in source
+

@@ -71,9 +71,11 @@ const PROCESSING_STATUSES = new Set([
   "matched",
   "published",
   "duplicate",
+  "filtered",
   "failed",
   "needs_review",
 ]);
+
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
