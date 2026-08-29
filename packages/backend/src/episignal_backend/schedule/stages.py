@@ -34,7 +34,11 @@ from episignal_backend.ingestion.ecdc_epi import EcdcEpiConnector
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
 from episignal_backend.ingestion.gdelt.connector import GdeltConnector
+from datetime import UTC, datetime
+
 from episignal_backend.ingestion.pipeline import run_ingestion
+from episignal_backend.ingestion.pregroup import group_signals
+from episignal_backend.ingestion.pregroup_store import SqlAlchemyPreGroupStore
 from episignal_backend.ingestion.protocol import SourceConnector
 from episignal_backend.ingestion.repository import (
     SqlAlchemyDedupeRepository,
@@ -148,7 +152,40 @@ def _dedupe() -> Mapping[str, int]:
 
 
 def _pregroup() -> Mapping[str, int]:
-    return {}
+    settings = get_settings()
+    now = datetime.now(UTC)
+
+    if not settings.pregroup_enabled:
+        with session_scope() as session:
+            resolved, expired = SqlAlchemyPreGroupStore(session).resolve_and_expire(
+                expiry_hours=settings.pregroup_expiry_hours,
+                now=now,
+            )
+            session.commit()
+        return {
+            "resolved": resolved,
+            "expired": expired,
+        }
+
+    with session_scope() as session:
+        store = SqlAlchemyPreGroupStore(session)
+        resolved, expired = store.resolve_and_expire(
+            expiry_hours=settings.pregroup_expiry_hours, now=now
+        )
+        candidates = store.candidates(limit=settings.pregroup_batch_size)
+        groups = group_signals(candidates, window_days=settings.pregroup_window_days)
+        written = store.write_groups(groups, window_days=settings.pregroup_window_days, now=now)
+        session.commit()
+
+    deferred = sum(len(group.deferred) for group in groups)
+    return {
+        "examined": len(candidates),
+        "groups": written,
+        "deferred": deferred,
+        "resolved": resolved,
+        "expired": expired,
+    }
+
 
 
 def _extract() -> Mapping[str, int]:
