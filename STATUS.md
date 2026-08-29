@@ -54,6 +54,17 @@ file currently belongs to `M`, and overwriting it mid-build is forbidden. The
 `O` worker needs `EPISIGNAL_GEMINI_API_KEY` for the plan's live validation
 task; absent the key, that task records the blocker and the rest proceeds.
 
+**Roster reorder, 2026-08-29, operator instruction (commit `02c23a7`):** the
+active ladder is `google/gemini-3.1-flash-lite` (T1), `google/gemini-3.5-flash-lite`
+(T2), `mistralai/mistral-small-24b-instruct-2501` (T3, the one OpenRouter
+fallback rung). `gemini-2.5-flash-lite` is retired for new API keys — the
+live API answers 404 — so 3.1 takes the everyday role; the seed keeps the
+retired row inactive so it can never silently reactivate. The reorder is
+seeded live and seed-tested, but its first live extraction climb was
+cancelled by the operator: the next session should run one
+`corepack pnpm extract:signals -- --limit 10` and read the ledger to confirm
+the T1→T2→T3 order and 3.1's acceptance rate before trusting it overnight.
+
 ## Settled for `M`, so the worker does not redesign it
 
 - Open review cases are durable records with typed reasons, not a view inferred
@@ -102,8 +113,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [x] 2. Pin the seed library to English.
 - [x] 3. Make provider a roster fact.
 - [x] 4. Build `GeminiChatModel`.
-- [x] 5. Resolve rungs through provider adapters.
-- [x] 6. Validate Gemini live on ten to twenty real signals.
+- [x] 5. Resolve rungs through provider adapters.- [x] 6. Validate Gemini live on ten to twenty real signals.
 - [x] 7. Add the delta pass.
 - [x] 8. Wire the delta pass after attach.
 - [x] 9. Build the Gemini batch client.
@@ -135,7 +145,7 @@ Everything below was true at commit `48da153` on `main`. Recorded from the
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
 | Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title, provider-routed structured outputs |
-| Model ladder | `google/gemini-3.5-flash-lite` (T1, gemini), `mistralai/mistral-small-24b-instruct-2501` (T2), `anthropic/claude-haiku-4.5` (T3); deepseek and gemini-2.5 inactive |
+| Model ladder | `google/gemini-3.1-flash-lite` (T1), `google/gemini-3.5-flash-lite` (T2), `mistralai/mistral-small-24b-instruct-2501` (T3 fallback); reordered at `02c23a7` per operator instruction |
 | Trailing AI spend | `spend:report` — 30 days, 139 requests, $0.118554 |
 | Pre-group stage | Built, `pregroup_enabled=false`; measurement gate decided no flip |
 | Radar endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs` |
