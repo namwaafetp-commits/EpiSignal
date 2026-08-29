@@ -19,6 +19,7 @@ from uuid import UUID
 from episignal_backend.ai.classify_disease import classify_disease
 from episignal_backend.ai.documents import (
     ChatRequest,
+    ExtractableCluster,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
@@ -34,7 +35,11 @@ from episignal_backend.ai.ladder import (
     climb,
     cost_row,
 )
-from episignal_backend.ai.prompts import extraction_prompt
+from episignal_backend.ai.prompts import (
+    CLUSTER_MEMBER_CHARACTERS,
+    cluster_extraction_prompt,
+    extraction_prompt,
+)
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.ai.schema import Extraction, extraction_json_schema
 from episignal_backend.ai.validate import validate_extraction
@@ -287,6 +292,132 @@ def _run_pass(
     )
 
 
+def _run_cluster_pass(
+    repository: AiRepository,
+    model: ChatModel,
+    groups: Sequence[ExtractableCluster],
+    *,
+    guards: Guards,
+    max_tier: int = DEFAULT_MAX_TIER,
+    min_tier: int = EXTRACTION_MIN_TIER,
+    max_input_characters: int = CLUSTER_MEMBER_CHARACTERS,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> tuple[ExtractionResult, list[ExtractableSignal]]:
+    ladder = Ladder.build(repository.models(), max_tier=max_tier, min_tier=min_tier)
+    budget = RunBudget(guards)
+    top_spec = _top_rung(ladder)
+
+    extracted = 0
+    reviewed = 0
+    unavailable = 0
+    storage_failed = 0
+    requests = 0
+    stopped_early = False
+    fallbacks: list[ExtractableSignal] = []
+
+    single_rung_ladder = Ladder(rungs=(top_spec,))
+
+    for group in groups:
+        if budget.exhausted:
+            stopped_early = True
+            break
+
+        system, user = cluster_extraction_prompt(group.members, max_characters=max_input_characters)
+        attempts: list[Attempt] = []
+
+        result = climb(
+            ladder=single_rung_ladder,
+            budget=budget,
+            model=model,
+            request_for=_request_builder(system, user),
+            accept=_accept_builder(group.bodies, min_confidence),
+            on_attempt=attempts.append,
+        )
+
+        requests += len(attempts)
+
+        try:
+            at = now()
+            for attempt in attempts:
+                repository.record_request(
+                    cost_row(
+                        attempt,
+                        purpose=AiPurpose.EXTRACTION,
+                        signal_id=group.representative_id,
+                        batch_size=len(group.members),
+                        at=at,
+                    )
+                )
+
+            if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
+                disease_id = None
+                if result.value.disease is not None:
+                    disease_id = repository.resolve_disease(result.value.disease.name)
+                    if disease_id is None:
+                        disease_id = _escalate_disease(
+                            repository,
+                            model,
+                            ladder,
+                            signal_id=group.representative_id,
+                            name=result.value.disease.name,
+                            at=at,
+                        )
+                member_ids = [m.id for m in group.members]
+                repository.record_cluster_extraction(
+                    representative_id=group.representative_id,
+                    member_ids=member_ids,
+                    stored=StoredExtraction(
+                        extraction=result.value,
+                        disease_id=disease_id,
+                        model_id=attempts[-1].spec.model_id,
+                        processed_at=at,
+                    ),
+                )
+                repository.commit()
+                extracted += 1
+            else:
+                repository.commit()
+                rep_member = group.members[0]
+                fallback_signal = ExtractableSignal(
+                    id=rep_member.id,
+                    title=rep_member.title,
+                    raw_text=rep_member.raw_text,
+                )
+                fallbacks.append(fallback_signal)
+
+                if result.outcome is ClimbOutcome.REJECTED:
+                    reviewed += 1
+                else:
+                    unavailable += 1
+
+        except Exception as error:
+            repository.rollback()
+            storage_failed += 1
+            logger.error(
+                "Could not store cluster extraction for group %s (%s)",
+                group.group_id,
+                type(error).__name__,
+            )
+
+        if result.outcome is ClimbOutcome.GUARD:
+            stopped_early = True
+            break
+
+    return (
+        ExtractionResult(
+            examined=len(groups),
+            extracted=extracted,
+            reviewed=reviewed,
+            unavailable=unavailable,
+            storage_failed=storage_failed,
+            requests=requests,
+            stopped_early=stopped_early,
+        ),
+        fallbacks,
+    )
+
+
 def run_extraction(
     repository: AiRepository,
     model: ChatModel,
@@ -299,11 +430,33 @@ def run_extraction(
     workers: int = DEFAULT_WORKERS,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
-    """Extract from signals nobody has extracted from yet."""
-    return _run_pass(
+    """Extract from signals, starting with cluster groups and falling back to single signals."""
+    # 1. Cluster Pass
+    groups = repository.awaiting_cluster_extraction(limit=limit)
+    cluster_result, fallbacks = _run_cluster_pass(
         repository,
         model,
-        repository.awaiting_extraction(limit=limit),
+        groups,
+        guards=guards,
+        max_tier=max_tier,
+        min_confidence=min_confidence,
+        now=now,
+    )
+
+    # 2. Single Pass (for Fallbacks and Ordinary Signals)
+    single_limit = max(0, limit - cluster_result.extracted)
+    fallback_ids = {sig.id for sig in fallbacks}
+    ordinary = [
+        sig
+        for sig in repository.awaiting_extraction(limit=single_limit)
+        if sig.id not in fallback_ids
+    ]
+    pending = list(fallbacks) + ordinary
+
+    single_result = _run_pass(
+        repository,
+        model,
+        pending[:single_limit],
         guards=guards,
         demote_on_rejection=True,
         max_tier=max_tier,
@@ -311,6 +464,17 @@ def run_extraction(
         min_confidence=min_confidence,
         workers=workers,
         now=now,
+    )
+
+    # Combine Results
+    return ExtractionResult(
+        examined=cluster_result.examined + single_result.examined,
+        extracted=cluster_result.extracted + single_result.extracted,
+        reviewed=cluster_result.reviewed + single_result.reviewed,
+        unavailable=cluster_result.unavailable + single_result.unavailable,
+        storage_failed=cluster_result.storage_failed + single_result.storage_failed,
+        requests=cluster_result.requests + single_result.requests,
+        stopped_early=cluster_result.stopped_early or single_result.stopped_early,
     )
 
 

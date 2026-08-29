@@ -6,6 +6,8 @@ from uuid import UUID
 from episignal_backend.ai.classify_disease import DiseaseCandidate
 from episignal_backend.ai.documents import (
     ChatResponse,
+    ClusterMemberSignal,
+    ExtractableCluster,
     ExtractableSignal,
     StoredExtraction,
     TokenUsage,
@@ -83,15 +85,27 @@ class ExtractRepository(FakeRepository):
         pending: Sequence[ExtractableSignal],
         diseases: dict[str, UUID] | None = None,
         candidates: Sequence[DiseaseCandidate] = (),
+        clusters: Sequence[ExtractableCluster] = (),
     ) -> None:
         super().__init__(())
         self._pending = tuple(pending)
         self._diseases = diseases or {}
         self._candidates = tuple(candidates)
+        self._clusters = tuple(clusters)
         self.stored: dict[UUID, StoredExtraction] = {}
+        self.recorded_clusters: list[tuple[UUID, tuple[UUID, ...], StoredExtraction]] = []
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         return self._pending[:limit]
+
+    def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]:
+        return self._clusters[:limit]
+
+    def record_cluster_extraction(
+        self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
+    ) -> None:
+        self.recorded_clusters.append((representative_id, tuple(member_ids), stored))
+        self.stored[representative_id] = stored
 
     def resolve_disease(self, name: str) -> UUID | None:
         return self._diseases.get(name.lower())
@@ -443,3 +457,197 @@ def test_extraction_climbs_run_concurrently_and_land_in_order() -> None:
     assert all(
         record.signal_id in {signal.id for signal in signals} for record in repository.requests
     )
+
+
+CLUSTER_FIRST_ID = UUID("b3f1c2d4-0000-4000-8000-0000000000a1")
+CLUSTER_SECOND_ID = UUID("b3f1c2d4-0000-4000-8000-0000000000a2")
+CLUSTER_GROUP_ID = UUID("b3f1c2d4-0000-4000-8000-0000000000a3")
+
+FIRST_BODY = "Health officials confirmed 12 cases in Hanoi."
+SECOND_BODY = "The ministry reported 3 deaths on Tuesday."
+
+CLUSTER_GOOD_RESPONSE = json.dumps(
+    {
+        "signal_type": "outbreak_report",
+        "source_language": "en",
+        "title_english": "Cholera outbreak",
+        "brief": [
+            {"slot": "what_where", "text": "Luanda.", "reported": True},
+            {"slot": "counts", "text": "12 cases and 3 deaths.", "reported": True},
+            {"slot": "timing", "text": "Tuesday.", "reported": True},
+            {"slot": "spread", "text": "Locally.", "reported": True},
+            {"slot": "reporting", "text": "Ministry.", "reported": True},
+        ],
+        "disease": {"name": "Cholera", "confidence": 0.9},
+        "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
+        "epidemiology": {
+            "confirmed_cases": {
+                "value": 12,
+                "source_span": "Health officials confirmed 12 cases in Hanoi.",
+                "source_index": 0,
+            },
+            "deaths": {
+                "value": 3,
+                "source_span": "The ministry reported 3 deaths on Tuesday.",
+                "source_index": 1,
+            },
+        },
+        "confidence": 0.9,
+    }
+)
+
+
+def test_a_cluster_is_extracted_and_recorded_as_one_cost_row_with_its_batch_size() -> None:
+    cluster = ExtractableCluster(
+        group_id=CLUSTER_GROUP_ID,
+        representative_id=CLUSTER_FIRST_ID,
+        members=(
+            ClusterMemberSignal(
+                id=CLUSTER_FIRST_ID, source_index=0, title="T1", raw_text=FIRST_BODY
+            ),
+            ClusterMemberSignal(
+                id=CLUSTER_SECOND_ID, source_index=1, title="T2", raw_text=SECOND_BODY
+            ),
+        ),
+    )
+    repository = ExtractRepository(pending=(), clusters=(cluster,))
+    model = ScriptedModel([CLUSTER_GOOD_RESPONSE])
+
+    result = run_extraction(
+        repository,
+        model,
+        guards=guards(),
+        limit=10,
+        now=lambda: NOW,
+    )
+
+    assert result.extracted == 1
+    assert len(repository.recorded_clusters) == 1
+    rep_id, member_ids, stored = repository.recorded_clusters[0]
+    assert rep_id == CLUSTER_FIRST_ID
+    assert member_ids == (CLUSTER_FIRST_ID, CLUSTER_SECOND_ID)
+    assert stored.extraction.epidemiology.confirmed_cases.value == 12
+
+    assert len(repository.requests) == 1
+    assert repository.requests[0].batch_size == 2
+    assert repository.requests[0].signal_id == CLUSTER_FIRST_ID
+
+
+def test_a_cluster_rejection_falls_back_to_extracting_only_the_representative() -> None:
+    cluster = ExtractableCluster(
+        group_id=CLUSTER_GROUP_ID,
+        representative_id=CLUSTER_FIRST_ID,
+        members=(
+            ClusterMemberSignal(
+                id=CLUSTER_FIRST_ID, source_index=0, title="T1", raw_text=FIRST_BODY
+            ),
+            ClusterMemberSignal(
+                id=CLUSTER_SECOND_ID, source_index=1, title="T2", raw_text=SECOND_BODY
+            ),
+        ),
+    )
+    repository = ExtractRepository(pending=(), clusters=(cluster,))
+
+    bad_response = CLUSTER_GOOD_RESPONSE.replace('"confidence": 0.9', '"confidence": 0.1')
+
+    single_good_response = json.dumps(
+        {
+            "signal_type": "outbreak_report",
+            "source_language": "en",
+            "title_english": "Cholera outbreak",
+            "brief": [
+                {"slot": "what_where", "text": "Luanda.", "reported": True},
+                {"slot": "counts", "text": "12 cases.", "reported": True},
+                {"slot": "timing", "text": "Tuesday.", "reported": True},
+                {"slot": "spread", "text": "Locally.", "reported": True},
+                {"slot": "reporting", "text": "Ministry.", "reported": True},
+            ],
+            "disease": {"name": "Cholera", "confidence": 0.9},
+            "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
+            "epidemiology": {
+                "confirmed_cases": {
+                    "value": 12,
+                    "source_span": "Health officials confirmed 12 cases in Hanoi.",
+                    "source_index": 0,
+                }
+            },
+            "confidence": 0.9,
+        }
+    )
+
+    model = ScriptedModel([bad_response, single_good_response])
+
+    result = run_extraction(
+        repository,
+        model,
+        guards=guards(),
+        limit=10,
+        now=lambda: NOW,
+    )
+
+    assert result.extracted == 1
+    assert result.reviewed == 1
+    assert CLUSTER_FIRST_ID in repository.stored
+    assert CLUSTER_SECOND_ID not in repository.stored
+    assert len(repository.recorded_clusters) == 0
+
+
+def test_a_cluster_failure_to_ground_falls_back_to_extracting_only_the_representative() -> None:
+    cluster = ExtractableCluster(
+        group_id=CLUSTER_GROUP_ID,
+        representative_id=CLUSTER_FIRST_ID,
+        members=(
+            ClusterMemberSignal(
+                id=CLUSTER_FIRST_ID, source_index=0, title="T1", raw_text=FIRST_BODY
+            ),
+            ClusterMemberSignal(
+                id=CLUSTER_SECOND_ID, source_index=1, title="T2", raw_text=SECOND_BODY
+            ),
+        ),
+    )
+    repository = ExtractRepository(pending=(), clusters=(cluster,))
+
+    ungrounded_response = CLUSTER_GOOD_RESPONSE.replace(
+        "Health officials confirmed 12 cases in Hanoi.", "A completely fabricated span."
+    )
+
+    single_good_response = json.dumps(
+        {
+            "signal_type": "outbreak_report",
+            "source_language": "en",
+            "title_english": "Cholera outbreak",
+            "brief": [
+                {"slot": "what_where", "text": "Luanda.", "reported": True},
+                {"slot": "counts", "text": "12 cases.", "reported": True},
+                {"slot": "timing", "text": "Tuesday.", "reported": True},
+                {"slot": "spread", "text": "Locally.", "reported": True},
+                {"slot": "reporting", "text": "Ministry.", "reported": True},
+            ],
+            "disease": {"name": "Cholera", "confidence": 0.9},
+            "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
+            "epidemiology": {
+                "confirmed_cases": {
+                    "value": 12,
+                    "source_span": "Health officials confirmed 12 cases in Hanoi.",
+                    "source_index": 0,
+                }
+            },
+            "confidence": 0.9,
+        }
+    )
+
+    model = ScriptedModel([ungrounded_response, single_good_response])
+
+    result = run_extraction(
+        repository,
+        model,
+        guards=guards(),
+        limit=10,
+        now=lambda: NOW,
+    )
+
+    assert result.extracted == 1
+    assert result.reviewed == 1
+    assert CLUSTER_FIRST_ID in repository.stored
+    assert CLUSTER_SECOND_ID not in repository.stored
+    assert len(repository.recorded_clusters) == 0

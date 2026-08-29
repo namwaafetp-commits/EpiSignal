@@ -330,11 +330,7 @@ class SqlAlchemyAiRepository:
             # Cap the cluster size to MAX_CLUSTER_MEMBERS
             members = members[:MAX_CLUSTER_MEMBERS]
 
-            if (
-                representative_id is not None
-                and members
-                and members[0].id == representative_id
-            ):
+            if representative_id is not None and members and members[0].id == representative_id:
                 clusters.append(
                     ExtractableCluster(
                         group_id=group_id,
