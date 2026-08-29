@@ -1,5 +1,6 @@
 import pytest
 from episignal_backend.ai.schema import (
+    BACKFILL_MIN_SCHEMA_VERSION,
     BRIEF_SLOT_COUNT,
     BRIEF_SLOTS,
     EXTRACTION_SCHEMA_VERSION,
@@ -7,6 +8,7 @@ from episignal_backend.ai.schema import (
     BriefPoint,
     BriefSlot,
     Extraction,
+    GroundedCount,
     StoredExtractionPayload,
 )
 from pydantic import ValidationError
@@ -229,3 +231,63 @@ def test_the_strict_model_still_refuses_the_version_key() -> None:
 
     with pytest.raises(ValidationError):
         Extraction.model_validate(stored)
+
+
+V2_STORED_ROW = {
+    "signal_type": "outbreak_report",
+    "source_language": "en",
+    "title_english": "Angola reports growing cholera outbreak in Luanda",
+    "brief": [
+        {"slot": "what_where", "text": "Cholera in Luanda province, Angola.", "reported": True},
+        {"slot": "counts", "text": "327 confirmed cases and 14 deaths.", "reported": True},
+        {"slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": True},
+        {"slot": "spread", "text": "All cases were acquired locally.", "reported": True},
+        {
+            "slot": "reporting",
+            "text": "Reported by Angola's health ministry.",
+            "reported": True,
+        },
+    ],
+    "disease": {"name": "Cholera", "confidence": 0.97},
+    "locations": [{"role": "primary", "country": "Angola", "place_name": "Luanda"}],
+    "epidemiology": {
+        "confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"},
+        "deaths": {"value": 14, "source_span": "14 people have died"},
+    },
+    "confidence": 0.94,
+    "extraction_schema_version": 2,
+}
+
+
+def test_a_grounded_count_defaults_to_the_only_member() -> None:
+    count = GroundedCount(value=12, source_span="12 confirmed cases")
+
+    assert count.source_index == 0
+
+
+def test_a_grounded_count_can_cite_a_later_member() -> None:
+    count = GroundedCount(value=12, source_span="12 confirmed cases", source_index=3)
+
+    assert count.source_index == 3
+
+
+def test_a_negative_source_index_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        GroundedCount(value=12, source_span="12 confirmed cases", source_index=-1)
+
+
+def test_the_stored_version_is_three() -> None:
+    assert EXTRACTION_SCHEMA_VERSION == 3
+
+
+def test_the_backfill_floor_stays_at_two() -> None:
+    # A v2 row is a v3 row whose every claim cites member 0, so bumping the
+    # version must not re-extract the corpus.
+    assert BACKFILL_MIN_SCHEMA_VERSION == 2
+
+
+def test_a_version_two_row_reads_back_with_index_zero() -> None:
+    payload = StoredExtractionPayload.model_validate(V2_STORED_ROW)
+
+    assert payload.epidemiology.deaths is not None
+    assert payload.epidemiology.deaths.source_index == 0

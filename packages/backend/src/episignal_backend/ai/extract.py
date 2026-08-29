@@ -88,9 +88,9 @@ def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatReques
     return _request
 
 
-def _accept_builder(raw_text: str, min_confidence: float) -> Callable[[str], Extraction]:
+def _accept_builder(bodies: Sequence[str], min_confidence: float) -> Callable[[str], Extraction]:
     def _accept(content: str) -> Extraction:
-        return validate_extraction(content, raw_text, min_confidence=min_confidence)
+        return validate_extraction(content, bodies, min_confidence=min_confidence)
 
     return _accept
 
@@ -190,7 +190,7 @@ def _run_pass(
             budget=budget,
             model=model,
             request_for=_request_builder(system, user),
-            accept=_accept_builder(signal.raw_text, min_confidence),
+            accept=_accept_builder((signal.raw_text,), min_confidence),
             on_attempt=attempts.append,
         )
         return attempts, result

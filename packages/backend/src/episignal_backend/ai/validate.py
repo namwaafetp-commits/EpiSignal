@@ -129,13 +129,23 @@ def check_privacy(extraction: Extraction) -> None:
                 raise Rejected(RejectionReason.PRIVACY, pattern.pattern)
 
 
-def _check_span(span: str, flat_body: str, label: str) -> None:
-    if _flatten(span) not in flat_body:
+def _check_span(span: str, bodies: Sequence[str], index: int, label: str) -> None:
+    if not 0 <= index < len(bodies):
+        # A claim that names an article nobody sent is ungrounded in the
+        # strongest sense: there is no text it could ever be checked against.
+        raise Rejected(RejectionReason.UNGROUNDED, f"{label} cites source_index {index}")
+    if _flatten(span) not in bodies[index]:
         raise Rejected(RejectionReason.UNGROUNDED, label)
 
 
-def check_grounding(extraction: Extraction, raw_text: str) -> None:
-    flat_body = _flatten(raw_text)
+def check_grounding(extraction: Extraction, bodies: Sequence[str]) -> None:
+    """Every claim against the one article it names, never against the batch.
+
+    Checking a span against the concatenation would let one member's sentence
+    vouch for another member's number, which is exactly the confusion batching
+    invites and exactly what this system must never store.
+    """
+    flat_bodies = [_flatten(body) for body in bodies]
 
     for label, count in (
         ("suspected_cases", extraction.epidemiology.suspected_cases),
@@ -147,7 +157,7 @@ def check_grounding(extraction: Extraction, raw_text: str) -> None:
     ):
         if count is None:
             continue
-        _check_span(count.source_span, flat_body, label)
+        _check_span(count.source_span, flat_bodies, count.source_index, label)
         # The span must state this number, not merely sit near it. Without this,
         # any true sentence in the article would support any number at all.
         if str(count.value) not in count.source_span:
@@ -159,16 +169,20 @@ def check_grounding(extraction: Extraction, raw_text: str) -> None:
             ("imported", extraction.transmission.imported),
         ):
             if flag is not None:
-                _check_span(flag.source_span, flat_body, label)
+                _check_span(flag.source_span, flat_bodies, flag.source_index, label)
 
 
 def validate_extraction(
-    content: str, raw_text: str, *, min_confidence: float = MIN_CONFIDENCE_DEFAULT
+    content: str,
+    raw_text: str | Sequence[str],
+    *,
+    min_confidence: float = MIN_CONFIDENCE_DEFAULT,
 ) -> Extraction:
     """Every check, in the design's order. The first failure raises."""
+    bodies = (raw_text,) if isinstance(raw_text, str) else raw_text
     extraction = parse_extraction(content)
 
-    check_grounding(extraction, raw_text)
+    check_grounding(extraction, bodies)
 
     if extraction.transmission is not None and extraction.transmission.is_empty():
         # An object with no flags is not a finding. Stored as absence rather

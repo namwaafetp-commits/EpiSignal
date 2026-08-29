@@ -23,6 +23,7 @@ from episignal_backend.ai.documents import (
     Verdict,
 )
 from episignal_backend.ai.schema import (
+    BACKFILL_MIN_SCHEMA_VERSION,
     EXTRACTION_SCHEMA_VERSION,
     EXTRACTION_VERSION_KEY,
 )
@@ -149,7 +150,7 @@ class SqlAlchemyAiRepository:
                 ),
                 Signal.ai_extraction.is_not(None),
                 Signal.raw_text.is_not(None),
-                or_(stored_version.is_(None), stored_version < EXTRACTION_SCHEMA_VERSION),
+                or_(stored_version.is_(None), stored_version < BACKFILL_MIN_SCHEMA_VERSION),
             )
             .order_by(Signal.first_seen_at)
         )

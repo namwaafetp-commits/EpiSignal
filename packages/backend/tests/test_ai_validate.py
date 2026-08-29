@@ -318,3 +318,71 @@ def test_a_malformed_classification_body_is_rejected_before_identity() -> None:
         validate_classification("not json at all", (FIRST,))
 
     assert error.value.reason is RejectionReason.NOT_JSON
+
+
+FIRST_BODY = "Health officials confirmed 12 cases in Hanoi."
+SECOND_BODY = "The ministry reported 3 deaths on Tuesday."
+
+
+def _answer(
+    *,
+    confirmed: tuple[str, int, int] | None = None,
+    deaths: tuple[str, int, int] | None = None,
+) -> str:
+    payload = grounded_payload()
+    payload["epidemiology"] = {}
+    payload["transmission"] = None
+    if confirmed is not None:
+        span, val, idx = confirmed
+        payload["epidemiology"]["confirmed_cases"] = {
+            "value": val,
+            "source_span": span,
+            "source_index": idx,
+        }
+    if deaths is not None:
+        span, val, idx = deaths
+        payload["epidemiology"]["deaths"] = {
+            "value": val,
+            "source_span": span,
+            "source_index": idx,
+        }
+    return json.dumps(payload)
+
+
+def test_each_claim_is_checked_against_the_member_it_cites() -> None:
+    content = _answer(
+        confirmed=("12 cases", 12, 0),
+        deaths=("3 deaths", 3, 1),
+    )
+
+    extraction = validate_extraction(content, (FIRST_BODY, SECOND_BODY))
+
+    assert extraction.epidemiology.deaths is not None
+    assert extraction.epidemiology.deaths.source_index == 1
+
+
+def test_a_span_from_the_wrong_member_is_ungrounded() -> None:
+    # The span exists in the batch, but not in the article the claim names.
+    content = _answer(deaths=("3 deaths", 3, 0))
+
+    with pytest.raises(Rejected) as error:
+        validate_extraction(content, (FIRST_BODY, SECOND_BODY))
+
+    assert error.value.reason is RejectionReason.UNGROUNDED
+
+
+def test_a_source_index_past_the_last_member_is_ungrounded() -> None:
+    content = _answer(deaths=("3 deaths", 3, 7))
+
+    with pytest.raises(Rejected) as error:
+        validate_extraction(content, (FIRST_BODY, SECOND_BODY))
+
+    assert error.value.reason is RejectionReason.UNGROUNDED
+
+
+def test_the_single_article_case_is_the_one_member_case() -> None:
+    content = _answer(confirmed=("12 cases", 12, 0))
+
+    extraction = validate_extraction(content, (FIRST_BODY,))
+
+    assert extraction.epidemiology.confirmed_cases is not None
