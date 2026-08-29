@@ -19,7 +19,8 @@ from episignal_backend.db.types import LocationRole, SignalType
 
 # Bumped when the shape of a stored extraction changes. Version 1 is every row
 # written before the brief existed: it has a `summary` and no `brief`.
-EXTRACTION_SCHEMA_VERSION = 2
+EXTRACTION_SCHEMA_VERSION = 3
+
 EXTRACTION_VERSION_KEY = "extraction_schema_version"
 
 SPAN_MAX_CHARACTERS = 300

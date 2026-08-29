@@ -141,7 +141,7 @@ purpose-specific model routing.
 - [x] 7. Add the `retrieve` stage and its runner.
 - [x] 8. Add the `pregroup` stage and enable it by default.
 - [x] 9. Select for extraction without the relevance pass.
-- [ ] 10. Move the extraction schema to version 3.
+- [x] 10. Move the extraction schema to version 3.
 - [ ] 11. Validate every span against the member it cites.
 - [ ] 12. Build the cluster prompt.
 - [ ] 13. Read a story group as one extractable cluster.
