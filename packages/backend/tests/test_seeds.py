@@ -124,17 +124,22 @@ def test_the_seeded_roster_covers_all_three_tiers() -> None:
     assert {model.tier for model in models} == {1, 2, 3}
 
 
-def test_the_active_roster_serves_each_tier_once_with_gemini_first() -> None:
+def test_the_active_roster_is_gemini_with_one_openrouter_fallback() -> None:
     from episignal_backend.db.types import AiProvider
     from episignal_backend.seeds import load_ai_models
 
     active = [model for model in load_ai_models() if model.active]
 
+    # The operator's ladder: Gemini for everyday and harder work, one
+    # OpenRouter rung as fallback only. The retired 2.5 stays in the seed,
+    # inactive, so its database row can never silently reactivate.
     assert len(active) == 3
     assert {model.tier for model in active} == {1, 2, 3}
-    tier_one = next(model for model in active if model.tier == 1)
-    assert tier_one.provider is AiProvider.GEMINI
-    assert all(model.provider is AiProvider.OPENROUTER for model in active if model.tier > 1)
+    assert all(model.provider is AiProvider.GEMINI for model in active if model.tier <= 2)
+    fallback = next(model for model in active if model.tier == 3)
+    assert fallback.provider is AiProvider.OPENROUTER
+    retired = [model for model in load_ai_models() if "2.5-flash-lite" in model.model_id]
+    assert retired and all(not model.active for model in retired)
 
 
 def test_every_seeded_model_has_non_negative_prices() -> None:
