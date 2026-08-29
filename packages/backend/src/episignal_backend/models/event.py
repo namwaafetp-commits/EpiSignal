@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
@@ -157,6 +158,10 @@ class EventObservation(IdentityMixin, Base):
     cfr: Mapped[float | None] = mapped_column(Float)
     affected_admin_areas: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
+    # The delta pass output written onto this observation when it followed up
+    # an already-observed event: the updated five-slot brief plus what changed.
+    # Absent on every observation that was not the product of a follow-up.
+    delta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     extraction_confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

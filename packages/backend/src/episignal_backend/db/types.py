@@ -79,6 +79,8 @@ class Precision(StrEnum):
 class AiPurpose(StrEnum):
     CLASSIFICATION = "classification"
     EXTRACTION = "extraction"
+    # The delta pass after an attach: two briefs compared, not an article read.
+    FOLLOW_UP = "follow_up"
 
 
 class AiProvider(StrEnum):
