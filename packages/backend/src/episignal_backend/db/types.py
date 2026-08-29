@@ -166,6 +166,17 @@ class PipelineRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class StoryGroupState(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+    EXPIRED = "expired"
+
+
+class StoryGroupRole(StrEnum):
+    REPRESENTATIVE = "representative"
+    DEFERRED = "deferred"
+
+
 def vocabulary(enum_class: type[StrEnum], name: str) -> Enum:
     """Store a controlled vocabulary as its lowercase values, not member names."""
     return Enum(

@@ -116,6 +116,13 @@ class Settings(BaseSettings):
     pipeline_catch_up_max_minutes: int = Field(default=10080, ge=1, le=43200)
     pipeline_chain: Literal["daily"] = "daily"
 
+    # Pre-group stage. Default off: the design ships it dark and lets the
+    # trailing-spend measurement decide whether it is ever enabled.
+    pregroup_enabled: bool = False
+    pregroup_window_days: int = Field(default=1, ge=1, le=2)
+    pregroup_expiry_hours: int = Field(default=72, ge=1, le=720)
+    pregroup_batch_size: int = Field(default=200, ge=1, le=5000)
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: SecretStr) -> SecretStr:

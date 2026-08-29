@@ -19,6 +19,8 @@ EXPECTED_TABLES = {
     "gazetteer_places",
     "signal_locations",
     "pipeline_runs",
+    "story_groups",
+    "story_group_members",
 }
 
 
@@ -81,7 +83,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 19
+    assert len(enum_columns) == 22
 
     for column in enum_columns:
         enum_class = column.type.enum_class

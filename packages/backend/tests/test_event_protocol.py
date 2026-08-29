@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from episignal_backend.ai.documents import AiRequestRecord
+from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import (
     RelationshipType,
     VerificationStatus,
@@ -94,6 +96,15 @@ class InMemoryEventRepository:
 
     def mark_needs_review(self, signal_id: UUID) -> None:
         self.needs_review_signal_ids.add(signal_id)
+
+    def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:
+        return None
+
+    def apply_delta(self, event_id: UUID, signal_id: UUID, delta: dict) -> None:
+        return None
+
+    def record_ai_request(self, record: AiRequestRecord) -> None:
+        return None
 
     def commit(self) -> None:
         self.committed = True

@@ -10,7 +10,7 @@ import logging
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select, update
+from sqlalchemy import ColumnElement, Select, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.ai.documents import (
@@ -25,9 +25,16 @@ from episignal_backend.ai.schema import (
     EXTRACTION_SCHEMA_VERSION,
     EXTRACTION_VERSION_KEY,
 )
-from episignal_backend.db.types import ProcessingStatus
+from episignal_backend.db.types import ProcessingStatus, StoryGroupRole, StoryGroupState
 from episignal_backend.ingestion.fingerprint import verify_content_hash
-from episignal_backend.models import AiModel, AiRequest, Disease, Signal
+from episignal_backend.models import (
+    AiModel,
+    AiRequest,
+    Disease,
+    Signal,
+    StoryGroup,
+    StoryGroupMember,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +104,11 @@ class SqlAlchemyAiRepository:
             .where(
                 Signal.processing_status == ProcessingStatus.NORMALIZED,
                 Signal.raw_text.is_not(None),
+                # Pre-group deferral: a member waiting on its open group's
+                # representative is not selectable. Exclusion is unconditional
+                # because it is inert until the stage writes groups; the flag
+                # gates the writer, never the reader.
+                ~_deferred_by_open_group(),
             )
             .order_by(Signal.first_seen_at)
         )
@@ -240,3 +252,16 @@ class SqlAlchemyAiRepository:
 
     def rollback(self) -> None:
         self._session.rollback()
+
+
+def _deferred_by_open_group() -> ColumnElement[bool]:
+    return (
+        select(StoryGroupMember.signal_id)
+        .join(StoryGroup, StoryGroupMember.group_id == StoryGroup.id)
+        .where(
+            StoryGroupMember.signal_id == Signal.id,
+            StoryGroupMember.role == StoryGroupRole.DEFERRED,
+            StoryGroup.state == StoryGroupState.OPEN,
+        )
+        .exists()
+    )
