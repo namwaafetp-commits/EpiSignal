@@ -9,6 +9,8 @@ is a fact about a moment.
 This module imports neither SQLAlchemy nor httpx.
 """
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -122,6 +124,19 @@ class TokenUsage(BaseModel):
 
     prompt_tokens: int | None = Field(default=None, ge=0)
     completion_tokens: int | None = Field(default=None, ge=0)
+
+
+@dataclass(frozen=True)
+class DiseaseCandidate:
+    """One row of the reviewed disease vocabulary, as the classifier sees it.
+
+    A dataclass rather than a model: the vocabulary is written by reviewers,
+    never parsed from an answer.
+    """
+
+    slug: str
+    canonical_name: str
+    synonyms: Sequence[str] = ()
 
 
 class ChatRequest(BaseModel):

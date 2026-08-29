@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from episignal_backend.ai.documents import (
     AiRequestRecord,
     ClassifiableSignal,
+    DiseaseCandidate,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
@@ -45,6 +46,9 @@ from episignal_backend.review.repository import SqlAlchemyReviewRepository
 logger = logging.getLogger(__name__)
 
 EXCERPT_CHARACTERS = 1200
+# The candidate list rides in one classification prompt, so it is capped: a
+# vocabulary too large for one request is also too large for one-shot choice.
+MAX_DISEASE_CANDIDATES = 400
 
 
 class SqlAlchemyAiRepository:
@@ -188,6 +192,30 @@ class SqlAlchemyAiRepository:
                     Disease.synonyms.any(needle),  # type: ignore[arg-type]
                 )
             )
+        ).scalar_one_or_none()
+
+    def disease_candidates(self) -> tuple[DiseaseCandidate, ...]:
+        # Ordered by canonical name so the prompt the classifier sees is stable
+        # between runs; an order that drifted would make its answers
+        # incomparable.
+        rows = self._session.execute(
+            select(Disease).order_by(Disease.canonical_name).limit(MAX_DISEASE_CANDIDATES)
+        ).scalars()
+        return tuple(
+            DiseaseCandidate(
+                slug=row.slug,
+                canonical_name=row.canonical_name,
+                synonyms=tuple(row.synonyms),
+            )
+            for row in rows
+        )
+
+    def resolve_disease_slug(self, slug: str) -> UUID | None:
+        # The classifier's slug is re-resolved against the vocabulary rather
+        # than trusted: the database, not the model, decides what exists.
+        needle = " ".join(slug.split()).lower()
+        return self._session.execute(
+            select(Disease.id).where(func.lower(Disease.slug) == needle)
         ).scalar_one_or_none()
 
     def record_request(self, record: AiRequestRecord) -> None:

@@ -6,6 +6,7 @@ from episignal_backend.ai.documents import (
     ChatRequest,
     ChatResponse,
     ClassifiableSignal,
+    DiseaseCandidate,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
@@ -36,6 +37,12 @@ class StubRepository:
 
     def resolve_disease(self, name: str) -> UUID | None:
         return None
+
+    def resolve_disease_slug(self, slug: str) -> UUID | None:
+        return None
+
+    def disease_candidates(self) -> Sequence[DiseaseCandidate]:
+        return ()
 
     def record_request(self, record: AiRequestRecord) -> None:
         return None

@@ -17,6 +17,7 @@ from episignal_backend.ai.documents import (
     ChatRequest,
     ChatResponse,
     ClassifiableSignal,
+    DiseaseCandidate,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
@@ -47,6 +48,10 @@ class AiRepository(Protocol):
     def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]: ...
 
     def resolve_disease(self, name: str) -> UUID | None: ...
+
+    def disease_candidates(self) -> tuple[DiseaseCandidate, ...]: ...
+
+    def resolve_disease_slug(self, slug: str) -> UUID | None: ...
 
     def record_request(self, record: AiRequestRecord) -> None: ...
 

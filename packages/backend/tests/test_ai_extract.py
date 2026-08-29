@@ -3,6 +3,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from uuid import UUID
 
+from episignal_backend.ai.classify_disease import DiseaseCandidate
 from episignal_backend.ai.documents import ExtractableSignal, StoredExtraction, Verdict
 from episignal_backend.ai.extract import ExtractionResult, run_backfill, run_extraction
 from episignal_backend.ai.protocol import ModelUnavailable
@@ -22,6 +23,19 @@ UNGROUNDED = (FIXTURES / "ai_ungrounded_response.json").read_text(encoding="utf-
 FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
 SECOND = UUID("b3f1c2d4-0000-4000-8000-000000000002")
 CHOLERA = UUID("b3f1c2d4-0000-4000-8000-0000000000ff")
+
+CANDIDATES = (
+    DiseaseCandidate(
+        slug="cholera",
+        canonical_name="Cholera",
+        synonyms=("Vibrio cholerae infection",),
+    ),
+    DiseaseCandidate(
+        slug="ebola-virus-disease",
+        canonical_name="Ebola virus disease",
+        synonyms=("EVD", "Ebola haemorrhagic fever"),
+    ),
+)
 
 FRENCH_ANSWER = json.dumps(
     {
@@ -62,10 +76,12 @@ class ExtractRepository(FakeRepository):
         self,
         pending: Sequence[ExtractableSignal],
         diseases: dict[str, UUID] | None = None,
+        candidates: Sequence[DiseaseCandidate] = (),
     ) -> None:
         super().__init__(())
         self._pending = tuple(pending)
         self._diseases = diseases or {}
+        self._candidates = tuple(candidates)
         self.stored: dict[UUID, StoredExtraction] = {}
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
@@ -73,6 +89,12 @@ class ExtractRepository(FakeRepository):
 
     def resolve_disease(self, name: str) -> UUID | None:
         return self._diseases.get(name.lower())
+
+    def disease_candidates(self) -> Sequence[DiseaseCandidate]:
+        return self._candidates
+
+    def resolve_disease_slug(self, slug: str) -> UUID | None:
+        return CHOLERA if slug == "cholera" else None
 
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None:
         raise AssertionError("the extraction pass must not write a verdict")
@@ -170,6 +192,55 @@ def test_an_unknown_disease_leaves_the_link_empty_rather_than_guessing() -> None
     run(repository, ScriptedModel([GOOD]))
 
     assert repository.stored[FIRST].disease_id is None
+
+
+def test_a_vocabulary_miss_asks_the_smartest_rung_and_stores_its_answer() -> None:
+    repository = ExtractRepository((english(),), candidates=CANDIDATES)
+    model = ScriptedModel([GOOD, json.dumps({"slug": "cholera"})])
+
+    run(repository, model)
+
+    assert repository.stored[FIRST].disease_id == CHOLERA
+    assert model.asked == ["vendor1/model:free", "vendor3/model:free"]
+    classification = [
+        record for record in repository.requests if record.purpose is AiPurpose.CLASSIFICATION
+    ]
+    assert len(classification) == 1
+    assert classification[0].signal_id == FIRST
+    assert classification[0].batch_size == 1
+
+
+def test_a_second_pass_null_keeps_the_disease_unlinked() -> None:
+    repository = ExtractRepository((english(),), candidates=CANDIDATES)
+    model = ScriptedModel([GOOD, json.dumps({"slug": None})])
+
+    run(repository, model)
+
+    assert repository.stored[FIRST].disease_id is None
+    assert repository.reviewed == []
+
+
+def test_a_failing_second_pass_still_stores_the_extraction() -> None:
+    repository = ExtractRepository((english(),), candidates=CANDIDATES)
+    model = ScriptedModel([GOOD, RuntimeError("provider exploded")])
+
+    run(repository, model)
+
+    assert FIRST in repository.stored
+    assert repository.stored[FIRST].disease_id is None
+
+
+def test_a_vocabulary_hit_never_asks_the_classifier() -> None:
+    repository = ExtractRepository(
+        (english(),), diseases={"cholera": CHOLERA}, candidates=CANDIDATES
+    )
+    model = ScriptedModel([GOOD])
+
+    run(repository, model)
+
+    assert len(model.asked) == 1
+    assert repository.stored[FIRST].disease_id == CHOLERA
+    assert all(record.purpose is AiPurpose.EXTRACTION for record in repository.requests)
 
 
 def test_an_ungrounded_answer_escalates_and_the_signal_is_not_written() -> None:
