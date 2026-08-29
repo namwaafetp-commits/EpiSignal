@@ -39,6 +39,19 @@ start Task 1 test-first. Set `M` to `building` in the Task 1 commit and tick eac
 ledger item only in the commit that completes it. Stop after Task 15 and hand
 the completion report back to the planner; do not mark `M` verified.
 
+## Filed for the planner, so the next retarget sees it
+
+Issue
+[#1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) — high-efficiency
+pipeline (English-first discovery, pre-AI story grouping, 10-day event
+follow-up) and the Gemini 2.5 Flash-Lite transition, filed `ready-for-agent` on
+the operator's instruction on 2026-08-29 — is design work, not a plan. Its open
+decisions (pre-AI grouping versus the verified dedupe and clustering stages,
+adapter route versus a roster row, the updated flag against the existing
+verification-status vocabulary, batch pricing verification) are settled in a
+committed design spec before any roadmap row is added. Workers do not implement
+from the issue; it enters the roadmap only through the planner.
+
 ## Settled for `M`, so the worker does not redesign it
 
 - Open review cases are durable records with typed reasons, not a view inferred
