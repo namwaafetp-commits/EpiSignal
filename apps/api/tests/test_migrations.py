@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260829_0013"]
+    assert scripts.get_heads() == ["20260829_0014"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -240,3 +240,23 @@ def test_the_quarantine_migration_preserves_text_and_sets_needs_review() -> None
     assert "852aa204-846d-4aa6-a256-82c187fdeaef" in source
     assert "needs_review" in source
     assert "extracted" in source
+
+
+def test_manual_review_migration_is_ordered_and_non_destructive() -> None:
+    module = _load_revision("20260829_0014_manual_review_cases")
+    source = _revision_source("20260829_0014_manual_review_cases")
+    sql = render_offline("upgrade", "20260829_0014")
+    assert module.down_revision == "20260829_0013"
+    assert "create table signal_review_cases" in sql
+    assert "create table signal_review_candidates" in sql
+    assert "uq_signal_review_cases_one_open" in sql
+    assert "dismissed" in sql
+    assert "legacy_unclassified" in source
+    assert "ON CONFLICT (signal_id) WHERE status = 'open' DO NOTHING" in source
+    assert "delete from signals" not in source.lower()
+    assert "drop table signals" not in source.lower()
+
+
+def test_manual_review_downgrade_refuses_to_erase_audit_history() -> None:
+    source = _revision_source("20260829_0014_manual_review_cases")
+    assert "Cannot downgrade manual review schema after review data exists" in source

@@ -103,7 +103,7 @@ purpose-specific model routing.
 ## Task ledger
 
 - [x] 1. Define review vocabularies and ORM shape.
-- [ ] 2. Add reversible schema expansion and conservative backfill.
+- [x] 2. Add reversible schema expansion and conservative backfill.
 - [ ] 3. Define review commands, read models, and storage interface.
 - [ ] 4. Persist typed case opening, queue reads, and automatic recovery.
 - [ ] 5. Make every `needs_review` writer record a typed cause.

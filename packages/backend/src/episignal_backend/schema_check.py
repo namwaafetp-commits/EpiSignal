@@ -27,6 +27,8 @@ EXPECTED_TABLES = (
     "gazetteer_places",
     "signal_locations",
     "pipeline_runs",
+    "signal_review_cases",
+    "signal_review_candidates",
 )
 
 EXPECTED_EVENT_COLUMNS = (
