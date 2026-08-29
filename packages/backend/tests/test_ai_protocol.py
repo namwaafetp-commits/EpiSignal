@@ -7,6 +7,7 @@ from episignal_backend.ai.documents import (
     ChatResponse,
     ClassifiableSignal,
     DiseaseCandidate,
+    ExtractableCluster,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
@@ -51,6 +52,14 @@ class StubRepository:
         return None
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
+        return None
+
+    def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]:
+        return ()
+
+    def record_cluster_extraction(
+        self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
+    ) -> None:
         return None
 
     def open_review(

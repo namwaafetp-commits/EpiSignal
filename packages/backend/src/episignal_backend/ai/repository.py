@@ -16,12 +16,15 @@ from sqlalchemy.orm import Session
 from episignal_backend.ai.documents import (
     AiRequestRecord,
     ClassifiableSignal,
+    ClusterMemberSignal,
     DiseaseCandidate,
+    ExtractableCluster,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
     Verdict,
 )
+from episignal_backend.ai.prompts import MAX_CLUSTER_MEMBERS
 from episignal_backend.ai.schema import (
     BACKFILL_MIN_SCHEMA_VERSION,
     EXTRACTION_SCHEMA_VERSION,
@@ -270,6 +273,110 @@ class SqlAlchemyAiRepository:
         SqlAlchemyReviewRepository(self._session).open_review(
             signal_id, reason=reason, candidate_scores=candidate_scores
         )
+
+    def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]:
+        group_ids = list(
+            self._session.execute(
+                select(StoryGroup.id)
+                .where(StoryGroup.state == StoryGroupState.OPEN)
+                .order_by(StoryGroup.opened_at.asc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+
+        clusters: list[ExtractableCluster] = []
+        for group_id in group_ids:
+            rows = self._session.execute(
+                select(Signal, StoryGroupMember.role)
+                .join(StoryGroupMember, Signal.id == StoryGroupMember.signal_id)
+                .where(StoryGroupMember.group_id == group_id)
+                .order_by(
+                    # representative (role=representative) always goes first.
+                    # StoryGroupRole is a StrEnum, and "representative" > "deferred" alphabetically.
+                    # So sorting desc() ensures representative goes first.
+                    StoryGroupMember.role.desc(),
+                    Signal.retrieved_at.asc(),
+                )
+            ).all()
+
+            # Filter valid signals and map to ClusterMemberSignal
+            members: list[ClusterMemberSignal] = []
+            representative_id = None
+            for signal, role in rows:
+                if role == StoryGroupRole.REPRESENTATIVE:
+                    representative_id = signal.id
+
+                if signal.raw_text is None:
+                    continue
+
+                if not verify_content_hash(signal.title, signal.raw_text, signal.content_hash):
+                    logger.warning(
+                        "Signal %s failed content hash integrity check; omitted from cluster",
+                        signal.id,
+                    )
+                    continue
+
+                members.append(
+                    ClusterMemberSignal(
+                        id=signal.id,
+                        source_index=len(members),
+                        title=signal.title,
+                        raw_text=signal.raw_text,
+                    )
+                )
+
+            # Cap the cluster size to MAX_CLUSTER_MEMBERS
+            members = members[:MAX_CLUSTER_MEMBERS]
+
+            if (
+                representative_id is not None
+                and members
+                and members[0].id == representative_id
+            ):
+                clusters.append(
+                    ExtractableCluster(
+                        group_id=group_id,
+                        representative_id=representative_id,
+                        members=tuple(members),
+                    )
+                )
+
+        return tuple(clusters)
+
+    def record_cluster_extraction(
+        self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
+    ) -> None:
+        payload = stored.extraction.model_dump(mode="json")
+        payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
+
+        # Update the representative signal
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == representative_id)
+            .values(
+                processing_status=ProcessingStatus.EXTRACTED,
+                ai_extraction=payload,
+                ai_model=stored.model_id,
+                ai_processed_at=stored.processed_at,
+                disease_id=stored.disease_id,
+                signal_type=stored.extraction.signal_type,
+                summary="\n".join(point.text for point in stored.extraction.brief),
+            )
+        )
+
+        # Update the duplicates (members other than the representative)
+        other_ids = [m_id for m_id in member_ids if m_id != representative_id]
+        if other_ids:
+            self._session.execute(
+                update(Signal)
+                .where(Signal.id.in_(other_ids))
+                .values(
+                    processing_status=ProcessingStatus.DUPLICATE,
+                    duplicate_of_signal_id=representative_id,
+                )
+            )
 
     def commit(self) -> None:
         self._session.commit()

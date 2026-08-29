@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from episignal_backend.ai.documents import AiRequestRecord, StoredExtraction, Verdict
+from episignal_backend.ai.prompts import MAX_CLUSTER_MEMBERS
 from episignal_backend.ai.protocol import AiRepository
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
 from episignal_backend.ai.schema import (
@@ -11,7 +12,15 @@ from episignal_backend.ai.schema import (
     EXTRACTION_VERSION_KEY,
     Extraction,
 )
-from episignal_backend.db.types import AiOutcome, AiPurpose, ProcessingStatus, SignalType
+from episignal_backend.db.types import (
+    AiOutcome,
+    AiPurpose,
+    ProcessingStatus,
+    SignalType,
+    StoryGroupRole,
+)
+from episignal_backend.ingestion.fingerprint import content_hash as compute_hash
+from episignal_backend.models.signal import Signal
 from sqlalchemy import Update
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
@@ -40,16 +49,27 @@ class FakeResult:
     def scalar_one_or_none(self) -> Any:
         return self._value
 
+    def all(self) -> list[Any]:
+        return list(self._value or ())
+
 
 class FakeSession:
-    def __init__(self, results: list[Any] | None = None) -> None:
+    def __init__(
+        self,
+        results: list[Any] | None = None,
+        stored: dict[UUID, Any] | None = None,
+    ) -> None:
         self._results = results or []
+        self.stored = stored or {}
         self.executed: list[Any] = []
         self.added: list[Any] = []
 
     def execute(self, statement: Any) -> Any:
         self.executed.append(statement)
         return self._results.pop(0) if self._results else FakeResult(None)
+
+    def get(self, model: Any, identity: UUID) -> Any:
+        return self.stored.get(identity)
 
     def add(self, instance: Any) -> None:
         self.added.append(instance)
@@ -338,3 +358,164 @@ def test_awaiting_backfill_scans_past_mismatched_content_hash_honoring_limit(
     assert results[1].id == valid2.id
     assert str(corrupted.id) in caplog.text
     assert "failed content hash integrity" in caplog.text
+
+
+REPRESENTATIVE_ID = uuid4()
+DEFERRED_MEMBER_ID = uuid4()
+BODYLESS_MEMBER_ID = uuid4()
+STORED = StoredExtraction(
+    extraction=extraction(),
+    disease_id=None,
+    model_id="vendor/model:free",
+    processed_at=NOW,
+)
+
+
+def test_an_open_group_is_offered_as_one_cluster() -> None:
+    group_id = uuid4()
+    rep_signal = Signal(
+        id=REPRESENTATIVE_ID,
+        title="Representative Report",
+        raw_text="Luanda cholera outbreak confirmed.",
+        content_hash=compute_hash("Representative Report", "Luanda cholera outbreak confirmed."),
+        processing_status=ProcessingStatus.NORMALIZED,
+    )
+    def_signal = Signal(
+        id=DEFERRED_MEMBER_ID,
+        title="Duplicate Report",
+        raw_text="Cholera outbreak in Luanda.",
+        content_hash=compute_hash("Duplicate Report", "Cholera outbreak in Luanda."),
+        processing_status=ProcessingStatus.NORMALIZED,
+    )
+
+    session = FakeSession(
+        [
+            FakeResult([group_id]),
+            FakeResult(
+                [
+                    (rep_signal, StoryGroupRole.REPRESENTATIVE),
+                    (def_signal, StoryGroupRole.DEFERRED),
+                ]
+            ),
+        ]
+    )
+
+    repository = SqlAlchemyAiRepository(session)
+    clusters = repository.awaiting_cluster_extraction(limit=10)
+
+    assert len(clusters) == 1
+    assert clusters[0].representative_id == REPRESENTATIVE_ID
+    assert clusters[0].members[0].source_index == 0
+    assert clusters[0].members[0].id == REPRESENTATIVE_ID
+    assert {m.id for m in clusters[0].members} == {REPRESENTATIVE_ID, DEFERRED_MEMBER_ID}
+
+
+def test_a_cluster_never_carries_more_than_four_members() -> None:
+    group_id = uuid4()
+    members_list = []
+    for idx in range(6):
+        signal_id = uuid4()
+        title = f"Title {idx}"
+        body = "Outbreak confirmed."
+        sig = Signal(
+            id=signal_id,
+            title=title,
+            raw_text=body,
+            content_hash=compute_hash(title, body),
+        )
+        role = StoryGroupRole.REPRESENTATIVE if idx == 0 else StoryGroupRole.DEFERRED
+        members_list.append((sig, role))
+
+    session = FakeSession([FakeResult([group_id]), FakeResult(members_list)])
+    repository = SqlAlchemyAiRepository(session)
+    clusters = repository.awaiting_cluster_extraction(limit=10)
+
+    assert len(clusters) == 1
+    assert len(clusters[0].members) <= MAX_CLUSTER_MEMBERS
+
+
+def test_a_member_without_a_body_is_left_out_of_its_cluster() -> None:
+    group_id = uuid4()
+    rep_signal = Signal(
+        id=REPRESENTATIVE_ID,
+        title="Representative Report",
+        raw_text="Outbreak confirmed.",
+        content_hash=compute_hash("Representative Report", "Outbreak confirmed."),
+    )
+    bodyless_signal = Signal(
+        id=BODYLESS_MEMBER_ID,
+        title="Bodyless Report",
+        raw_text=None,
+        content_hash=compute_hash("Bodyless Report", ""),
+    )
+
+    session = FakeSession(
+        [
+            FakeResult([group_id]),
+            FakeResult(
+                [
+                    (rep_signal, StoryGroupRole.REPRESENTATIVE),
+                    (bodyless_signal, StoryGroupRole.DEFERRED),
+                ]
+            ),
+        ]
+    )
+
+    repository = SqlAlchemyAiRepository(session)
+    members = repository.awaiting_cluster_extraction(limit=10)[0].members
+
+    assert BODYLESS_MEMBER_ID not in {member.id for member in members}
+
+
+def test_storing_a_cluster_marks_members_duplicate_of_the_representative() -> None:
+    session = FakeSession()
+    repository = SqlAlchemyAiRepository(session)
+
+    repository.record_cluster_extraction(
+        representative_id=REPRESENTATIVE_ID,
+        member_ids=(DEFERRED_MEMBER_ID,),
+        stored=STORED,
+    )
+    repository.commit()
+
+    assert len(session.executed) == 2
+
+    stmt1 = session.executed[0]
+    assert isinstance(stmt1, Update)
+    params1 = stmt1.compile().params
+    assert params1["processing_status"] == ProcessingStatus.EXTRACTED
+    assert params1["ai_extraction"]["extraction_schema_version"] == 3
+
+    stmt2 = session.executed[1]
+    assert isinstance(stmt2, Update)
+    params2 = stmt2.compile().params
+    assert params2["processing_status"] == ProcessingStatus.DUPLICATE
+    assert params2["duplicate_of_signal_id"] == REPRESENTATIVE_ID
+
+
+def test_a_representative_is_never_marked_a_duplicate_of_itself() -> None:
+    session = FakeSession()
+    repository = SqlAlchemyAiRepository(session)
+
+    repository.record_cluster_extraction(
+        representative_id=REPRESENTATIVE_ID,
+        member_ids=(REPRESENTATIVE_ID, DEFERRED_MEMBER_ID),
+        stored=STORED,
+    )
+    repository.commit()
+
+    assert len(session.executed) == 2
+
+    stmt1 = session.executed[0]
+    assert isinstance(stmt1, Update)
+    params1 = stmt1.compile().params
+    assert params1["processing_status"] == ProcessingStatus.EXTRACTED
+
+    stmt2 = session.executed[1]
+    assert isinstance(stmt2, Update)
+    params2 = stmt2.compile().params
+    assert params2["processing_status"] == ProcessingStatus.DUPLICATE
+    assert params2["duplicate_of_signal_id"] == REPRESENTATIVE_ID
+    for val in params2.values():
+        if isinstance(val, list | tuple):
+            assert REPRESENTATIVE_ID not in val

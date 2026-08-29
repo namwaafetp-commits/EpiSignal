@@ -144,7 +144,7 @@ purpose-specific model routing.
 - [x] 10. Move the extraction schema to version 3.
 - [x] 11. Validate every span against the member it cites.
 - [x] 12. Build the cluster prompt.
-- [ ] 13. Read a story group as one extractable cluster.
+- [x] 13. Read a story group as one extractable cluster.
 - [ ] 14. Run cluster extraction with a per-article fallback.
 - [ ] 15. Wire cluster extraction into the extract stage.
 - [ ] 16. Report what clustering bought in `spend:report`.

@@ -18,6 +18,7 @@ from episignal_backend.ai.documents import (
     ChatResponse,
     ClassifiableSignal,
     DiseaseCandidate,
+    ExtractableCluster,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
@@ -58,6 +59,12 @@ class AiRepository(Protocol):
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None: ...
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None: ...
+
+    def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]: ...
+
+    def record_cluster_extraction(
+        self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
+    ) -> None: ...
 
     def open_review(
         self,
