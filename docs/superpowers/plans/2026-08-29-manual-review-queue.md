@@ -4,7 +4,7 @@
 
 **Goal:** Give an authenticated operator a durable queue of signals that need human review and safe, attributable resolutions back into the existing pipeline or into terminal dismissal.
 
-**Architecture:** Add review-case and candidate-snapshot tables behind a small `review` module. Every writer opens a typed case when it moves a signal to `needs_review`; one transactional resolver validates cause-specific commands and reuses extracted event-finalization behavior. FastAPI exposes bearer-protected list and resolve endpoints. A client-rendered Next page strictly validates responses while keeping the token only in memory, and all web surfaces adopt the approved dark surveillance-console language without changing evidence semantics.
+**Architecture:** Add review-case and candidate-snapshot tables behind a small `review` module. Every writer opens a typed case when it moves a signal to `needs_review`; one transactional resolver validates cause-specific commands and reuses extracted event-finalization behavior. FastAPI exposes bearer-protected list and resolve endpoints. A client-rendered Next page strictly validates responses while keeping the token only in memory and adapts the supplied surveillance-console cues inside the existing web shell.
 
 **Tech Stack:** Python 3.12, Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL/PostGIS, FastAPI, Next.js 16 App Router, React 19, TypeScript, Vitest, Testing Library, pnpm, uv.
 
@@ -58,8 +58,6 @@ Create:
 - `apps/web/src/lib/api-reviews.test.ts`
 - `apps/web/src/components/admin-review-queue.tsx`
 - `apps/web/src/components/admin-review-queue.test.tsx`
-- `apps/web/src/components/console-masthead.tsx`
-- `apps/web/src/components/console-masthead.test.tsx`
 - `apps/web/src/app/admin/reviews/page.tsx`
 
 Modify only where named by a task:
@@ -89,7 +87,8 @@ Add assertions for exact values and table shape:
 def test_review_vocabularies_are_closed() -> None:
     assert {value.value for value in ReviewReason} == {
         "retrieval_failed", "extraction_rejected", "disease_unresolved",
-        "event_match_ambiguous", "content_integrity", "legacy_unclassified",
+        "location_unresolved", "event_match_ambiguous", "content_integrity",
+        "legacy_unclassified",
     }
     assert {value.value for value in ReviewStatus} == {"open", "resolved"}
     assert ReviewResolution.DISMISS == "dismiss"
@@ -201,6 +200,7 @@ git commit -m "feat(review): define review case model"
 
 - Create: `database/migrations/versions/20260829_0010_manual_review_cases.py`
 - Modify: `apps/api/tests/test_migrations.py`
+- Create: `apps/api/integration_tests/test_manual_review_migration.py`
 - Modify: `packages/backend/src/episignal_backend/schema_check.py`
 - Modify: `packages/backend/tests/test_schema_check.py`
 
@@ -212,24 +212,32 @@ and guarded downgrade:
 
 ```python
 def test_manual_review_migration_is_ordered_and_non_destructive() -> None:
-    source = _migration_source("20260829_0010_manual_review_cases.py")
-    assert 'down_revision: str | None = "20260828_0009"' in source
-    assert "CREATE TABLE signal_review_cases" in source
-    assert "CREATE TABLE signal_review_candidates" in source
+    module = _load_revision("20260829_0010_manual_review_cases")
+    source = _revision_source("20260829_0010_manual_review_cases")
+    sql = render_offline("upgrade", "20260829_0010")
+    assert module.down_revision == "20260828_0009"
+    assert "create table signal_review_cases" in sql
+    assert "create table signal_review_candidates" in sql
+    assert "uq_signal_review_cases_one_open" in sql
+    assert "dismissed" in sql
     assert "legacy_unclassified" in source
-    assert "DELETE FROM signals" not in source
-    assert "DROP TABLE signals" not in source
+    assert "delete from signals" not in source.lower()
+    assert "drop table signals" not in source.lower()
 
 
 def test_manual_review_downgrade_refuses_to_erase_audit_history() -> None:
-    source = _migration_source("20260829_0010_manual_review_cases.py")
+    source = _revision_source("20260829_0010_manual_review_cases")
     assert "Cannot downgrade manual review schema after review data exists" in source
 ```
 
-Extend the live migration test to insert representative rows for quarantine,
-null text, rejected extraction, missing disease, and legacy fallback; assert one
-open case per `needs_review` signal after upgrade and unchanged title, raw text,
-hash, extraction, and processing status.
+The migration must render offline without executing its live verification
+queries. Add `apps/api/integration_tests/test_manual_review_migration.py` for a
+dedicated PostgreSQL database supplied only through
+`EPISIGNAL_TEST_DATABASE_URL`. Its fixture must reject a URL equal to
+`EPISIGNAL_DATABASE_URL`, upgrade an empty database to `0009`, insert exactly
+five synthetic rows (quarantine, null text, rejected extraction, missing
+disease, and legacy fallback), upgrade to `0010`, and assert one open case per
+row plus unchanged title, raw text, hash, extraction, and processing status.
 
 - [ ] **Step 2: Run migration tests and confirm red**
 
@@ -274,20 +282,22 @@ rows, cases, indexes, and constraints, then contract processing status.
 
 Run the Step 2 command. Expected: pass.
 
-- [ ] **Step 5: Exercise empty-database upgrade and downgrade in the migration test database**
+- [ ] **Step 5: Exercise the dedicated migration database**
 
 ```powershell
-uv run pytest apps/api/tests/test_migrations.py -k "manual_review and round_trip" -q
+$env:EPISIGNAL_TEST_DATABASE_URL = '<operator-provided disposable PostgreSQL URL>'
+uv run pytest apps/api/integration_tests/test_manual_review_migration.py -q
 ```
 
-Expected: isolated empty-database upgrade, unused-schema rollback, and
-re-upgrade pass. Do not run `corepack pnpm db:rollback` against the configured
-live database after backfill creates review history.
+Expected: forward backfill, per-signal reconciliation, unused-schema downgrade,
+re-upgrade, and guarded-downgrade cases pass. The fixture drops only its own
+synthetic rows/schema during cleanup. Never substitute the live
+`EPISIGNAL_DATABASE_URL` or run `corepack pnpm db:rollback` against live data.
 
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add database/migrations/versions/20260829_0010_manual_review_cases.py apps/api/tests/test_migrations.py packages/backend/src/episignal_backend/schema_check.py packages/backend/tests/test_schema_check.py
+git add database/migrations/versions/20260829_0010_manual_review_cases.py apps/api/tests/test_migrations.py apps/api/integration_tests/test_manual_review_migration.py packages/backend/src/episignal_backend/schema_check.py packages/backend/tests/test_schema_check.py
 git commit -m "feat(review): migrate durable review cases"
 ```
 
@@ -324,7 +334,7 @@ def test_reason_action_matrix_is_closed() -> None:
 Use a hand-written fake and a mypy assertion to prove it satisfies
 `ReviewRepository`; include methods `lock_review_case`, `signal_for_review`,
 `candidate_event_ids`, `set_disease`, `reset_retrieval`, `mark_classified`,
-`mark_dismissed`, `resolve_case`, `commit`, and `rollback`.
+`mark_extracted`, `mark_dismissed`, `resolve_case`, `commit`, and `rollback`.
 
 - [ ] **Step 2: Run tests and confirm red**
 
@@ -346,6 +356,20 @@ class ReviewCommandBase(BaseModel):
     reviewed_by: str = Field(min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=1000)
 
+    @field_validator("reviewed_by")
+    @classmethod
+    def reviewed_by_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("reviewed_by must not be blank")
+        return value
+
+    @field_validator("note")
+    @classmethod
+    def note_is_not_blank_when_present(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("note must not be blank")
+        return value
+
 
 class RetryRetrievalCommand(ReviewCommandBase):
     action: Literal[ReviewResolution.RETRY_RETRIEVAL]
@@ -360,6 +384,10 @@ class AssignDiseaseCommand(ReviewCommandBase):
     disease_id: UUID
 
 
+class RetryGeocodingCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.RETRY_GEOCODING]
+
+
 class LinkEventCommand(ReviewCommandBase):
     action: Literal[ReviewResolution.LINK_EVENT]
     event_id: UUID
@@ -372,17 +400,14 @@ class CreateEventCommand(ReviewCommandBase):
 class DismissCommand(ReviewCommandBase):
     action: Literal[ReviewResolution.DISMISS]
 
-    @model_validator(mode="after")
-    def note_is_required(self) -> "DismissCommand":
-        if not (self.note or "").strip():
-            raise ValueError("dismiss requires a non-blank note")
-        return self
+    note: str = Field(min_length=1, max_length=1000)
 
 
 ResolveReviewCommand = Annotated[
     RetryRetrievalCommand
     | RetryExtractionCommand
     | AssignDiseaseCommand
+    | RetryGeocodingCommand
     | LinkEventCommand
     | CreateEventCommand
     | DismissCommand,
@@ -479,11 +504,19 @@ git commit -m "feat(review): store and query review cases"
 - Modify: `packages/backend/src/episignal_backend/events/protocol.py`
 - Modify: `packages/backend/src/episignal_backend/events/repository.py`
 - Modify: `packages/backend/src/episignal_backend/events/assemble.py`
-- Modify: relevant existing tests under `packages/backend/tests/`
+- Delete: `packages/backend/src/episignal_backend/ai/requeue.py`
+- Modify: `packages/backend/tests/test_ai_classify.py`
+- Modify: `packages/backend/tests/test_ai_extract.py`
+- Modify: `packages/backend/tests/test_discovery_repository.py`
+- Modify: `packages/backend/tests/test_discovery_retry.py`
+- Modify: `packages/backend/tests/test_event_assemble.py`
+- Modify: `packages/backend/tests/test_event_repository.py`
+- Delete: `packages/backend/tests/test_ai_requeue.py`
 
-- [ ] **Step 1: Change fakes first and write failing cause assertions**
+- [ ] **Step 1: Convert the AI review writers test-first**
 
-Replace fake sets with captured typed calls:
+In `test_ai_classify.py` and `test_ai_extract.py`, replace fake review-ID sets
+with captured calls:
 
 ```python
 self.review_calls: list[tuple[UUID, ReviewReason, dict[UUID, float]]] = []
@@ -498,47 +531,83 @@ def open_review(
     self.review_calls.append((signal_id, reason, dict(candidate_scores or {})))
 ```
 
-Assert extraction exhaustion uses `EXTRACTION_REJECTED`, discovery failure uses
-`RETRIEVAL_FAILED`, missing disease uses `DISEASE_UNRESOLVED`, and matcher
-refusal uses `EVENT_MATCH_AMBIGUOUS` with exact `decision.candidate_scores`.
-Add a successful stub-promotion assertion for automatic recovery.
-
-- [ ] **Step 2: Run affected suites and confirm red**
+Assert both rejection/exhaustion paths call `open_review(...,
+reason=EXTRACTION_REJECTED)`. Run:
 
 ```powershell
-uv run pytest packages/backend/tests/test_ai_classify.py packages/backend/tests/test_ai_extract.py packages/backend/tests/test_ingestion_repository.py packages/backend/tests/test_discovery_pipeline.py packages/backend/tests/test_event_assemble.py packages/backend/tests/test_event_repository.py -q
+uv run pytest packages/backend/tests/test_ai_classify.py packages/backend/tests/test_ai_extract.py -q
 ```
 
-Expected: protocol/signature and cause assertions fail.
+Expected: fail on the old protocol. Change the AI protocol, repository, classify,
+and extract writers so the signal status and typed case write share one
+transaction. Run the command again. Expected: pass.
 
-- [ ] **Step 3: Replace bare status writes with typed case operations**
+- [ ] **Step 2: Convert discovery failure, retry exhaustion, and recovery test-first**
 
-Repository transactions must perform both state and case writes atomically.
-Event refusal passes candidate scores; unclusterable signals branch explicitly:
+In `test_discovery_repository.py` and `test_discovery_retry.py`, first assert:
+
+- initial contentless discovery opens `RETRIEVAL_FAILED`;
+- `record_failed_attempt(signal_id, max_attempts=max_attempts)` increments the
+  attempt and opens a new `RETRIEVAL_FAILED` case exactly when the reset budget
+  is exhausted;
+- successful promotion closes only the open retrieval case as
+  `RECOVERED_AUTOMATICALLY`;
+- a non-retrieval case is never closed by promotion.
+
+Run:
+
+```powershell
+uv run pytest packages/backend/tests/test_discovery_repository.py packages/backend/tests/test_discovery_retry.py packages/backend/tests/test_discovery_pipeline.py -q
+```
+
+Expected: fail on the old signatures. Update `ingestion/protocol.py`,
+`ingestion/repository.py`, and `ingestion/discovery.py`; pass `max_attempts` from
+`run_stub_retrieval`, and make the attempt increment plus case opening one
+transaction. Run the command again. Expected: pass.
+
+- [ ] **Step 3: Convert event refusal and unclusterable causes test-first**
+
+In `test_event_assemble.py`, add separate cases for missing disease, missing or
+unresolved representative location, and ambiguous match. Assert:
 
 ```python
-repo.open_review(
-    sig.signal_id,
-    reason=ReviewReason.DISEASE_UNRESOLVED,
-)
+assert repo.review_calls[missing_disease.signal_id].reason is ReviewReason.DISEASE_UNRESOLVED
+assert repo.review_calls[missing_location.signal_id].reason is ReviewReason.LOCATION_UNRESOLVED
+assert repo.review_calls[ambiguous.signal_id].candidate_scores == {
+    qualifying_a: 0.81,
+    qualifying_b: 0.74,
+}
 ```
 
-Discovery promotion closes an open retrieval case as
-`RECOVERED_AUTOMATICALLY`. Remove or make private every public bare
-`mark_needs_review` operation so a future caller cannot omit reason provenance.
+Include a `0.59` candidate below the configured `0.60` threshold and assert it
+is absent. Run the two event suites and confirm red. Then branch unclusterable
+signals explicitly by disease versus representative location and filter
+`decision.candidate_scores` to `score >= match_threshold` before calling
+`open_review`. The status and case write remain one repository transaction.
+Run again and expect pass.
 
-- [ ] **Step 4: Prove no bare writer remains**
+- [ ] **Step 4: Retire the superseded one-off requeue and scan all writers**
+
+Delete `ai/requeue.py` and `test_ai_requeue.py`; repository search at planning
+time found no production caller. Its historical execution remains documented in
+the extraction-stall report. Remove or make private every public bare
+`mark_needs_review` operation, then run:
 
 ```powershell
 rg -n "mark_needs_review|processing_status\s*=\s*ProcessingStatus\.NEEDS_REVIEW|processing_status = 'needs_review'" packages/backend/src
 ```
 
 Expected: only migration/backfill compatibility code or the typed review
-adapter remains; inspect every match.
+adapter remains; inspect every match. Also run `rg -n "ai\.requeue|requeue_extraction_backlog" packages apps`
+and expect no source/test caller.
 
-- [ ] **Step 5: Run affected tests and mypy**
+- [ ] **Step 5: Run the complete affected set and mypy**
 
-Run the Step 2 command, then:
+```powershell
+uv run pytest packages/backend/tests/test_ai_classify.py packages/backend/tests/test_ai_extract.py packages/backend/tests/test_discovery_repository.py packages/backend/tests/test_discovery_retry.py packages/backend/tests/test_discovery_pipeline.py packages/backend/tests/test_event_assemble.py packages/backend/tests/test_event_repository.py -q
+```
+
+Then:
 
 ```powershell
 uv run mypy packages/backend/src
@@ -1104,95 +1173,33 @@ git add apps/web/src/components/admin-review-queue.tsx apps/web/src/components/a
 git commit -m "feat(web): add manual review queue"
 ```
 
-## Task 14: Apply the surveillance-console visual direction across web surfaces
+## Task 14: Mount the inspired review workspace in the existing web shell
 
 **Files:**
 
-- Create: `apps/web/src/components/console-masthead.tsx`
-- Create: `apps/web/src/components/console-masthead.test.tsx`
 - Create: `apps/web/src/app/admin/reviews/page.tsx`
 - Modify: `apps/web/src/app/globals.css`
 - Modify: `apps/web/src/components/home-shell.tsx`
 - Modify: `apps/web/src/components/home-shell.test.tsx`
-- Modify: `apps/web/src/components/signal-map.tsx`
-- Modify: `apps/web/src/components/signal-map.test.tsx`
-- Modify: `apps/web/src/components/pipeline-monitor.tsx`
-- Modify: `apps/web/src/components/pipeline-monitor.test.tsx`
 
-- [ ] **Step 1: Write failing visual-contract and behavior tests**
+- [ ] **Step 1: Add the failing navigation and route test**
 
-Assert:
+In `home-shell.test.tsx`, assert the current masthead gains a `Review Queue`
+link to `/admin/reviews` while its Map, Signals, Pipeline Monitor, and About
+links remain. In `admin-review-queue.test.tsx`, import the route and assert it
+renders `AdminReviewQueue`.
 
-- shared masthead links Radar, Pipeline, and Review Queue;
-- homepage exposes a dominant `radar-workspace` and `signal-rail` without
-  changing current card data, source links, briefs, or score labels;
-- selected map details and every icon-only control retain accessible names;
-- signal map uses CARTO Dark Matter and keeps its unavailable fallback;
-- pipeline and review pages use the shared console masthead;
-- no web component contains the emoji glyphs `📍`, `✕`, `⚠`, or `✓`;
-- no production fixture adds the reference image's invented severity labels,
-  publishers, locations, or summary counts;
-- `apps/web/package.json` gains no UI, icon, motion, state, or form dependency.
-
-- [ ] **Step 2: Run focused web tests and confirm red**
+- [ ] **Step 2: Run the route seam and confirm red**
 
 ```powershell
-corepack pnpm --filter @episignal/web test -- src/components/console-masthead.test.tsx src/components/home-shell.test.tsx src/components/signal-map.test.tsx src/components/pipeline-monitor.test.tsx src/components/admin-review-queue.test.tsx
+corepack pnpm --filter @episignal/web test -- src/components/home-shell.test.tsx src/components/admin-review-queue.test.tsx
 ```
 
-Expected: shared masthead and new layout assertions fail.
+Expected: the missing link and route fail.
 
-- [ ] **Step 3: Adapt the existing semantic tokens and typography**
+- [ ] **Step 3: Mount the page and navigation, then make the seam green**
 
-Keep the current Fraunces/Inter loading and existing CSS variable names. Adapt
-their values in `globals.css` rather than creating a parallel token system:
-
-```css
-:root {
-  --paper: #061321;
-  --paper-raised: #0b1d2d;
-  --ink: #f3f7fb;
-  --ink-muted: #9eb0c2;
-  --navy: #102538;
-  --teal: #37d6df;
-  --teal-soft: #12323c;
-  --line: #20384a;
-  --amber: #d7a84b;
-  --crimson: #e5796e;
-}
-```
-
-Keep Fraunces only where the current brand and short hero headings already use
-`var(--display)`; dense operational content stays on Inter. Existing
-`font-mono`/system monospace utilities distinguish numbers, timestamps, scores,
-IDs, and counters. Use 1 px dividers and inner-edge highlights; no pure black,
-outer neon glow, gradient text, or blur over scrolling content. Interactive
-transitions use only `transform` and `opacity`, last at most `180ms`, and stop
-under `prefers-reduced-motion`.
-
-- [ ] **Step 4: Build one shared masthead and adapt the three surfaces**
-
-Extract `ConsoleMasthead` from the current `.masthead`, `.brand`, navigation,
-and `.system-pill` markup. Keep its text links and optional live status label;
-it owns no global state and adds no icon dependency.
-
-On the radar, use CSS Grid with a dominant map and narrow signal rail at
-`min-width: 768px`; retain the five-slot brief and current accessible list in
-the rail. On mobile, order masthead, map, then signals with no horizontal page
-scroll. Change only presentation and replace map style with:
-
-```typescript
-const CARTO_DARK_MATTER_STYLE =
-  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
-```
-
-Use cyan for selection, amber only for attached-event context, and coral only
-for failure/destructive states. Do not add severity filters or derive one heat
-score. Adapt Pipeline Monitor and Admin Review Queue through the same existing
-semantic variables, Tailwind utilities, masthead, dense dividers,
-rail/workspace rhythm, skeletons, and state panels.
-
-Mount the review page exactly:
+Create the route exactly:
 
 ```tsx
 import { AdminReviewQueue } from "@/components/admin-review-queue";
@@ -1202,7 +1209,44 @@ export default function AdminReviewsPage() {
 }
 ```
 
-- [ ] **Step 5: Run web tests, typecheck, and production build**
+Add `<Link href="/admin/reviews">Review Queue</Link>` beside Pipeline Monitor
+in the existing masthead. Run the Step 2 command. Expected: pass.
+
+- [ ] **Step 4: Add one failing scoped visual-adaptation test**
+
+In `admin-review-queue.test.tsx`, assert the ready state has `case-rail` then
+`decision-workspace`, all actions retain accessible names, rendered text has no
+decorative emoji, and no screenshot-derived severity, publisher, location, or
+summary fixture is introduced. Read `apps/web/package.json` in the test and
+assert its dependency keys are unchanged from the planning baseline:
+`@episignal/contracts`, `maplibre-gl`, `next`, `react`, and `react-dom`.
+
+- [ ] **Step 5: Adapt only the review workspace and make the test green**
+
+Keep the current Fraunces/Inter loading, masthead markup, semantic CSS, Tailwind,
+and MapLibre code unchanged. Add scoped `.review-console` descendants in
+`globals.css`; do not replace `:root` values. Use these local values as the
+reference adaptation:
+
+```css
+.review-console {
+  --review-canvas: #061321;
+  --review-panel: #0b1d2d;
+  --review-line: #20384a;
+  --review-ink: #f3f7fb;
+  --review-muted: #9eb0c2;
+  --review-accent: #37d6df;
+}
+```
+
+Use Inter for operational content and existing `font-mono` utilities for IDs,
+scores, and timestamps. Desktop is case rail plus decision workspace; below
+`768px`, keep DOM order and collapse to one column. Use 1 px dividers, no blur
+or glow, 44 px targets, and only short transform/opacity transitions that stop
+under `prefers-reduced-motion`. Do not edit the radar, map, pipeline monitor,
+global font loading, or global tokens. Run the Step 2 command. Expected: pass.
+
+- [ ] **Step 6: Run web tests, typecheck, and production build**
 
 ```powershell
 corepack pnpm --filter @episignal/web test
@@ -1210,15 +1254,23 @@ corepack pnpm --filter @episignal/web typecheck
 corepack pnpm --filter @episignal/web build
 ```
 
-Expected: all web tests pass; build lists `/`, `/admin/pipeline`, and
-`/admin/reviews`; no horizontal overflow is observed at `390x844` or
-`1440x900`.
+Expected: all web tests pass and build lists `/`, `/admin/pipeline`, and
+`/admin/reviews`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Inspect the review page at two viewports**
+
+Run the app against a non-production API fixture. Open `/admin/reviews` at
+`390x844` and `1440x900` in the in-app browser. At each size, inspect the locked,
+ready, empty, and unavailable frames; confirm no horizontal page overflow,
+clipped action, unreadable focus state, or sub-44 px interactive target. Record
+the viewport results in the Task 15 report. A unit test or build does not replace
+this browser proof.
+
+- [ ] **Step 8: Commit**
 
 ```powershell
-git add apps/web/src/app apps/web/src/components
-git commit -m "feat(web): apply surveillance console visual system"
+git add apps/web/src/app/admin/reviews/page.tsx apps/web/src/app/globals.css apps/web/src/components/home-shell.tsx apps/web/src/components/home-shell.test.tsx apps/web/src/components/admin-review-queue.test.tsx
+git commit -m "feat(web): mount the inspired review workspace"
 ```
 
 ## Task 15: Review, verify, capture safe live proof, and report

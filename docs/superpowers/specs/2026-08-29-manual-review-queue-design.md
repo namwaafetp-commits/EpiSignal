@@ -27,7 +27,7 @@ live database on 2026-08-29 found 37 signals at `needs_review`:
 | Event matching could not resolve a canonical disease | 28 | Accepted extraction exists, `disease_id` is null, and no event link exists. |
 | Retrieval produced no text | 7 | `raw_text` is null; five are publisher stubs and two are retained test-shaped stubs. |
 | Content integrity quarantine | 1 | The known quarantined signal `852aa204-846d-4aa6-a256-82c187fdeaef`. |
-| Several candidate events qualified | 1 | A canonical disease and location exist, no event link exists, and the deterministic matcher refused. |
+| Legacy cause not provable | 1 | A canonical disease and location exist with no event link, but the old schema did not preserve whether or which candidate events qualified. |
 
 These causes are inferred because the current schema stores only
 `processing_status = 'needs_review'`; it does not store the reason. That missing
@@ -62,7 +62,7 @@ silently rewrite the apparent reason for an old review.
 
 A generic state machine with configurable steps, assignees, comments, and
 permissions would support later operations work. Phase 1 has one operator, one
-queue, and six resolutions. The extra interface would be wider than the
+queue, and seven human resolutions. The extra interface would be wider than the
 behavior it hides.
 
 ## Vocabulary and invariants
@@ -99,6 +99,7 @@ class ReviewReason(StrEnum):
     RETRIEVAL_FAILED = "retrieval_failed"
     EXTRACTION_REJECTED = "extraction_rejected"
     DISEASE_UNRESOLVED = "disease_unresolved"
+    LOCATION_UNRESOLVED = "location_unresolved"
     EVENT_MATCH_AMBIGUOUS = "event_match_ambiguous"
     CONTENT_INTEGRITY = "content_integrity"
     LEGACY_UNCLASSIFIED = "legacy_unclassified"
@@ -113,6 +114,7 @@ class ReviewResolution(StrEnum):
     RETRY_RETRIEVAL = "retry_retrieval"
     RETRY_EXTRACTION = "retry_extraction"
     ASSIGN_DISEASE = "assign_disease"
+    RETRY_GEOCODING = "retry_geocoding"
     LINK_EVENT = "link_event"
     CREATE_EVENT = "create_event"
     DISMISS = "dismiss"
@@ -156,10 +158,12 @@ This table preserves the event set that caused an ambiguous decision:
 | `match_score` | float in `0..1` | Exact deterministic score at refusal time. |
 | `created_at` | timestamp | Snapshot time. |
 
-Candidate rows are evidence for the decision, not live search results. The
-resolution interface may link only one of the stored candidates. If the
-operator wants a different event, the safe choices in Phase 1 are create a new
-event or leave the case open.
+Candidate rows are evidence for the decision, not live search results. New
+ambiguous cases snapshot only candidates whose score met the configured match
+threshold at refusal time; below-threshold search results are never linkable.
+The resolution interface may link only one stored candidate. If the operator
+wants a different event, the safe choices in Phase 1 are create a new event or
+leave the case open.
 
 ## Migration and compatibility
 
@@ -180,9 +184,12 @@ Backfill classification is conservative and ordered:
 3. Missing extraction after rejected AI attempts becomes
    `extraction_rejected`.
 4. Accepted extraction with null `disease_id` becomes `disease_unresolved`.
-5. A disease plus two or more qualifying candidate events becomes
-   `event_match_ambiguous`, with candidate snapshots written.
-6. Anything not proven by those predicates becomes `legacy_unclassified`.
+5. Anything not proven by those predicates becomes `legacy_unclassified`.
+
+Legacy rows never become `event_match_ambiguous`: the old schema did not store
+the refusal-time candidate set, threshold, or scores. Recomputing against
+mutable current events would fabricate historical provenance. Only the new
+writer may open `event_match_ambiguous` and persist exact qualifying snapshots.
 
 The migration never rewrites signal content or moves a signal out of review.
 Backfill inserts are idempotent against the partial unique index.
@@ -235,12 +242,21 @@ Replace every bare `mark_needs_review(signal_id)` call with a typed operation:
 repo.open_review(signal_id, reason=ReviewReason.EXTRACTION_REJECTED)
 ```
 
-Event refusal also passes its `candidate_scores`. Missing-disease refusal uses
-`DISEASE_UNRESOLVED`. Discovery opens `RETRIEVAL_FAILED`. The integrity backfill
-uses `CONTENT_INTEGRITY`.
+Event refusal passes only scores at or above the configured match threshold.
+Missing-disease refusal uses `DISEASE_UNRESOLVED`; missing or unresolved
+representative location uses `LOCATION_UNRESOLVED`. Discovery opens
+`RETRIEVAL_FAILED`. The integrity backfill uses `CONTENT_INTEGRITY`.
 
 If a later automatic retrieval succeeds while its case remains open, promotion
 closes that case as `RECOVERED_AUTOMATICALLY`. No human identity is fabricated.
+If a human requested retrieval retry, the closed case remains history; a failed
+attempt that exhausts the reset budget atomically opens a new
+`RETRIEVAL_FAILED` case. A successful promotion advances the signal and leaves
+the closed case untouched.
+
+The one-off `ai/requeue.py` backlog repair has no production caller and is
+retired with its tests. Leaving it callable would permit a direct
+`needs_review` to `classified` transition without resolving the open case.
 
 ### Event finalization reuse
 
@@ -272,6 +288,8 @@ first returns `409 REVIEW_ALREADY_RESOLVED` and does not repeat mutations.
 | `extraction_rejected` | `dismiss` | Close case and set signal to `dismissed`. |
 | `disease_unresolved` | `assign_disease` | Set canonical `disease_id`, close case, and set signal to `geocoded`; event assembly selects it. |
 | `disease_unresolved` | `dismiss` | Close case and set signal to `dismissed`. |
+| `location_unresolved` | `retry_geocoding` | Close case and set signal to `extracted`; the geocoding pass selects it. A later unresolved result opens a new typed case. |
+| `location_unresolved` | `dismiss` | Close case and set signal to `dismissed`. |
 | `event_match_ambiguous` | `link_event` | Require a stored candidate, finalize attachment, close case, and leave signal `matched`. |
 | `event_match_ambiguous` | `create_event` | Create and finalize one event from the signal, close case, and leave signal `matched`. |
 | `event_match_ambiguous` | `dismiss` | Close case and set signal to `dismissed`. |
@@ -364,12 +382,11 @@ The calibrated design dials for EpiSignal are `DESIGN_VARIANCE = 4`,
 current UI; they do not require a pixel match or replacement design system.
 Operational stability and scan speed matter more than decorative motion.
 
-### Shared surveillance-console language
+### Visual adaptation for this item
 
-- Adapt the existing semantic CSS variables toward an off-black navy base,
-  raised navy panels, cool borders, near-white text, muted blue-gray, and one
-  cyan selection accent. Keep amber and coral for warning/destructive meaning,
-  not as secondary brand accents.
+- Scope dark navy panels, cool borders, near-white text, muted blue-gray, and
+  one cyan selection accent to the new review workspace. Keep amber and coral
+  for warning/destructive meaning, not as secondary brand accents.
 - Keep the current Fraunces/Inter setup. Fraunces remains limited to the brand
   and short hero headings; Inter remains the interface face. Existing system
   monospace utilities may distinguish numbers, timestamps, scores, IDs, and
@@ -381,34 +398,22 @@ Operational stability and scan speed matter more than decorative motion.
   CSS status marks, and current controls. Remove decorative emoji glyphs from
   the radar and admin surfaces; icon-only controls still require accessible
   names.
-- Motion is limited to `transform` and `opacity` transitions for selection,
-  drawer entry, and button press feedback. No perpetual animation, map pulse,
-  parallax, or layout movement that competes with live evidence. Respect
-  `prefers-reduced-motion`.
-- Desktop uses a dense asymmetric grid: dominant work area plus a narrower
-  signal/case rail. Below `768px`, every surface collapses to one column with no
+- Motion is limited to `transform` and `opacity` transitions for selection and
+  button press feedback. No perpetual animation or layout movement that
+  competes with evidence. Respect `prefers-reduced-motion`.
+- Desktop review uses a dense asymmetric grid: decision work area plus a
+  narrower case rail. Below `768px`, it collapses to one column with no
   horizontal page scroll and at least 44 px interactive targets.
 - Loading uses layout-matched skeletons. Empty, unauthorized, disabled,
   conflict, and unavailable states keep the same console frame and explain the
   next safe action.
 
-The existing radar adopts this shared language in the same item so the new
-review page does not become a second unrelated product. Keep the current
-signal-first contract, MapLibre behavior, ordered five-slot briefs, event
-context, and accessible list. Change presentation only:
-
-- switch the map to CARTO Dark Matter with the current resilient list fallback;
-- make the map the dominant desktop work area and the recent-signal list a
-  narrow right rail, collapsing map then list on mobile;
-- use cyan for selection and retain early-signal score, evidence score, source
-  standing, and verification status as separate facts;
-- never invent the reference image's `High`, `Medium`, or `Low` severity labels,
-  and never blend the two EpiSignal scores into one heat value.
-
-The pipeline monitor and review queue reuse the existing masthead, semantic CSS
-variables, typography, Tailwind utilities, MapLibre component, panel treatment,
-and responsive rules. Extract a small shared masthead only if needed to avoid
-duplicating the current markup; do not introduce a design-system package.
+For `M`, apply these cues only to the new review workspace and its existing
+homepage navigation link. Reuse the current masthead classes, semantic CSS
+variables, typography, Tailwind utilities, controls, and responsive rules. Do
+not restyle the radar or pipeline monitor, change the MapLibre basemap, replace
+global tokens, or extract a general design system in this item. The screenshot
+remains broader product inspiration for a separately scoped future change.
 
 ### Review queue interaction
 
@@ -473,21 +478,21 @@ These are the agreed public seams for worker tests:
    status, and the observed total reconciles exactly before and after migration.
 3. An authenticated operator can see title, source, AI disease, locations,
    candidate events, and match scores when those facts exist.
-4. Retrieval, extraction, disease, ambiguous-event, integrity, and legacy cases
-   expose only their allowed resolutions.
+4. Retrieval, extraction, disease, location, ambiguous-event, integrity, and
+   legacy cases expose only their allowed resolutions.
 5. Retry and disease assignment re-enter the existing automated pipeline at the
    earliest safe status.
 6. Manual event linking and creation preserve the same provenance,
    observations, locations, scores, and verification rules as automation.
 7. Dismissal is terminal but preserves signal and review history.
-8. Concurrent or repeated resolution cannot apply side effects twice.
+8. Two real PostgreSQL sessions contending on the same case cannot apply side
+   effects twice; repeated resolution returns the stable conflict response.
 9. Missing, wrong, or unconfigured admin credentials cannot read or mutate the
    queue, and no secret reaches logs or persisted browser storage.
-10. Radar, pipeline monitor, and review queue adapt the supplied dark
-    surveillance-console cues through the existing semantic CSS, Fraunces/Inter
-    typography, MapLibre map, accessible controls, dense desktop rail layout,
-    and single-column mobile fallback. They add no UI dependency, invent no
-    severity, and do not collapse EpiSignal's two scores.
+10. The new review workspace adapts the supplied surveillance-console cues
+    through the existing semantic CSS, Fraunces/Inter typography, accessible
+    controls, dense desktop rail layout, and single-column mobile fallback. It
+    adds no UI dependency and does not restyle the existing radar or pipeline.
 11. `corepack pnpm verify` exits 0; the completion report quotes real Python and
     web test counts, contract parity, and production-build output.
 12. Live proof records the pre-migration reason composition, post-migration case
