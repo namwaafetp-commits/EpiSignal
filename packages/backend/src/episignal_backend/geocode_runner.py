@@ -16,9 +16,11 @@ from dataclasses import dataclass
 
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
+from episignal_backend.geocode.external import NominatimClient
 from episignal_backend.geocode.locate import GeocodingResult, run_geocoding
 from episignal_backend.geocode.repository import (
     SqlAlchemyGazetteerRepository,
+    SqlAlchemyGeocodeCacheRepository,
     SqlAlchemyGeocodeRepository,
 )
 
@@ -57,12 +59,26 @@ def _run(arguments: Arguments) -> GeocodingResult:
         settings.geocode_max_signals_per_run,
     )
     with session_scope() as session:
+        # The cache is a local table, so it is always in play; the live client
+        # is built only when the operator has enabled Nominatim, and otherwise
+        # the pass never reaches the network. Both ride the run's session, so
+        # cache writes commit — or roll back — with everything else.
         return run_geocoding(
             SqlAlchemyGeocodeRepository(session),
             SqlAlchemyGazetteerRepository(session),
             limit=limit,
             source=settings.gazetteer_source,
             stale=arguments.stale,
+            cache=SqlAlchemyGeocodeCacheRepository(session),
+            nominatim=(
+                NominatimClient(
+                    base_url=settings.nominatim_url,
+                    user_agent=settings.nominatim_user_agent,
+                    timeout=settings.nominatim_timeout_seconds,
+                )
+                if settings.nominatim_enabled
+                else None
+            ),
         )
 
 

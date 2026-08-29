@@ -9,7 +9,12 @@ from episignal_backend.geocode.documents import (
     MatchForm,
     ResolvedLocation,
 )
-from episignal_backend.geocode.protocol import GazetteerRepository, GeocodeRepository
+from episignal_backend.geocode.protocol import (
+    ExternalGeocoder,
+    GazetteerRepository,
+    GeocodeCacheRepository,
+    GeocodeRepository,
+)
 
 
 class FakeGazetteer:
@@ -61,6 +66,27 @@ def test_the_gazetteer_boundary_is_satisfiable_without_a_database() -> None:
 
 def test_the_storage_boundary_is_satisfiable_without_a_database() -> None:
     assert isinstance(FakeGeocodeRepository(), GeocodeRepository)
+
+
+def test_the_cache_boundary_is_satisfiable_without_a_database() -> None:
+    class FakeCache:
+        def lookup(self, normalized_query: str, country_code: str | None) -> Candidate | None:
+            return None
+
+        def store(
+            self, candidate: Candidate, normalized_query: str, country_code: str | None
+        ) -> None:
+            return None
+
+    assert isinstance(FakeCache(), GeocodeCacheRepository)
+
+
+def test_the_external_geocoder_boundary_is_satisfiable_without_a_database() -> None:
+    class FakeExternal:
+        def lookup(self, name: str, *, country_code: str | None = None) -> Candidate | None:
+            return None
+
+    assert isinstance(FakeExternal(), ExternalGeocoder)
 
 
 def test_a_fake_gazetteer_answers_the_four_questions_the_ladder_asks() -> None:

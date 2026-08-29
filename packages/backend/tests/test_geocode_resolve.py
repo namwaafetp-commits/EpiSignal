@@ -3,7 +3,12 @@ from collections.abc import Mapping, Sequence
 import pytest
 from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.geocode.documents import Candidate, ExtractedPlace, MatchForm
-from episignal_backend.geocode.resolve import confidence_for, resolve_place
+from episignal_backend.geocode.resolve import (
+    NOMINATIM_PLACE_CONFIDENCE,
+    PLACE_CONFIDENCE_BY_FORM,
+    confidence_for,
+    resolve_place,
+)
 
 ALIASES: Mapping[str, str] = {"nigeria": "NG", "democratic republic of the congo": "CD"}
 
@@ -29,6 +34,44 @@ def candidate(
         latitude=latitude,
         longitude=longitude,
     )
+
+
+NOMINATIM_ANSWER = Candidate(
+    geonames_id=None,
+    name="Bonville",
+    precision=Precision.PLACE,
+    country_code="NG",
+    admin1_code=None,
+    admin2_code=None,
+    latitude=6.70,
+    longitude=3.60,
+)
+
+
+class StubCache:
+    """Answers lookups from one scripted row and records everything asked of it."""
+
+    def __init__(self, answer: Candidate | None = None) -> None:
+        self._answer = answer
+        self.lookups: list[tuple[str, str | None]] = []
+        self.stored: list[tuple[Candidate, str, str | None]] = []
+
+    def lookup(self, normalized_query: str, country_code: str | None) -> Candidate | None:
+        self.lookups.append((normalized_query, country_code))
+        return self._answer
+
+    def store(self, candidate: Candidate, normalized_query: str, country_code: str | None) -> None:
+        self.stored.append((candidate, normalized_query, country_code))
+
+
+class StubNominatim:
+    def __init__(self, answer: Candidate | None = None) -> None:
+        self._answer = answer
+        self.calls: list[tuple[str, str | None]] = []
+
+    def lookup(self, name: str, *, country_code: str | None = None) -> Candidate | None:
+        self.calls.append((name, country_code))
+        return self._answer
 
 
 class StubGazetteer:
@@ -365,3 +408,179 @@ def test_a_location_naming_nothing_but_a_role_is_unresolved() -> None:
     resolved = resolve_place(ExtractedPlace(role=LocationRole.REPORTING), StubGazetteer())
     assert resolved.precision == Precision.UNRESOLVED
     assert resolved.role == LocationRole.REPORTING
+
+
+def test_the_external_confidence_sits_below_every_reviewed_form() -> None:
+    # Unreviewed data, however good its coordinates look, cannot outrank a row
+    # a human chose to seed.
+    assert NOMINATIM_PLACE_CONFIDENCE == 0.65
+    assert all(score > NOMINATIM_PLACE_CONFIDENCE for score in PLACE_CONFIDENCE_BY_FORM.values())
+
+
+def test_a_cache_hit_on_a_zero_candidate_miss_resolves_at_place_precision() -> None:
+    gazetteer = StubGazetteer(
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        }
+    )
+    cache = StubCache(answer=NOMINATIM_ANSWER)
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Bonville"),
+        gazetteer,
+        cache=cache,
+    )
+    assert resolved.precision == Precision.PLACE
+    assert resolved.resolved_name == "Bonville"
+    assert resolved.confidence == NOMINATIM_PLACE_CONFIDENCE
+    assert resolved.geonames_id is None
+
+
+def test_the_cache_is_asked_with_the_collapsed_lower_case_query() -> None:
+    cache = StubCache()
+    resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Bonville"),
+        StubGazetteer(),
+        cache=cache,
+    )
+    assert cache.lookups == [("bonville", "NG")]
+
+
+def test_a_cache_hit_short_circuits_the_live_lookup() -> None:
+    cache = StubCache(answer=NOMINATIM_ANSWER)
+    nominatim = StubNominatim(answer=NOMINATIM_ANSWER)
+    resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Bonville"),
+        StubGazetteer(),
+        cache=cache,
+        nominatim=nominatim,
+    )
+    assert nominatim.calls == []
+    assert cache.stored == []
+
+
+def test_a_nominatim_hit_on_a_cache_miss_is_stored_and_then_returned() -> None:
+    gazetteer = StubGazetteer(
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        }
+    )
+    cache = StubCache()
+    nominatim = StubNominatim(answer=NOMINATIM_ANSWER)
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Bonville"),
+        gazetteer,
+        cache=cache,
+        nominatim=nominatim,
+    )
+    assert resolved.confidence == NOMINATIM_PLACE_CONFIDENCE
+    assert cache.stored == [(NOMINATIM_ANSWER, "bonville", "NG")]
+
+
+def test_an_ambiguous_gazetteer_result_never_reaches_the_cache_or_nominatim() -> None:
+    # The invariant: ambiguity coarsens and never tie-breaks. Two known
+    # Springfields coarsen; they are never taken to an outside source that
+    # would happily pick one.
+    gazetteer = StubGazetteer(
+        by_form={
+            ("Springfield", "exact", "NG"): (
+                candidate(1, "Springfield", latitude=1.0, longitude=1.0),
+                candidate(2, "Springfield", latitude=2.0, longitude=2.0),
+            )
+        },
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        },
+    )
+    cache = StubCache()
+    nominatim = StubNominatim(answer=NOMINATIM_ANSWER)
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Springfield"),
+        gazetteer,
+        cache=cache,
+        nominatim=nominatim,
+    )
+    assert resolved.precision == Precision.COUNTRY
+    assert cache.lookups == []
+    assert nominatim.calls == []
+
+
+def test_a_unique_gazetteer_match_is_preferred_over_the_external_rungs() -> None:
+    gazetteer = StubGazetteer(by_form={("Lagos", "exact", "NG"): (candidate(2332459, "Lagos"),)})
+    cache = StubCache(answer=NOMINATIM_ANSWER)
+    nominatim = StubNominatim(answer=NOMINATIM_ANSWER)
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Lagos"),
+        gazetteer,
+        cache=cache,
+        nominatim=nominatim,
+    )
+    assert resolved.geonames_id == 2332459
+    assert resolved.confidence == 0.95
+    assert cache.lookups == []
+    assert nominatim.calls == []
+
+
+def test_a_zero_candidate_miss_with_no_cache_and_no_client_coarsens_as_before() -> None:
+    gazetteer = StubGazetteer(
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        }
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Bonville"),
+        gazetteer,
+    )
+    assert resolved.precision == Precision.COUNTRY
+    assert resolved.confidence == 0.30
+
+
+def test_a_worldwide_miss_consults_the_cache_without_a_country_scope() -> None:
+    cache = StubCache(answer=NOMINATIM_ANSWER)
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, place_name="Bonville"),
+        StubGazetteer(),
+        cache=cache,
+    )
+    assert cache.lookups == [("bonville", None)]
+    assert resolved.precision == Precision.PLACE
+    assert resolved.country_code == "NG"
+
+
+def test_a_worldwide_nominatim_hit_is_stored_under_the_worldwide_key() -> None:
+    cache = StubCache()
+    nominatim = StubNominatim(answer=NOMINATIM_ANSWER)
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, place_name="Bonville"),
+        StubGazetteer(),
+        cache=cache,
+        nominatim=nominatim,
+    )
+    assert nominatim.calls == [("Bonville", None)]
+    assert cache.stored == [(NOMINATIM_ANSWER, "bonville", None)]
+    assert resolved.latitude == pytest.approx(6.70)
+
+
+def test_an_external_miss_leaves_the_place_to_the_coarsening_ladder() -> None:
+    gazetteer = StubGazetteer(
+        centroids={
+            ("NG", None): candidate(
+                9002, "Nigeria", precision="country", admin1_code=None, latitude=9.0, longitude=8.0
+            )
+        }
+    )
+    resolved = resolve_place(
+        ExtractedPlace(role=LocationRole.PRIMARY, country_name="Nigeria", place_name="Bonville"),
+        gazetteer,
+        cache=StubCache(),
+        nominatim=StubNominatim(),
+    )
+    assert resolved.precision == Precision.COUNTRY
+    assert resolved.place_name == "Bonville"

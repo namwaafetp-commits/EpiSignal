@@ -1,5 +1,6 @@
 from episignal_backend.geocode.normalize import (
     ascii_form,
+    cache_key,
     normalized_form,
     resolve_country,
 )
@@ -67,3 +68,20 @@ def test_it_never_matches_a_near_miss() -> None:
     assert resolve_country("Niger", ALIASES) == "NE"
     assert resolve_country("Nigeria", ALIASES) == "NG"
     assert resolve_country("Nigerien", ALIASES) is None
+
+
+def test_the_cache_key_collapses_whitespace_and_lowers_case() -> None:
+    assert cache_key("  Bon   Ville \n") == "bon ville"
+    assert cache_key("BONVILLE") == "bonville"
+
+
+def test_the_cache_key_is_idempotent() -> None:
+    # The repository normalizes whatever it is handed, including a query the
+    # ladder already normalized; the second pass must change nothing.
+    assert cache_key(cache_key("Bon Ville")) == cache_key("Bon Ville")
+
+
+def test_the_cache_key_keeps_punctuation_verbatim() -> None:
+    # Cruder than the gazetteer forms on purpose: the cache is written and
+    # read by the same code, so it only has to be deterministic.
+    assert cache_key("N'Djamena") == "n'djamena"

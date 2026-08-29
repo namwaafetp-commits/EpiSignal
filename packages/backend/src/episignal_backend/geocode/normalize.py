@@ -26,6 +26,17 @@ def ascii_form(value: str) -> str:
     return "".join(character for character in decomposed if not unicodedata.combining(character))
 
 
+def cache_key(value: str) -> str:
+    """Whitespace-collapsed lower case: the key the external cache is stored under.
+
+    Deliberately cruder than `normalized_form`, and never used for gazetteer
+    matching. The cache is written and read by the same code, so it only needs
+    to be deterministic, and the plain lower case matches how `resolve_disease`
+    keys its vocabulary lookups.
+    """
+    return " ".join(value.split()).lower()
+
+
 def resolve_country(name: str | None, aliases: Mapping[str, str]) -> str | None:
     """Map an extracted country name to an ISO-3166 alpha-2 code.
 

@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
-from sqlalchemy import Select, delete, or_, select, update
+from sqlalchemy import ColumnElement, Select, delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import LocationRole, Precision, ProcessingStatus
@@ -22,8 +22,8 @@ from episignal_backend.geocode.documents import (
     MatchForm,
     ResolvedLocation,
 )
-from episignal_backend.geocode.normalize import ascii_form, normalized_form
-from episignal_backend.models import GazetteerPlace, Signal, SignalLocation
+from episignal_backend.geocode.normalize import ascii_form, cache_key, normalized_form
+from episignal_backend.models import GazetteerPlace, GeocodeCache, Signal, SignalLocation
 from episignal_backend.seeds import load_country_aliases
 
 # Two is enough to answer the only question the ladder asks: is this name
@@ -113,6 +113,68 @@ class SqlAlchemyGazetteerRepository:
             statement = statement.where(GazetteerPlace.admin1_code == admin1_code)
         row = self._session.execute(statement.limit(1)).scalar_one_or_none()
         return None if row is None else _candidate(row)
+
+
+def _scope_predicate(country_code: str | None) -> ColumnElement[bool]:
+    """Match the stored scope exactly, including the NULL that is the worldwide key."""
+    if country_code is None:
+        return GeocodeCache.country_code.is_(None)
+    return GeocodeCache.country_code == country_code
+
+
+class SqlAlchemyGeocodeCacheRepository:
+    """The storage side of the external-place cache.
+
+    Rows are unreviewed answers, so the repository decides nothing: it keys on
+    the cache-key form of the query and hands back whatever was stored, rebuilt
+    as a place-precision candidate. `store` deletes before it inserts, in the
+    same spirit as `replace_locations` — a re-lookup overwrites, and a cache
+    row has no history worth reconciling. The rows ride the run's transaction,
+    so a rolled-back pass leaves no half-written cache behind.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def lookup(self, normalized_query: str, country_code: str | None) -> Candidate | None:
+        row = self._session.execute(
+            select(GeocodeCache).where(
+                GeocodeCache.normalized_query == cache_key(normalized_query),
+                _scope_predicate(country_code),
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        # The columns the cache does not carry (the geonames id, the admin
+        # codes) were never stored, so the rebuilt candidate cannot invent them.
+        return Candidate(
+            geonames_id=None,
+            name=row.resolved_name,
+            precision=Precision.PLACE,
+            country_code=row.country_code,
+            admin1_code=None,
+            admin2_code=None,
+            latitude=row.latitude,
+            longitude=row.longitude,
+        )
+
+    def store(self, candidate: Candidate, normalized_query: str, country_code: str | None) -> None:
+        query = cache_key(normalized_query)
+        self._session.execute(
+            delete(GeocodeCache).where(
+                GeocodeCache.normalized_query == query,
+                _scope_predicate(country_code),
+            )
+        )
+        self._session.add(
+            GeocodeCache(
+                normalized_query=query,
+                country_code=country_code,
+                resolved_name=candidate.name,
+                latitude=candidate.latitude,
+                longitude=candidate.longitude,
+            )
+        )
 
 
 def _places(extraction: Any) -> tuple[ExtractedPlace, ...]:

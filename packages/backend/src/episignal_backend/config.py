@@ -100,6 +100,16 @@ class Settings(BaseSettings):
     # gazetteer reaches only signals processed after it.
     gazetteer_source: str = Field(default="geonames-2026-08-27", min_length=1)
 
+    # Nominatim, the OpenStreetMap place search consulted only when the local
+    # gazetteer has no candidate at all for a name. Off by default: the
+    # scheduled pipeline never makes a network call an operator has not
+    # switched on, and every successful answer is cached so it is paid for once.
+    nominatim_enabled: bool = False
+    nominatim_url: str = "https://nominatim.openstreetmap.org"
+    nominatim_timeout_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
+    # Nominatim asks that requests carry an identifying User-Agent.
+    nominatim_user_agent: str = "EpiSignal/0.1 (episignal backend)"
+
     event_cluster_window_days: int = Field(default=7, ge=1, le=365)
     event_cluster_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
     event_match_threshold: float = Field(default=0.60, ge=0.0, le=1.0)

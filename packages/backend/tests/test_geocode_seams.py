@@ -12,11 +12,16 @@ def test_a_decision_module_imports_no_database_driver(name: str) -> None:
     assert "sqlalchemy" not in source.lower()
 
 
-def test_no_module_in_the_sub_project_touches_the_network() -> None:
-    # There is no provider to call. A future network geocoder is an adapter
-    # module, and this test is what makes adding one a deliberate act.
-    for path in GEOCODE.glob("*.py"):
-        assert "httpx" not in path.read_text(encoding="utf-8").lower()
+def test_no_module_but_the_adapter_touches_the_network() -> None:
+    # Nominatim is the one provider this sub-project calls, and `external.py`
+    # is the one module allowed to call it. Adding another network module is a
+    # deliberate act that must change this test.
+    networked = {
+        path.name
+        for path in GEOCODE.glob("*.py")
+        if "httpx" in path.read_text(encoding="utf-8").lower()
+    }
+    assert networked == {"external.py"}
 
 
 def test_only_the_repository_imports_sqlalchemy() -> None:

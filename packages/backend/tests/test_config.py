@@ -204,6 +204,16 @@ def test_geocoding_defaults_are_set() -> None:
     assert settings.gazetteer_source == "geonames-2026-08-27"
 
 
+def test_nominatim_defaults_are_off() -> None:
+    # The scheduled pipeline must never make a network call an operator has
+    # not switched on, so the live geocoder ships dark.
+    settings = build_settings()
+    assert settings.nominatim_enabled is False
+    assert settings.nominatim_url == "https://nominatim.openstreetmap.org"
+    assert settings.nominatim_timeout_seconds == 10.0
+    assert settings.nominatim_user_agent == "EpiSignal/0.1 (episignal backend)"
+
+
 def test_the_geocoding_batch_must_fit_the_run() -> None:
     with pytest.raises(ValidationError):
         build_settings(

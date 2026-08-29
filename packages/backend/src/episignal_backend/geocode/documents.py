@@ -44,14 +44,20 @@ class ExtractedPlace(BaseModel):
 
 
 class Candidate(BaseModel):
-    """One gazetteer row offered as a possible answer."""
+    """One gazetteer row offered as a possible answer.
+
+    `geonames_id` and `country_code` are None only for a candidate answered
+    outside the reviewed gazetteer, by the cache or by Nominatim: those know
+    nothing of geonames, and a worldwide lookup may resolve no country at all.
+    Every gazetteer row carries both.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    geonames_id: int
+    geonames_id: int | None
     name: str = Field(min_length=1)
     precision: Precision
-    country_code: str = Field(min_length=2, max_length=2)
+    country_code: str | None = Field(min_length=2, max_length=2)
     admin1_code: str | None = None
     admin2_code: str | None = None
     latitude: float = Field(ge=-90.0, le=90.0)

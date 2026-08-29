@@ -29,6 +29,7 @@ EXPECTED_TABLES = (
     "pipeline_runs",
     "signal_review_cases",
     "signal_review_candidates",
+    "geocode_cache",
 )
 
 EXPECTED_EVENT_COLUMNS = (

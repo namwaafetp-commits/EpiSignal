@@ -11,7 +11,7 @@ from episignal_backend.models.event import (
     EventObservation,
     EventSignal,
 )
-from episignal_backend.models.geography import GazetteerPlace, SignalLocation
+from episignal_backend.models.geography import GazetteerPlace, GeocodeCache, SignalLocation
 from episignal_backend.models.pipeline import PipelineRun
 from episignal_backend.models.review import SignalReviewCandidate, SignalReviewCase
 from episignal_backend.models.signal import Signal
@@ -27,6 +27,7 @@ __all__ = [
     "EventSignal",
     "GazetteerPlace",
     "GdeltQueryRule",
+    "GeocodeCache",
     "Pathogen",
     "PipelineRun",
     "RejectedSighting",

@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "ai_models",
     "ai_requests",
     "gazetteer_places",
+    "geocode_cache",
     "signal_locations",
     "pipeline_runs",
     "story_groups",

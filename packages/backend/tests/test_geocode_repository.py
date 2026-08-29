@@ -2,10 +2,15 @@ from typing import Any
 from uuid import uuid4
 
 from episignal_backend.db.types import LocationRole, Precision
-from episignal_backend.geocode.documents import MatchForm, ResolvedLocation
-from episignal_backend.geocode.protocol import GazetteerRepository, GeocodeRepository
+from episignal_backend.geocode.documents import Candidate, MatchForm, ResolvedLocation
+from episignal_backend.geocode.protocol import (
+    GazetteerRepository,
+    GeocodeCacheRepository,
+    GeocodeRepository,
+)
 from episignal_backend.geocode.repository import (
     SqlAlchemyGazetteerRepository,
+    SqlAlchemyGeocodeCacheRepository,
     SqlAlchemyGeocodeRepository,
 )
 from sqlalchemy import Delete, Select, Update
@@ -248,3 +253,69 @@ def test_stale_selection_asks_for_a_source_other_than_the_current_one() -> None:
     SqlAlchemyGeocodeRepository(session).stale_geocoding(limit=10, source="geonames-2026-08-27")
     rendered = str(session.executed[0])
     assert "geocoding_source" in rendered
+
+
+def test_the_cache_repository_satisfies_the_cache_boundary() -> None:
+    assert isinstance(SqlAlchemyGeocodeCacheRepository(FakeSession()), GeocodeCacheRepository)
+
+
+def test_a_cache_lookup_queries_the_cache_table_with_the_normalized_query() -> None:
+    session = FakeSession([FakeResult(None)])
+    found = SqlAlchemyGeocodeCacheRepository(session).lookup("  Bonville  ", "NG")
+
+    assert found is None
+    statement = session.executed[0]
+    assert isinstance(statement, Select)
+    rendered = str(statement)
+    assert "geocode_cache" in rendered
+    assert "normalized_query" in rendered
+    assert "country_code" in rendered
+    assert statement.compile().params == {"normalized_query_1": "bonville", "country_code_1": "NG"}
+
+
+def test_a_worldwide_cache_lookup_matches_the_null_scope() -> None:
+    session = FakeSession([FakeResult(None)])
+    SqlAlchemyGeocodeCacheRepository(session).lookup("bonville", None)
+    where_clause = str(session.executed[0].whereclause)
+    assert "IS NULL" in where_clause.upper()
+
+
+def test_a_cached_row_is_returned_as_a_place_candidate() -> None:
+    row = Row(
+        resolved_name="Bonville",
+        country_code="NG",
+        latitude=6.70,
+        longitude=3.60,
+    )
+    session = FakeSession([FakeResult(row)])
+    found = SqlAlchemyGeocodeCacheRepository(session).lookup("bonville", "NG")
+
+    assert found is not None
+    assert found.geonames_id is None
+    assert found.name == "Bonville"
+    assert found.precision is Precision.PLACE
+    assert found.country_code == "NG"
+    assert found.latitude == 6.70
+
+
+def test_storing_a_hit_deletes_the_old_row_and_writes_the_normalized_answer() -> None:
+    session = FakeSession()
+    candidate = Candidate(
+        geonames_id=None,
+        name="Bonville",
+        precision=Precision.PLACE,
+        country_code="NG",
+        admin1_code=None,
+        admin2_code=None,
+        latitude=6.70,
+        longitude=3.60,
+    )
+    SqlAlchemyGeocodeCacheRepository(session).store(candidate, "Bonville", "NG")
+
+    assert isinstance(session.executed[0], Delete)
+    stored = session.added[0]
+    assert stored.normalized_query == "bonville"
+    assert stored.country_code == "NG"
+    assert stored.resolved_name == "Bonville"
+    assert stored.latitude == 6.70
+    assert stored.longitude == 3.60

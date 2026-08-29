@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -117,5 +118,35 @@ class SignalLocation(IdentityMixin, Base):
     geocoding_source: Mapped[str | None] = mapped_column(Text)
     geocoding_confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class GeocodeCache(IdentityMixin, Base):
+    """One place name answered outside the gazetteer, kept so it is paid for once.
+
+    Keyed on the whitespace-collapsed lower-case query plus the country scope
+    it was searched under; a NULL scope is the worldwide lookup. Rows are
+    unreviewed data written only by the geocoding pass and safe to drop: the
+    worst a refill costs is the external call it saves.
+    """
+
+    __tablename__ = "geocode_cache"
+    __table_args__ = (
+        CheckConstraint("latitude >= -90 AND latitude <= 90", name="latitude_range"),
+        CheckConstraint("longitude >= -180 AND longitude <= 180", name="longitude_range"),
+        UniqueConstraint("normalized_query", "country_code"),
+        Index("ix_geocode_cache_country_code", "country_code"),
+    )
+
+    normalized_query: Mapped[str] = mapped_column(Text, nullable=False)
+    country_code: Mapped[str | None] = mapped_column(String(2))
+    resolved_name: Mapped[str] = mapped_column(Text, nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(
+        Text, nullable=False, default="nominatim", server_default="nominatim"
+    )
+    fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

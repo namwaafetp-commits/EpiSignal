@@ -21,9 +21,11 @@ from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import run_event_assembly
 from episignal_backend.events.delta import configure_delta
 from episignal_backend.events.repository import SqlAlchemyEventRepository
+from episignal_backend.geocode.external import NominatimClient
 from episignal_backend.geocode.locate import run_geocoding
 from episignal_backend.geocode.repository import (
     SqlAlchemyGazetteerRepository,
+    SqlAlchemyGeocodeCacheRepository,
     SqlAlchemyGeocodeRepository,
 )
 from episignal_backend.ingestion.dedupe import DedupeThresholds, run_dedupe
@@ -163,12 +165,25 @@ def _geocode() -> Mapping[str, int]:
     settings = get_settings()
     limit = min(settings.geocode_batch_size, settings.geocode_max_signals_per_run)
     with session_scope() as session:
+        # Same wiring as geocode_runner: the cache is a local table and is
+        # always in play; the live client exists only when the operator has
+        # enabled Nominatim, and otherwise the stage never reaches the network.
         result = run_geocoding(
             SqlAlchemyGeocodeRepository(session),
             SqlAlchemyGazetteerRepository(session),
             limit=limit,
             source=settings.gazetteer_source,
             stale=False,
+            cache=SqlAlchemyGeocodeCacheRepository(session),
+            nominatim=(
+                NominatimClient(
+                    base_url=settings.nominatim_url,
+                    user_agent=settings.nominatim_user_agent,
+                    timeout=settings.nominatim_timeout_seconds,
+                )
+                if settings.nominatim_enabled
+                else None
+            ),
         )
     return {
         "examined": result.examined,
