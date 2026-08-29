@@ -110,7 +110,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [x] 10. Route scheduled stages through the provider ladder.
 - [x] 11. Build the pre-group stage.
 - [x] 12. Store pre-groups and change selection.
-- [ ] 13. Add the measurement gate.
+- [x] 13. Add the measurement gate.
 - [ ] 14. Review, gate, and report.
 
 ## Blockers
