@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { RadarItem } from "../lib/api-radar";
+import type { RadarEventGroup, RadarItem } from "../lib/api-radar";
 import {
   isPlottableLocation,
   toGeoJsonFeatures,
@@ -11,6 +11,7 @@ import {
 
 export interface SignalMapProps {
   items: RadarItem[];
+  groups?: RadarEventGroup[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }
@@ -18,16 +19,21 @@ export interface SignalMapProps {
 const CARTO_POSITRON_STYLE =
   "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
-export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
+export function SignalMap({
+  items,
+  groups = [],
+  selectedId,
+  onSelect,
+}: SignalMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const plottableCount = items.filter((i) =>
-    isPlottableLocation(i.location),
-  ).length;
-  const totalCount = items.length;
+  const plottableCount =
+    items.filter((i) => isPlottableLocation(i.location)).length +
+    groups.filter((g) => isPlottableLocation(g.representative_location)).length;
+  const totalCount = items.length + groups.length;
 
   const onSelectRef = useRef(onSelect);
   useEffect(() => {
@@ -38,6 +44,11 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
+
+  const groupsRef = useRef(groups);
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
 
   const selectedIdRef = useRef(selectedId);
   useEffect(() => {
@@ -61,7 +72,10 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
 
       map.on("load", () => {
         setIsLoaded(true);
-        const geojsonData = toGeoJsonFeatures(itemsRef.current);
+        const geojsonData = toGeoJsonFeatures(
+          itemsRef.current,
+          groupsRef.current,
+        );
 
         map.addSource("signals", {
           type: "geojson",
@@ -131,15 +145,15 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
     }
   }, []);
 
-  // Update source data when items change
+  // Update source data when items or groups change
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
     const source = mapRef.current.getSource("signals") as
       GeoJSONSource | undefined;
     if (source && typeof source.setData === "function") {
-      source.setData(toGeoJsonFeatures(items));
+      source.setData(toGeoJsonFeatures(items, groups));
     }
-  }, [items, isLoaded]);
+  }, [items, groups, isLoaded]);
 
   // Update selection styling and fly to location
   useEffect(() => {
@@ -163,22 +177,25 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
 
     if (selectedId) {
       const selectedItem = items.find((i) => i.id === selectedId);
-      if (
-        selectedItem &&
-        isPlottableLocation(selectedItem.location) &&
-        typeof map.flyTo === "function"
-      ) {
+      const selectedGroup = groups.find(
+        (g) => g.event_public_id === selectedId,
+      );
+      const target =
+        selectedItem && isPlottableLocation(selectedItem.location)
+          ? selectedItem.location
+          : selectedGroup &&
+              isPlottableLocation(selectedGroup.representative_location)
+            ? selectedGroup.representative_location
+            : null;
+      if (target && typeof map.flyTo === "function") {
         map.flyTo({
-          center: [
-            selectedItem.location.longitude,
-            selectedItem.location.latitude,
-          ],
+          center: [target.longitude, target.latitude],
           zoom: Math.max(map.getZoom(), 4),
           duration: 1000,
         });
       }
     }
-  }, [selectedId, items, isLoaded]);
+  }, [selectedId, items, groups, isLoaded]);
 
   return (
     <section
@@ -209,6 +226,85 @@ export function SignalMap({ items, selectedId, onSelect }: SignalMapProps) {
 
       {selectedId &&
         (() => {
+          const selectedGroup = groups.find(
+            (g) => g.event_public_id === selectedId,
+          );
+          if (selectedGroup) {
+            if (!isPlottableLocation(selectedGroup.representative_location)) {
+              return null;
+            }
+            const groupLocation = selectedGroup.representative_location;
+            return (
+              <div
+                role="dialog"
+                aria-label="Selected signal details"
+                className="absolute bottom-2 left-2 right-2 sm:right-auto sm:max-w-sm z-20 bg-white/95 backdrop-blur-sm p-3.5 rounded-lg shadow-md border border-slate-200 text-xs space-y-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="font-bold text-slate-900 text-sm leading-tight">
+                    {selectedGroup.representative_title}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => onSelect("")}
+                    className="text-slate-400 hover:text-slate-600 font-bold px-1 rounded hover:bg-slate-100"
+                    aria-label="Close signal details"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200 font-medium">
+                    {selectedGroup.signal_count} reports
+                  </span>
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-medium">
+                    {selectedGroup.representative_source.is_official
+                      ? "Official Source"
+                      : "Media Source"}
+                  </span>
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+                    📍 {groupLocation.label} ({groupLocation.precision})
+                  </span>
+                </div>
+
+                <div className="mt-1 pt-1.5 border-t border-slate-100 bg-amber-50/70 p-2 rounded border border-amber-200">
+                  <div className="flex items-center justify-between font-semibold text-amber-950">
+                    <span>Event: {selectedGroup.event.public_id}</span>
+                    <span className="font-normal capitalize text-amber-900">
+                      {selectedGroup.event.verification_status.replace(
+                        /_/g,
+                        " ",
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex gap-3 text-amber-900 mt-1">
+                    {selectedGroup.event.early_signal_score !== null && (
+                      <span>
+                        Surveillance:{" "}
+                        <strong>
+                          {Math.round(
+                            selectedGroup.event.early_signal_score * 100,
+                          )}
+                          %
+                        </strong>
+                      </span>
+                    )}
+                    {selectedGroup.event.evidence_score !== null && (
+                      <span>
+                        Evidence:{" "}
+                        <strong>
+                          {Math.round(selectedGroup.event.evidence_score * 100)}
+                          %
+                        </strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           const selectedItem = items.find((i) => i.id === selectedId);
           if (!selectedItem || !isPlottableLocation(selectedItem.location)) {
             return null;

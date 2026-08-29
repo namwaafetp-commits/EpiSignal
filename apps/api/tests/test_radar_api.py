@@ -17,6 +17,7 @@ from episignal_backend.db.types import (
 from episignal_backend.radar import (
     EventContextStatus,
     RadarEventContext,
+    RadarEventGroup,
     RadarItem,
     RadarLocation,
     RadarPage,
@@ -97,8 +98,36 @@ def test_radar_endpoint_returns_exact_json_shape_and_no_leaked_fields() -> None:
         event_context_status=EventContextStatus.ATTACHED,
         event=event,
     )
+    second_item = RadarItem(
+        id=UUID("86421357-1234-5678-9abc-def012345678"),
+        title_english="Cholera cluster in Cacuaco district",
+        brief=brief,
+        signal_type=SignalType.OUTBREAK_REPORT,
+        processing_status=ProcessingStatus.MATCHED,
+        published_at=None,
+        first_seen_at=first_seen_moment,
+        source=source,
+        extraction_confidence=0.9,
+        location=location,
+        event_context_status=EventContextStatus.ATTACHED,
+        event=event,
+    )
+    group = RadarEventGroup(
+        event_public_id="EVT-2026-00042",
+        event=event,
+        signal_count=2,
+        representative_title="Cholera outbreak in Luanda Province",
+        representative_brief=brief,
+        representative_location=location,
+        representative_source=source,
+        all_source_names=("WHO AFRO",),
+        earliest_published_at=published_moment,
+        latest_published_at=published_moment,
+        first_seen_at=first_seen_moment,
+    )
     radar_page = RadarPage(
-        items=(item,),
+        event_groups=(group,),
+        items=(item, second_item),
         window_start=window_start,
         window_end=window_end,
         hours=48,
@@ -115,6 +144,64 @@ def test_radar_endpoint_returns_exact_json_shape_and_no_leaked_fields() -> None:
     data = response.json()
 
     assert data == {
+        "event_groups": [
+            {
+                "event_public_id": "EVT-2026-00042",
+                "event": {
+                    "public_id": "EVT-2026-00042",
+                    "verification_status": "officially_confirmed",
+                    "early_signal_score": 0.88,
+                    "evidence_score": 0.94,
+                },
+                "signal_count": 2,
+                "representative_title": "Cholera outbreak in Luanda Province",
+                "representative_brief": [
+                    {
+                        "slot": "what_where",
+                        "text": "Cholera outbreak reported in Luanda province.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "counts",
+                        "text": "120 suspected cases and 4 deaths.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "timing",
+                        "text": "Cases reported between August 20 and August 27.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "spread",
+                        "text": "Spread observed across two municipal districts.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "reporting",
+                        "text": "Reported by the Provincial Health Directorate.",
+                        "reported": True,
+                    },
+                ],
+                "representative_location": {
+                    "role": "primary",
+                    "precision": "admin1",
+                    "label": "Luanda Province",
+                    "country_code": "AO",
+                    "latitude": -8.8383,
+                    "longitude": 13.2344,
+                },
+                "representative_source": {
+                    "name": "WHO AFRO",
+                    "url": "https://afro.who.int/report/123",
+                    "is_official": True,
+                    "credibility_tier": "official",
+                },
+                "all_source_names": ["WHO AFRO"],
+                "earliest_published_at": "2026-08-28T10:00:00Z",
+                "latest_published_at": "2026-08-28T10:00:00Z",
+                "first_seen_at": "2026-08-28T10:05:00Z",
+            }
+        ],
         "items": [
             {
                 "id": "24681357-1234-5678-9abc-def012345678",
@@ -172,7 +259,64 @@ def test_radar_endpoint_returns_exact_json_shape_and_no_leaked_fields() -> None:
                     "early_signal_score": 0.88,
                     "evidence_score": 0.94,
                 },
-            }
+            },
+            {
+                "id": "86421357-1234-5678-9abc-def012345678",
+                "title_english": "Cholera cluster in Cacuaco district",
+                "brief": [
+                    {
+                        "slot": "what_where",
+                        "text": "Cholera outbreak reported in Luanda province.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "counts",
+                        "text": "120 suspected cases and 4 deaths.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "timing",
+                        "text": "Cases reported between August 20 and August 27.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "spread",
+                        "text": "Spread observed across two municipal districts.",
+                        "reported": True,
+                    },
+                    {
+                        "slot": "reporting",
+                        "text": "Reported by the Provincial Health Directorate.",
+                        "reported": True,
+                    },
+                ],
+                "signal_type": "outbreak_report",
+                "processing_status": "matched",
+                "published_at": None,
+                "first_seen_at": "2026-08-28T10:05:00Z",
+                "source": {
+                    "name": "WHO AFRO",
+                    "url": "https://afro.who.int/report/123",
+                    "is_official": True,
+                    "credibility_tier": "official",
+                },
+                "extraction_confidence": 0.9,
+                "location": {
+                    "role": "primary",
+                    "precision": "admin1",
+                    "label": "Luanda Province",
+                    "country_code": "AO",
+                    "latitude": -8.8383,
+                    "longitude": 13.2344,
+                },
+                "event_context_status": "attached",
+                "event": {
+                    "public_id": "EVT-2026-00042",
+                    "verification_status": "officially_confirmed",
+                    "early_signal_score": 0.88,
+                    "evidence_score": 0.94,
+                },
+            },
         ],
         "window_start": "2026-08-26T12:00:00Z",
         "window_end": "2026-08-28T12:00:00Z",
@@ -202,6 +346,7 @@ def test_radar_endpoint_returns_exact_json_shape_and_no_leaked_fields() -> None:
 def test_radar_endpoint_query_bounds(query_string: str, expected_status: int) -> None:
     now = datetime(2026, 8, 28, 12, 0, 0, tzinfo=UTC)
     radar_page = RadarPage(
+        event_groups=(),
         items=(),
         window_start=now,
         window_end=now,

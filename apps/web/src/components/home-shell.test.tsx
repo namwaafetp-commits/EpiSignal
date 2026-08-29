@@ -1,30 +1,92 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { RadarFeedState } from "../lib/api-radar";
+import type { RadarEventGroup, RadarFeedState } from "../lib/api-radar";
 import { HomeShell } from "./home-shell";
 
 // Mock SignalMap
 vi.mock("./signal-map", () => ({
   SignalMap: ({
     items,
+    groups = [],
     selectedId,
     onSelect,
   }: {
     items: unknown[];
+    groups?: unknown[];
     selectedId: string | null;
     onSelect: (id: string) => void;
   }) => (
     <div data-testid="mock-signal-map" data-selected={selectedId}>
-      <span>Plotted {items.length} items</span>
+      <span>
+        Plotted {items.length} items in {groups.length} groups
+      </span>
       <button onClick={() => onSelect("item-1")}>Select Item 1</button>
     </div>
   ),
 }));
 
+const SAMPLE_EVENT_GROUP: RadarEventGroup = {
+  event_public_id: "EVT-2026-00077",
+  event: {
+    public_id: "EVT-2026-00077",
+    verification_status: "officially_confirmed",
+    early_signal_score: 0.9,
+    evidence_score: 0.95,
+  },
+  signal_count: 3,
+  representative_title: "Cholera cluster in Cacuaco district",
+  representative_brief: [
+    {
+      slot: "what_where",
+      text: "Cholera cluster reported in Cacuaco district.",
+      reported: true,
+    },
+    {
+      slot: "counts",
+      text: "42 cases and 2 deaths.",
+      reported: true,
+    },
+    {
+      slot: "timing",
+      text: "Onset late August.",
+      reported: true,
+    },
+    {
+      slot: "spread",
+      text: "No spread reported.",
+      reported: false,
+    },
+    {
+      slot: "reporting",
+      text: "Reported by the Municipal Health Directorate.",
+      reported: true,
+    },
+  ],
+  representative_location: {
+    role: "primary",
+    precision: "place",
+    label: "Cacuaco",
+    country_code: "AO",
+    latitude: -8.7803,
+    longitude: 13.3667,
+  },
+  representative_source: {
+    name: "WHO AFRO",
+    url: "https://afro.who.int/report/456",
+    is_official: true,
+    credibility_tier: "official",
+  },
+  all_source_names: ["WHO AFRO", "Radio Nacional de Angola"],
+  earliest_published_at: "2026-08-28T08:00:00Z",
+  latest_published_at: "2026-08-28T11:00:00Z",
+  first_seen_at: "2026-08-28T11:05:00Z",
+};
+
 const SAMPLE_READY_RADAR: RadarFeedState = {
   status: "ready",
   data: {
+    event_groups: [],
     items: [
       {
         id: "24681357-1234-5678-9abc-def012345678",
@@ -99,6 +161,7 @@ describe("HomeShell", () => {
         radarFeed={{
           status: "ready",
           data: {
+            event_groups: [],
             items: [],
             window_start: "",
             window_end: "",
@@ -148,6 +211,7 @@ describe("HomeShell", () => {
         radarFeed={{
           status: "ready",
           data: {
+            event_groups: [],
             items: [],
             window_start: "2026-08-26T12:00:00Z",
             window_end: "2026-08-28T12:00:00Z",
@@ -309,5 +373,86 @@ describe("HomeShell", () => {
 
     render(<HomeShell apiStatus="ready" radarFeed={feedNoLoc} />);
     expect(screen.getByText("📍 Location unresolved")).toBeInTheDocument();
+  });
+
+  it("renders a grouped event as one combined card with report count, sources, and time span", () => {
+    const feedGrouped: RadarFeedState = {
+      status: "ready",
+      data: {
+        ...SAMPLE_READY_RADAR.data!,
+        items: [],
+        event_groups: [SAMPLE_EVENT_GROUP],
+      },
+    };
+
+    render(<HomeShell apiStatus="ready" radarFeed={feedGrouped} />);
+
+    // Combined card header: representative title, report count badge, unique sources
+    expect(
+      screen.getByText("Cholera cluster in Cacuaco district"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("3 reports")).toBeInTheDocument();
+    expect(
+      screen.getByText(/WHO AFRO · Radio Nacional de Angola/),
+    ).toBeInTheDocument();
+
+    // Earliest to latest published span
+    expect(screen.getByText(/First published/i)).toBeInTheDocument();
+    expect(screen.getByText(/Latest published/i)).toBeInTheDocument();
+
+    // Representative brief, location, and event context with scores
+    expect(
+      screen.getByText("Cholera cluster reported in Cacuaco district."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/📍 Cacuaco \(place\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/EVT-2026-00077/i)).toBeInTheDocument();
+    expect(screen.getByText(/officially confirmed/i)).toBeInTheDocument();
+    expect(screen.getByText(/surveillance interest:/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence support:/i)).toBeInTheDocument();
+
+    // Representative source link
+    const link = screen.getByRole("link", { name: /view original source/i });
+    expect(link).toHaveAttribute("href", "https://afro.who.int/report/456");
+
+    // Grouped signals must not also appear as individual cards: the list holds
+    // exactly one selectable card and the map receives zero items, one group.
+    expect(
+      screen.getAllByRole("button", { name: /select signal:/i }),
+    ).toHaveLength(1);
+    expect(screen.getByText(/0 items in 1 groups/i)).toBeInTheDocument();
+  });
+
+  it("renders grouped members only inside the cluster card next to standalone signals", () => {
+    const feedMixed: RadarFeedState = {
+      status: "ready",
+      data: {
+        ...SAMPLE_READY_RADAR.data!,
+        items: [
+          {
+            ...SAMPLE_READY_RADAR.data!.items[0],
+            title_english: "Standalone measles report",
+          },
+        ],
+        event_groups: [SAMPLE_EVENT_GROUP],
+      },
+    };
+
+    render(<HomeShell apiStatus="ready" radarFeed={feedMixed} />);
+
+    // One combined card for the group plus one standalone item card
+    expect(
+      screen.getAllByRole("button", { name: /select signal:/i }),
+    ).toHaveLength(2);
+    expect(
+      screen.getByText("Cholera cluster in Cacuaco district"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Standalone measles report")).toBeInTheDocument();
+    expect(screen.getByText(/1 items in 1 groups/i)).toBeInTheDocument();
+
+    // The group card is selectable like a signal card
+    const groupCard = screen.getByRole("button", {
+      name: /select signal: cholera cluster in cacuaco district/i,
+    });
+    expect(groupCard).toHaveAttribute("data-selected", "false");
   });
 });

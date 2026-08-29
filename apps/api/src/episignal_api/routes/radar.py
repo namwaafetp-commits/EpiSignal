@@ -66,9 +66,26 @@ class RadarItemResponse(BaseModel):
     event: RadarEventContextResponse | None
 
 
+class RadarEventGroupResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    event_public_id: str
+    event: RadarEventContextResponse
+    signal_count: int
+    representative_title: str
+    representative_brief: list[BriefPoint]
+    representative_location: RadarLocationResponse | None
+    representative_source: RadarSourceResponse
+    all_source_names: list[str]
+    earliest_published_at: datetime | None
+    latest_published_at: datetime | None
+    first_seen_at: datetime
+
+
 class RadarResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    event_groups: list[RadarEventGroupResponse]
     items: list[RadarItemResponse]
     window_start: datetime
     window_end: datetime

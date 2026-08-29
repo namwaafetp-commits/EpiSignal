@@ -1,4 +1,4 @@
-import type { RadarItem, RadarLocation } from "./api-radar";
+import type { RadarEventGroup, RadarItem, RadarLocation } from "./api-radar";
 
 export interface RadarMapProperties {
   id: string;
@@ -41,6 +41,7 @@ export function isPlottableLocation(
 
 export function toGeoJsonFeatures(
   items: readonly RadarItem[],
+  groups: readonly RadarEventGroup[] = [],
 ): RadarFeatureCollection {
   const features: RadarMapFeature[] = [];
 
@@ -64,6 +65,34 @@ export function toGeoJsonFeatures(
         early_signal_score: item.event?.early_signal_score ?? null,
         has_event:
           item.event_context_status === "attached" && item.event !== null,
+      },
+    });
+  }
+
+  // Grouped signals no longer appear as items; plot one marker per group from
+  // its representative location so grouped stories stay on the map.
+  for (const group of groups) {
+    if (!isPlottableLocation(group.representative_location)) continue;
+
+    features.push({
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: [
+          group.representative_location.longitude,
+          group.representative_location.latitude,
+        ],
+      },
+      properties: {
+        id: group.event_public_id,
+        title_english: group.representative_title,
+        label: group.representative_location.label,
+        precision: group.representative_location.precision,
+        role: group.representative_location.role,
+        credibility_tier: group.representative_source.credibility_tier,
+        is_official: group.representative_source.is_official,
+        early_signal_score: group.event.early_signal_score,
+        has_event: true,
       },
     });
   }

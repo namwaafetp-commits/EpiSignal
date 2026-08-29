@@ -4,6 +4,7 @@ export type RadarFeed =
   paths["/api/v1/radar"]["get"]["responses"][200]["content"]["application/json"];
 
 export type RadarItem = RadarFeed["items"][number];
+export type RadarEventGroup = RadarFeed["event_groups"][number];
 export type RadarLocation = NonNullable<RadarItem["location"]>;
 export type RadarEventContext = NonNullable<RadarItem["event"]>;
 export type RadarSource = RadarItem["source"];
@@ -221,6 +222,43 @@ function isRadarItem(value: unknown): boolean {
   return false;
 }
 
+function isRadarEventGroup(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (
+    typeof value.event_public_id !== "string" ||
+    value.event_public_id.length === 0 ||
+    !isRadarEventContext(value.event) ||
+    !isInteger(value.signal_count, 2) ||
+    typeof value.representative_title !== "string" ||
+    value.representative_title.length === 0 ||
+    !isRadarLocation(value.representative_location) ||
+    !isRadarSource(value.representative_source) ||
+    !isTimestamp(value.earliest_published_at, true) ||
+    !isTimestamp(value.latest_published_at, true) ||
+    !isTimestamp(value.first_seen_at) ||
+    !Array.isArray(value.all_source_names) ||
+    value.all_source_names.length === 0
+  ) {
+    return false;
+  }
+  for (const name of value.all_source_names) {
+    if (typeof name !== "string" || name.length === 0) return false;
+  }
+
+  if (
+    !Array.isArray(value.representative_brief) ||
+    value.representative_brief.length !== BRIEF_SLOTS.length
+  ) {
+    return false;
+  }
+  for (let i = 0; i < BRIEF_SLOTS.length; i++) {
+    if (!isBriefPoint(value.representative_brief[i], BRIEF_SLOTS[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function isRadarFeed(value: unknown): value is RadarFeed {
   if (!isRecord(value) || !Array.isArray(value.items)) return false;
   if (
@@ -230,11 +268,15 @@ export function isRadarFeed(value: unknown): value is RadarFeed {
     Number(value.hours) > 168 ||
     !isInteger(value.limit, 1) ||
     Number(value.limit) > 100 ||
-    value.items.length > Number(value.limit)
+    value.items.length > Number(value.limit) ||
+    !Array.isArray(value.event_groups)
   ) {
     return false;
   }
-  return value.items.every(isRadarItem);
+  return (
+    value.event_groups.every(isRadarEventGroup) &&
+    value.items.every(isRadarItem)
+  );
 }
 
 export async function getRadarFeed({

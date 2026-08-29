@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RadarItem, RadarLocation } from "./api-radar";
+import type { RadarEventGroup, RadarItem, RadarLocation } from "./api-radar";
 import {
   getMarkerAriaLabel,
   isPlottableLocation,
@@ -52,6 +52,55 @@ function makeItem(
       early_signal_score: 0.88,
       evidence_score: 0.94,
     },
+    ...overrides,
+  };
+}
+
+function makeGroup(
+  overrides: Partial<RadarEventGroup> = {},
+  locationOverrides: Partial<RadarLocation> | null = {},
+): RadarEventGroup {
+  const loc: RadarLocation | null =
+    locationOverrides === null
+      ? null
+      : {
+          role: "primary",
+          precision: "place",
+          label: "Cacuaco",
+          country_code: "AO",
+          latitude: -8.7803,
+          longitude: 13.3667,
+          ...locationOverrides,
+        };
+
+  return {
+    event_public_id: "EVT-2026-00077",
+    event: {
+      public_id: "EVT-2026-00077",
+      verification_status: "officially_confirmed",
+      early_signal_score: 0.9,
+      evidence_score: 0.95,
+    },
+    signal_count: 3,
+    representative_title: "Cholera cluster in Cacuaco district",
+    representative_brief: [
+      { slot: "what_where", text: "Cholera in Cacuaco.", reported: true },
+      { slot: "counts", text: "42 cases.", reported: true },
+      { slot: "timing", text: "Late August.", reported: true },
+      { slot: "spread", text: "No spread.", reported: false },
+      { slot: "reporting", text: "MoH.", reported: true },
+    ],
+    representative_location: loc,
+    representative_source: {
+      name: "WHO AFRO",
+      url: "https://afro.who.int/report/456",
+      is_official: true,
+      credibility_tier: "official",
+    },
+    all_source_names: ["WHO AFRO", "Radio Nacional de Angola"],
+    earliest_published_at: "2026-08-28T08:00:00Z",
+    latest_published_at: "2026-08-28T11:00:00Z",
+    first_seen_at: "2026-08-28T11:05:00Z",
     ...overrides,
   };
 }
@@ -172,6 +221,47 @@ describe("toGeoJsonFeatures", () => {
         has_event: false,
       },
     });
+  });
+
+  it("plots one marker per group from the representative location keyed by event id", () => {
+    const group = makeGroup();
+    const unplottableGroup = makeGroup(
+      { event_public_id: "EVT-2026-00099" },
+      null,
+    );
+
+    const geojson = toGeoJsonFeatures([], [group, unplottableGroup]);
+
+    expect(geojson.type).toBe("FeatureCollection");
+    expect(geojson.features).toHaveLength(1);
+    expect(geojson.features[0]).toEqual({
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: [13.3667, -8.7803],
+      },
+      properties: {
+        id: "EVT-2026-00077",
+        title_english: "Cholera cluster in Cacuaco district",
+        label: "Cacuaco",
+        precision: "place",
+        role: "primary",
+        credibility_tier: "official",
+        is_official: true,
+        early_signal_score: 0.9,
+        has_event: true,
+      },
+    });
+  });
+
+  it("combines standalone item markers and group markers", () => {
+    const geojson = toGeoJsonFeatures([makeItem()], [makeGroup()]);
+
+    expect(geojson.features).toHaveLength(2);
+    expect(geojson.features.map((f) => f.properties.id)).toEqual([
+      "24681357-1234-5678-9abc-def012345678",
+      "EVT-2026-00077",
+    ]);
   });
 });
 

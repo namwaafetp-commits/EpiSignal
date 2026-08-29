@@ -366,6 +366,31 @@ export interface components {
             public_id: string;
             verification_status: components["schemas"]["VerificationStatus"];
         };
+        /** RadarEventGroupResponse */
+        RadarEventGroupResponse: {
+            /** All Source Names */
+            all_source_names: string[];
+            /** Earliest Published At */
+            earliest_published_at: string | null;
+            event: components["schemas"]["RadarEventContextResponse"];
+            /** Event Public Id */
+            event_public_id: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /** Latest Published At */
+            latest_published_at: string | null;
+            /** Representative Brief */
+            representative_brief: components["schemas"]["BriefPoint"][];
+            representative_location: components["schemas"]["RadarLocationResponse"] | null;
+            representative_source: components["schemas"]["RadarSourceResponse"];
+            /** Representative Title */
+            representative_title: string;
+            /** Signal Count */
+            signal_count: number;
+        };
         /** RadarItemResponse */
         RadarItemResponse: {
             /** Brief */
@@ -408,6 +433,8 @@ export interface components {
         };
         /** RadarResponse */
         RadarResponse: {
+            /** Event Groups */
+            event_groups: components["schemas"]["RadarEventGroupResponse"][];
             /** Hours */
             hours: number;
             /** Items */

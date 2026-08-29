@@ -524,6 +524,96 @@
         "title": "RadarEventContextResponse",
         "type": "object"
       },
+      "RadarEventGroupResponse": {
+        "properties": {
+          "all_source_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "All Source Names",
+            "type": "array"
+          },
+          "earliest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Published At"
+          },
+          "event": {
+            "$ref": "#/components/schemas/RadarEventContextResponse"
+          },
+          "event_public_id": {
+            "title": "Event Public Id",
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "latest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Published At"
+          },
+          "representative_brief": {
+            "items": {
+              "$ref": "#/components/schemas/BriefPoint"
+            },
+            "title": "Representative Brief",
+            "type": "array"
+          },
+          "representative_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarLocationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "representative_source": {
+            "$ref": "#/components/schemas/RadarSourceResponse"
+          },
+          "representative_title": {
+            "title": "Representative Title",
+            "type": "string"
+          },
+          "signal_count": {
+            "title": "Signal Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_public_id",
+          "event",
+          "signal_count",
+          "representative_title",
+          "representative_brief",
+          "representative_location",
+          "representative_source",
+          "all_source_names",
+          "earliest_published_at",
+          "latest_published_at",
+          "first_seen_at"
+        ],
+        "title": "RadarEventGroupResponse",
+        "type": "object"
+      },
       "RadarItemResponse": {
         "properties": {
           "brief": {
@@ -672,6 +762,13 @@
       },
       "RadarResponse": {
         "properties": {
+          "event_groups": {
+            "items": {
+              "$ref": "#/components/schemas/RadarEventGroupResponse"
+            },
+            "title": "Event Groups",
+            "type": "array"
+          },
           "hours": {
             "title": "Hours",
             "type": "integer"
@@ -699,6 +796,7 @@
           }
         },
         "required": [
+          "event_groups",
           "items",
           "window_start",
           "window_end",

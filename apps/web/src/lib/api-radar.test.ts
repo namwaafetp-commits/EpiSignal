@@ -1,38 +1,72 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { isRadarFeed, getRadarFeed, type RadarFeed } from "./api-radar";
 
+const VALID_BRIEF: RadarFeed["items"][number]["brief"] = [
+  {
+    slot: "what_where",
+    text: "Cholera outbreak reported in Luanda province.",
+    reported: true,
+  },
+  {
+    slot: "counts",
+    text: "120 suspected cases and 4 deaths.",
+    reported: true,
+  },
+  {
+    slot: "timing",
+    text: "Cases reported between August 20 and August 27.",
+    reported: true,
+  },
+  {
+    slot: "spread",
+    text: "Spread observed across two municipal districts.",
+    reported: true,
+  },
+  {
+    slot: "reporting",
+    text: "Reported by the Provincial Health Directorate.",
+    reported: true,
+  },
+];
+
+const VALID_EVENT_GROUP: RadarFeed["event_groups"][number] = {
+  event_public_id: "EVT-2026-00042",
+  event: {
+    public_id: "EVT-2026-00042",
+    verification_status: "officially_confirmed",
+    early_signal_score: 0.88,
+    evidence_score: 0.94,
+  },
+  signal_count: 2,
+  representative_title: "Cholera outbreak in Luanda Province",
+  representative_brief: VALID_BRIEF,
+  representative_location: {
+    role: "primary",
+    precision: "admin1",
+    label: "Luanda Province",
+    country_code: "AO",
+    latitude: -8.8383,
+    longitude: 13.2344,
+  },
+  representative_source: {
+    name: "WHO AFRO",
+    url: "https://afro.who.int/report/123",
+    is_official: true,
+    credibility_tier: "official",
+  },
+  all_source_names: ["WHO AFRO", "Radio Nacional de Angola"],
+  earliest_published_at: "2026-08-28T08:00:00Z",
+  latest_published_at: "2026-08-28T10:00:00Z",
+  first_seen_at: "2026-08-28T10:05:00Z",
+};
+
 const VALID_RADAR_FEED: RadarFeed = {
+  event_groups: [VALID_EVENT_GROUP],
   items: [
     {
       id: "24681357-1234-5678-9abc-def012345678",
       title_english: "Cholera outbreak in Luanda Province",
-      brief: [
-        {
-          slot: "what_where",
-          text: "Cholera outbreak reported in Luanda province.",
-          reported: true,
-        },
-        {
-          slot: "counts",
-          text: "120 suspected cases and 4 deaths.",
-          reported: true,
-        },
-        {
-          slot: "timing",
-          text: "Cases reported between August 20 and August 27.",
-          reported: true,
-        },
-        {
-          slot: "spread",
-          text: "Spread observed across two municipal districts.",
-          reported: true,
-        },
-        {
-          slot: "reporting",
-          text: "Reported by the Provincial Health Directorate.",
-          reported: true,
-        },
-      ],
+      brief: VALID_BRIEF,
       signal_type: "outbreak_report",
       processing_status: "matched",
       published_at: "2026-08-28T10:00:00Z",
@@ -79,6 +113,87 @@ describe("isRadarFeed", () => {
         items: [],
       }),
     ).toBe(true);
+  });
+
+  it("accepts empty event_groups array", () => {
+    expect(
+      isRadarFeed({
+        ...VALID_RADAR_FEED,
+        event_groups: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts event group with null published timestamps", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].earliest_published_at = null;
+    feed.event_groups[0].latest_published_at = null;
+    expect(isRadarFeed(feed)).toBe(true);
+  });
+
+  it("rejects a feed missing event_groups", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    delete feed.event_groups;
+    expect(isRadarFeed(feed)).toBe(false);
+  });
+
+  it("rejects event group with signal_count below 2", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].signal_count = 1;
+    expect(isRadarFeed(feed)).toBe(false);
+  });
+
+  it("rejects event group with empty event_public_id", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].event_public_id = "";
+    expect(isRadarFeed(feed)).toBe(false);
+  });
+
+  it("rejects event group with invalid event context", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].event.verification_status = "super_confirmed";
+    expect(isRadarFeed(feed)).toBe(false);
+  });
+
+  it("rejects event group with empty representative_title", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].representative_title = "";
+    expect(isRadarFeed(feed)).toBe(false);
+  });
+
+  it("rejects event group with malformed representative brief", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    const tmp = feed.event_groups[0].representative_brief[0];
+    feed.event_groups[0].representative_brief[0] =
+      feed.event_groups[0].representative_brief[1];
+    feed.event_groups[0].representative_brief[1] = tmp;
+    expect(isRadarFeed(feed)).toBe(false);
+
+    const feedMissing = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feedMissing.event_groups[0].representative_brief.pop();
+    expect(isRadarFeed(feedMissing)).toBe(false);
+  });
+
+  it("rejects event group with empty or invalid all_source_names", () => {
+    const feedEmpty = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feedEmpty.event_groups[0].all_source_names = [];
+    expect(isRadarFeed(feedEmpty)).toBe(false);
+
+    const feedBlank = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feedBlank.event_groups[0].all_source_names = ["WHO AFRO", ""];
+    expect(isRadarFeed(feedBlank)).toBe(false);
+  });
+
+  it("rejects event group with invalid representative_source", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].representative_source.url = "not-a-valid-url";
+    expect(isRadarFeed(feed)).toBe(false);
+  });
+
+  it("rejects event group with non-ISO first_seen_at", () => {
+    const feed = JSON.parse(JSON.stringify(VALID_RADAR_FEED));
+    feed.event_groups[0].first_seen_at = "August 28, 2026";
+    expect(isRadarFeed(feed)).toBe(false);
   });
 
   it("accepts location with null coordinates", () => {

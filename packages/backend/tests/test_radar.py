@@ -101,6 +101,7 @@ def test_radar_contracts_are_frozen_and_have_exact_fields() -> None:
         item.title_english = "Other"  # type: ignore[misc]
 
     page = RadarPage(
+        event_groups=(),
         items=(item,),
         window_start=now,
         window_end=now,
@@ -790,3 +791,98 @@ def test_query_radar_statement_selects_integrity_fields() -> None:
     assert "signals.title" in statement
     assert "signals.raw_text" in statement
     assert "signals.content_hash" in statement
+
+
+def test_query_radar_groups_attached_signals() -> None:
+    """Three signals all attached to the same event → one RadarEventGroup, nothing in items."""
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    event_public_id = "EVT-2026-GRP"
+    sig1 = FakeSignalRow(
+        id=uuid4(),
+        source_name="Source A",
+        published_at=datetime(2026, 8, 28, 9, 0, tzinfo=UTC),
+        first_seen_at=datetime(2026, 8, 28, 9, 5, tzinfo=UTC),
+    )
+    sig2 = FakeSignalRow(
+        id=uuid4(),
+        source_name="Source B",
+        published_at=datetime(2026, 8, 28, 10, 0, tzinfo=UTC),
+        first_seen_at=datetime(2026, 8, 28, 10, 5, tzinfo=UTC),
+    )
+    sig3 = FakeSignalRow(
+        id=uuid4(),
+        source_name="Source A",  # duplicate source name, should deduplicate
+        published_at=datetime(2026, 8, 28, 11, 0, tzinfo=UTC),
+        first_seen_at=datetime(2026, 8, 28, 11, 5, tzinfo=UTC),
+    )
+    ev1 = FakeEventRow(signal_id=sig1.id, public_id=event_public_id)
+    ev2 = FakeEventRow(signal_id=sig2.id, public_id=event_public_id)
+    ev3 = FakeEventRow(signal_id=sig3.id, public_id=event_public_id)
+
+    session = FakeSession(
+        [
+            FakeResult([sig1, sig2, sig3]),
+            FakeResult([]),
+            FakeResult([ev1, ev2, ev3]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+
+    assert len(page.event_groups) == 1
+    assert len(page.items) == 0  # all grouped
+
+    group = page.event_groups[0]
+    assert group.event_public_id == event_public_id
+    assert group.signal_count == 3
+    # representative should be the one with most recent published_at (sig3)
+    assert group.representative_title == "Cholera in Luanda"
+    # unique source names only
+    assert sorted(group.all_source_names) == ["Source A", "Source B"]
+    # time bounds
+    assert group.earliest_published_at == datetime(2026, 8, 28, 9, 0, tzinfo=UTC)
+    assert group.latest_published_at == datetime(2026, 8, 28, 11, 0, tzinfo=UTC)
+
+
+def test_query_radar_single_attached_not_grouped() -> None:
+    """One attached signal → stays in items, not in event_groups."""
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig_id = uuid4()
+    sig = FakeSignalRow(id=sig_id)
+    ev = FakeEventRow(signal_id=sig_id, public_id="EVT-SOLO")
+
+    session = FakeSession(
+        [
+            FakeResult([sig]),
+            FakeResult([]),
+            FakeResult([ev]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+
+    assert len(page.event_groups) == 0
+    assert len(page.items) == 1
+    assert page.items[0].id == sig_id
+    assert page.items[0].event_context_status == EventContextStatus.ATTACHED
+
+
+def test_query_radar_ungrouped_none_events() -> None:
+    """Signals with event=None (NONE status) stay in items, not grouped."""
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    sig1 = FakeSignalRow(id=uuid4())
+    sig2 = FakeSignalRow(id=uuid4())
+
+    session = FakeSession(
+        [
+            FakeResult([sig1, sig2]),
+            FakeResult([]),
+            FakeResult([]),  # no event rows at all
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+
+    assert len(page.event_groups) == 0
+    assert len(page.items) == 2
+    assert all(item.event_context_status == EventContextStatus.NONE for item in page.items)

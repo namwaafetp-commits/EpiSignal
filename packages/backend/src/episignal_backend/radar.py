@@ -93,7 +93,23 @@ class RadarItem:
 
 
 @dataclass(frozen=True)
+class RadarEventGroup:
+    event_public_id: str
+    event: RadarEventContext
+    signal_count: int
+    representative_title: str
+    representative_brief: tuple[BriefPoint, ...]
+    representative_location: RadarLocation | None
+    representative_source: RadarSource
+    all_source_names: tuple[str, ...]
+    earliest_published_at: datetime | None
+    latest_published_at: datetime | None
+    first_seen_at: datetime
+
+
+@dataclass(frozen=True)
 class RadarPage:
+    event_groups: tuple[RadarEventGroup, ...]
     items: tuple[RadarItem, ...]
     window_start: datetime
     window_end: datetime
@@ -194,6 +210,62 @@ def choose_representative_location(
     )
 
 
+def _effective_publication_time(item: RadarItem) -> datetime:
+    """Publication time used for representative selection, falling back to first seen."""
+    return item.published_at or item.first_seen_at
+
+
+def _build_event_group(event_public_id: str, members: list[RadarItem]) -> RadarEventGroup:
+    """Collapse signals attached to the same event into a single group record."""
+    event = members[0].event
+    assert event is not None
+    representative = max(members, key=_effective_publication_time)
+    published_times = [item.published_at for item in members if item.published_at is not None]
+    return RadarEventGroup(
+        event_public_id=event_public_id,
+        event=event,
+        signal_count=len(members),
+        representative_title=representative.title_english,
+        representative_brief=representative.brief,
+        representative_location=representative.location,
+        representative_source=representative.source,
+        all_source_names=tuple(dict.fromkeys(item.source.name for item in members)),
+        earliest_published_at=min(published_times) if published_times else None,
+        latest_published_at=max(published_times) if published_times else None,
+        first_seen_at=min(item.first_seen_at for item in members),
+    )
+
+
+def _split_event_groups(
+    items: list[RadarItem],
+) -> tuple[list[RadarItem], list[RadarEventGroup]]:
+    """Partition radar items into standalone items and multi-signal event groups.
+
+    Attached signals sharing an event public_id with at least one other valid
+    signal form one group per event; a single attached signal stays an item.
+    """
+    attached_counts: dict[str, int] = defaultdict(int)
+    for item in items:
+        if item.event_context_status == EventContextStatus.ATTACHED and item.event is not None:
+            attached_counts[item.event.public_id] += 1
+
+    remaining: list[RadarItem] = []
+    members_by_event: dict[str, list[RadarItem]] = {}
+    for item in items:
+        event = item.event if item.event_context_status == EventContextStatus.ATTACHED else None
+        if event is not None and attached_counts[event.public_id] >= 2:
+            members_by_event.setdefault(event.public_id, []).append(item)
+        else:
+            remaining.append(item)
+
+    groups = [
+        _build_event_group(event_public_id, members)
+        for event_public_id, members in members_by_event.items()
+    ]
+    groups.sort(key=lambda group: group.latest_published_at or group.first_seen_at, reverse=True)
+    return remaining, groups
+
+
 def query_radar(
     session: Session,
     *,
@@ -288,6 +360,7 @@ def query_radar(
 
     if not valid_rows_and_payloads:
         return RadarPage(
+            event_groups=(),
             items=(),
             window_start=window_start,
             window_end=window_end,
@@ -367,8 +440,11 @@ def query_radar(
             )
         )
 
+    standalone_items, event_groups = _split_event_groups(items)
+
     return RadarPage(
-        items=tuple(items),
+        event_groups=tuple(event_groups),
+        items=tuple(standalone_items),
         window_start=window_start,
         window_end=window_end,
         hours=hours,
