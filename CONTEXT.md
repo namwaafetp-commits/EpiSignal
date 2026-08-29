@@ -79,6 +79,26 @@ One fixed category within a brief (`what_where`, `counts`, `timing`, `spread`,
 `reporting`). Slots are ordered and non-optional.
 _Avoid_: section, field, category.
 
+**Pre-group**:
+A bounded grouping of normalized signals by query rule group, publisher
+country, and a one-to-two-day window, made before any AI call so that one
+representative speaks for the group. Not a story cluster: it uses only facts
+that exist before extraction.
+_Avoid_: story gate, pre-cluster, batch.
+
+**Representative**:
+The one signal in a pre-group chosen for classification and extraction,
+ranking official publishers and credibility first, then earliest sighted. The
+others wait as deferred; none of them is deleted or promoted to evidence by
+this choice.
+_Avoid_: primary, canonical pick.
+
+**Deferred**:
+A member of a pre-group waiting while its representative is processed.
+Deferral is membership, not a processing status; it ends when the group
+resolves or expires, and a deferred signal is never counted as corroboration.
+_Avoid_: skipped, dropped, queued.
+
 ### Human review
 
 **Review case**:
@@ -133,6 +153,13 @@ _Avoid_: incident, story, cluster.
 One reported measurement attached to an event, keeping the source and the date it
 describes. An event's history is its observations, never an overwritten total.
 _Avoid_: update, datapoint.
+
+**Delta pass**:
+A cheap model call made after a cluster attaches to a recently observed event,
+comparing the latest attached brief with the newly attached one and writing
+what changed onto the new observation. It summarizes two briefs; it never
+re-reads the article and never rewrites an earlier observation.
+_Avoid_: follow-up extraction, re-summary, brief merge.
 
 **Location role**:
 How a place relates to an event: where it happened, where exposure occurred,
