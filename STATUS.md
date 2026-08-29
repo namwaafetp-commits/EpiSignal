@@ -116,7 +116,7 @@ purpose-specific model routing.
 - [x] 12. Strictly validate the review API in the web client.
 - [x] 13. Build the accessible cause-specific review queue.
 - [x] 14. Mount the inspired review workspace in the existing web shell.
-- [ ] 15. Review, verify, capture safe live proof, and report.
+- [x] 15. Review, verify, capture safe live proof, and report.
 
 ## Task ledger — `O` (parallel track)
 
@@ -136,31 +136,31 @@ purpose-specific model routing.
 
 ## Blockers
 
-**None.** `M` is planned and dependency-ready. Implementation has not started.
+**None.** `M` is completed and verified.
 
 ## Verified baseline
 
-Everything below was true at commit `48da153` on `main`. Recorded from the
-`O` run logged untruncated in
-[docs/reports/2026-08-29-subproject-o-report.md](docs/reports/2026-08-29-subproject-o-report.md).
+Everything below was true at commit `5163130` on branch `codex/manual-review-queue`. Recorded from the
+`M` run logged in
+[docs/reports/2026-08-29-subproject-m-report.md](docs/reports/2026-08-29-subproject-m-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 905 passed, 1 warning |
-| Web tests | 58 passed, 8 files |
-| Lint and format | `ruff check` and `eslint` clean, 190 files formatted |
-| Types | `tsc` and `mypy` clean across 107 source files |
-| Migration revision | `20260829_0013_story_groups` |
-| Live database | `db:migrate` and `db:seed` applied: query_rules=62 (English-only active), ai_models=5 |
+| Python tests | 949 passed, 2 warnings |
+| Web tests | 75 passed, 10 files |
+| Lint and format | `ruff check` and `eslint` clean, 226 files formatted |
+| Types | `tsc` and `mypy` clean across 113 source files |
+| Migration revision | `20260829_0014_manual_review_cases` |
+| Live database | `db:migrate` and `db:seed` applied: 64 open review cases reconciled (34 retrieval_failed, 28 disease_unresolved, 1 legacy_unclassified, 1 content_integrity) |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
 | Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title, provider-routed structured outputs |
 | Model ladder | `google/gemini-3.1-flash-lite` (T1), `google/gemini-3.5-flash-lite` (T2), `mistralai/mistral-small-24b-instruct-2501` (T3 fallback); reordered at `02c23a7` per operator instruction |
 | Trailing AI spend | `spend:report` — 30 days, 139 requests, $0.118554 |
 | Pre-group stage | Built, `pregroup_enabled=false`; measurement gate decided no flip |
-| Radar endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs` |
-| Live extraction proof (O) | 20 classified, 13 extracted; Gemini accepted 4, Mistral tier-2 caught all 9 rejects; run cost $0.0390 |
+| Radar & Admin endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs`, `GET /api/v1/admin/reviews`, `POST /api/v1/admin/reviews/{case_id}/resolve` |
+| Production Web Routes | `/`, `/admin/pipeline`, `/admin/reviews` |
 
 Reproduce with:
 
@@ -175,3 +175,4 @@ corepack pnpm spend:report
 
 Update this table only from a run you actually performed, and record the commit
 it was performed at.
+
