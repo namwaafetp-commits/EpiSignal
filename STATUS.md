@@ -10,12 +10,12 @@ rules for who edits this file are in
 
 | Field | Value |
 | --- | --- |
-| Band | 4 — Operations |
-| Item | `M` — Manual review queue |
-| Status | `building` |
+| Band | 3 — GDELT layer |
+| Item | `O2` — Pipeline funnel v2 |
+| Status | `planned` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | [2026-08-29-manual-review-queue-design.md](docs/superpowers/specs/2026-08-29-manual-review-queue-design.md) |
-| Plan | [2026-08-29-manual-review-queue.md](docs/superpowers/plans/2026-08-29-manual-review-queue.md) |
+| Spec | [2026-08-29-pipeline-funnel-v2-design.md](docs/superpowers/specs/2026-08-29-pipeline-funnel-v2-design.md) |
+| Plan | [2026-08-29-pipeline-funnel-v2.md](docs/superpowers/plans/2026-08-29-pipeline-funnel-v2.md) |
 
 Most recently verified: parallel item `O` — High-efficiency pipeline and Gemini
 transition, `verified` on 2026-08-29
@@ -29,11 +29,18 @@ zero shape rejections, 32 geocoded signals, and the first 3 events.
 
 ## Next action
 
-**Worker.** Read `HANDOFF.md` and the committed `M` implementation plan. Create
-`codex/manual-review-queue` in a separate worktree, run a clean baseline, then
-start Task 1 test-first. Set `M` to `building` in the Task 1 commit and tick each
-ledger item only in the commit that completes it. Stop after Task 15 and hand
-the completion report back to the planner; do not mark `M` verified.
+**Worker.** Read `HANDOFF.md` and the committed `O2` implementation plan. Create
+`codex/pipeline-funnel-v2` in a separate worktree **from the head of
+`codex/manual-review-queue`**, copy `apps/api/.env` across, run a clean
+baseline, then start Task 1 test-first. Set `O2` to `building` in the Task 1
+commit and tick each ledger item only in the commit that completes it. Stop
+after Task 19 and hand the completion report back to the planner; do not mark
+`O2` verified.
+
+`M` — Manual review queue is `verified` on 2026-08-29 at commit `5163130`
+([report](docs/reports/2026-08-29-subproject-m-report.md)). Its briefing is
+archived at [docs/handoffs/2026-08-29-m.md](docs/handoffs/2026-08-29-m.md) and
+`HANDOFF.md` is retargeted to `O2`.
 
 ## Parallel track `O` — high-efficiency pipeline, verified
 
@@ -100,7 +107,52 @@ purpose-specific model routing.
   missing-text retrieval rows, 1 content-integrity quarantine, and 1 ambiguous
   event match. Re-query before migration; never hard-code these counts.
 
-## Task ledger
+## Settled for `O2`, so the worker does not redesign it
+
+- The gate reuses `filter_rules` with a new `title_inclusion` rule group. There
+  is no new table. Disease names are read from the `diseases` table, never
+  copied into the seed.
+- The gate is biased to pass: an empty rule set passes every title.
+- `filtered` is terminal and preserves the row. Nothing is ever deleted.
+- `processing_status` is a CHECK constraint, not a pg enum. The migration drops
+  and recreates it, as `20260829_0014` did for `dismissed`.
+- `retrieve` and `pregroup` become chain stages. Retrieval must precede dedupe,
+  because dedupe compares bodies and is the only writer of `normalized`.
+- `stubs_awaiting_retrieval` gains a `needs_review` status filter, and the
+  pre-group deferral exclusion moves to `awaiting_extraction`. Both are
+  load-bearing; without them the saving silently disappears.
+- Cluster extraction stores on the representative and marks members
+  `duplicate`. Every claim cites a `source_index` and is validated against that
+  member's text only. Per-article extraction is the one-member case.
+- The extraction schema version moves to 3; the backfill floor stays at 2.
+- No new configuration flag. `pregroup_enabled=false` is the rollback lever.
+- Eight corrections to the approved design are recorded in the spec's
+  **Corrections** table with the file and line that forced each one. Do not
+  re-derive or relitigate them.
+
+## Task ledger — `O2` (active)
+
+- [ ] 1. Seed the `title_inclusion` keyword rules.
+- [ ] 2. Add the `filtered` processing status and its migration.
+- [ ] 3. Write the keyword gate function.
+- [ ] 4. Add the repository seams and fix the stub status filter.
+- [ ] 5. Store discoveries without fetching the page.
+- [ ] 6. Write the gate-and-fetch retrieval pass.
+- [ ] 7. Add the `retrieve` stage and its runner.
+- [ ] 8. Add the `pregroup` stage and enable it by default.
+- [ ] 9. Select for extraction without the relevance pass.
+- [ ] 10. Move the extraction schema to version 3.
+- [ ] 11. Validate every span against the member it cites.
+- [ ] 12. Build the cluster prompt.
+- [ ] 13. Read a story group as one extractable cluster.
+- [ ] 14. Run cluster extraction with a per-article fallback.
+- [ ] 15. Wire cluster extraction into the extract stage.
+- [ ] 16. Report what clustering bought in `spend:report`.
+- [ ] 17. Update `CONTEXT.md` and write the ADR.
+- [ ] 18. Capture live proof against the recorded baseline.
+- [ ] 19. Review, verify, report, and hand back.
+
+## Task ledger — `M` (complete)
 
 - [x] 1. Define review vocabularies and ORM shape.
 - [x] 2. Add reversible schema expansion and conservative backfill.
@@ -136,7 +188,8 @@ purpose-specific model routing.
 
 ## Blockers
 
-**None.** `M` is completed and verified.
+**None.** `M` is `verified`. `O2` is planned and unblocked; its branch base is
+the head of `codex/manual-review-queue`, which carries `M`'s unmerged work.
 
 ## Verified baseline
 

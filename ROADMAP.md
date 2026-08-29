@@ -92,6 +92,7 @@ Umbrella architecture and shared invariants:
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 | `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. | `C2`, `D2a`, `L` | `verified` |
+| `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `planned` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·
@@ -116,7 +117,9 @@ Artifacts:
 `O` [spec](docs/superpowers/specs/2026-08-29-high-efficiency-pipeline-design.md) ·
 [plan](docs/superpowers/plans/2026-08-29-high-efficiency-pipeline.md) ·
 [report](docs/reports/2026-08-29-subproject-o-report.md) ·
-[issue #1](https://github.com/namwaafetp-commits/EpiSignal/issues/1)
+[issue #1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) —
+`O2` [spec](docs/superpowers/specs/2026-08-29-pipeline-funnel-v2-design.md) ·
+[plan](docs/superpowers/plans/2026-08-29-pipeline-funnel-v2.md)
 
 ### Pipeline as it stands
 
@@ -185,7 +188,7 @@ Artifacts: `E`
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `verified` |
-| `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `building` |
+| `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `verified` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
 
 Artifacts:
