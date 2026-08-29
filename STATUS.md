@@ -104,7 +104,7 @@ purpose-specific model routing.
 
 - [x] 1. Define review vocabularies and ORM shape.
 - [x] 2. Add reversible schema expansion and conservative backfill.
-- [ ] 3. Define review commands, read models, and storage interface.
+- [x] 3. Define review commands, read models, and storage interface.
 - [ ] 4. Persist typed case opening, queue reads, and automatic recovery.
 - [ ] 5. Make every `needs_review` writer record a typed cause.
 - [ ] 6. Extract one event-finalization implementation.
