@@ -35,6 +35,11 @@ Tests are agreed at these public seams:
 Do not add tests against private helpers or SQLAlchemy implementation details
 outside the migration/model contract tests.
 
+Tracking is part of each task, not deferred to Task 15. Before the Task 1
+commit, set roadmap item `M` from `planned` to `building` and tick Task 1 in
+`STATUS.md`. Before each later task commit, tick that task in `STATUS.md` in the
+same commit. The worker never marks `M` verified.
+
 ## File map
 
 Create:
@@ -46,7 +51,7 @@ Create:
 - `packages/backend/src/episignal_backend/review/resolve.py` — resolution orchestration.
 - `packages/backend/src/episignal_backend/review/repository.py` — SQLAlchemy adapter and queue query.
 - `packages/backend/src/episignal_backend/events/finalize.py` — shared event mutation rules.
-- `database/migrations/versions/20260829_0010_manual_review_cases.py` — expand/backfill/guarded rollback.
+- `database/migrations/versions/20260829_0014_manual_review_cases.py` — expand/backfill/guarded rollback.
 - `packages/backend/tests/test_review_documents.py`
 - `packages/backend/tests/test_review_protocol.py`
 - `packages/backend/tests/test_review_repository.py`
@@ -54,6 +59,7 @@ Create:
 - `packages/backend/tests/test_event_finalize.py`
 - `apps/api/src/episignal_api/routes/reviews.py`
 - `apps/api/tests/test_reviews.py`
+- `apps/api/integration_tests/test_review_resolution_concurrency.py`
 - `apps/web/src/lib/api-reviews.ts`
 - `apps/web/src/lib/api-reviews.test.ts`
 - `apps/web/src/components/admin-review-queue.tsx`
@@ -105,7 +111,7 @@ def test_review_tables_preserve_signal_and_candidate_provenance() -> None:
 ```
 
 Update `EXPECTED_TABLES` with both table names and update the persisted-enum
-column count from `19` to `22`.
+column count from the current `22` to `25`.
 
 - [ ] **Step 2: Run the focused tests and confirm red**
 
@@ -190,7 +196,7 @@ Run the Step 2 command. Expected: all selected tests pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/db/types.py packages/backend/src/episignal_backend/models packages/backend/tests/test_models.py packages/backend/tests/test_review_documents.py
+git add packages/backend/src/episignal_backend/db/types.py packages/backend/src/episignal_backend/models packages/backend/tests/test_models.py packages/backend/tests/test_review_documents.py ROADMAP.md STATUS.md
 git commit -m "feat(review): define review case model"
 ```
 
@@ -198,7 +204,7 @@ git commit -m "feat(review): define review case model"
 
 **Files:**
 
-- Create: `database/migrations/versions/20260829_0010_manual_review_cases.py`
+- Create: `database/migrations/versions/20260829_0014_manual_review_cases.py`
 - Modify: `apps/api/tests/test_migrations.py`
 - Create: `apps/api/integration_tests/test_manual_review_migration.py`
 - Modify: `packages/backend/src/episignal_backend/schema_check.py`
@@ -212,21 +218,22 @@ and guarded downgrade:
 
 ```python
 def test_manual_review_migration_is_ordered_and_non_destructive() -> None:
-    module = _load_revision("20260829_0010_manual_review_cases")
-    source = _revision_source("20260829_0010_manual_review_cases")
-    sql = render_offline("upgrade", "20260829_0010")
-    assert module.down_revision == "20260828_0009"
+    module = _load_revision("20260829_0014_manual_review_cases")
+    source = _revision_source("20260829_0014_manual_review_cases")
+    sql = render_offline("upgrade", "20260829_0014")
+    assert module.down_revision == "20260829_0013"
     assert "create table signal_review_cases" in sql
     assert "create table signal_review_candidates" in sql
     assert "uq_signal_review_cases_one_open" in sql
     assert "dismissed" in sql
     assert "legacy_unclassified" in source
+    assert "ON CONFLICT (signal_id) WHERE status = 'open' DO NOTHING" in source
     assert "delete from signals" not in source.lower()
     assert "drop table signals" not in source.lower()
 
 
 def test_manual_review_downgrade_refuses_to_erase_audit_history() -> None:
-    source = _revision_source("20260829_0010_manual_review_cases")
+    source = _revision_source("20260829_0014_manual_review_cases")
     assert "Cannot downgrade manual review schema after review data exists" in source
 ```
 
@@ -234,10 +241,13 @@ The migration must render offline without executing its live verification
 queries. Add `apps/api/integration_tests/test_manual_review_migration.py` for a
 dedicated PostgreSQL database supplied only through
 `EPISIGNAL_TEST_DATABASE_URL`. Its fixture must reject a URL equal to
-`EPISIGNAL_DATABASE_URL`, upgrade an empty database to `0009`, insert exactly
+`EPISIGNAL_DATABASE_URL`, upgrade an empty database to `0013`, insert exactly
 five synthetic rows (quarantine, null text, rejected extraction, missing
-disease, and legacy fallback), upgrade to `0010`, and assert one open case per
+disease, and legacy fallback), upgrade to `0014`, and assert one open case per
 row plus unchanged title, raw text, hash, extraction, and processing status.
+The integration test then executes the migration's bound backfill statement a
+second time in the same transaction and asserts the open-case IDs and count do
+not change.
 
 - [ ] **Step 2: Run migration tests and confirm red**
 
@@ -245,7 +255,7 @@ row plus unchanged title, raw text, hash, extraction, and processing status.
 uv run pytest apps/api/tests/test_migrations.py packages/backend/tests/test_schema_check.py -q
 ```
 
-Expected: failure because revision `0010` and new contract values do not exist.
+Expected: failure because revision `0014` and new contract values do not exist.
 
 - [ ] **Step 3: Implement expand, backfill, verification, and guarded downgrade**
 
@@ -265,7 +275,9 @@ HAVING count(c.id) <> 1;
 Also reject any open case whose signal is not at `needs_review`. Raise
 `RuntimeError` if either query returns a row. Backfill reason precedence must
 match the spec and use `legacy_unclassified` whenever the database cannot prove
-a more specific cause. Do not hard-code the observed total `37`.
+a more specific cause. Do not hard-code the observed total `37`. Use one bound
+`INSERT ... SELECT ... ON CONFLICT (signal_id) WHERE status = 'open' DO
+NOTHING` statement so a repeated backfill preserves the first case and reason.
 
 Downgrade first runs:
 
@@ -297,7 +309,7 @@ synthetic rows/schema during cleanup. Never substitute the live
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add database/migrations/versions/20260829_0010_manual_review_cases.py apps/api/tests/test_migrations.py apps/api/integration_tests/test_manual_review_migration.py packages/backend/src/episignal_backend/schema_check.py packages/backend/tests/test_schema_check.py
+git add database/migrations/versions/20260829_0014_manual_review_cases.py apps/api/tests/test_migrations.py apps/api/integration_tests/test_manual_review_migration.py packages/backend/src/episignal_backend/schema_check.py packages/backend/tests/test_schema_check.py STATUS.md
 git commit -m "feat(review): migrate durable review cases"
 ```
 
@@ -308,7 +320,7 @@ git commit -m "feat(review): migrate durable review cases"
 - Create: `packages/backend/src/episignal_backend/review/__init__.py`
 - Create: `packages/backend/src/episignal_backend/review/documents.py`
 - Create: `packages/backend/src/episignal_backend/review/protocol.py`
-- Create: `packages/backend/tests/test_review_documents.py`
+- Modify: `packages/backend/tests/test_review_documents.py`
 - Create: `packages/backend/tests/test_review_protocol.py`
 
 - [ ] **Step 1: Write failing contract tests**
@@ -431,7 +443,7 @@ Expected: both commands exit 0.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/review packages/backend/tests/test_review_documents.py packages/backend/tests/test_review_protocol.py
+git add packages/backend/src/episignal_backend/review packages/backend/tests/test_review_documents.py packages/backend/tests/test_review_protocol.py STATUS.md
 git commit -m "feat(review): define resolution interface"
 ```
 
@@ -487,7 +499,7 @@ Run the Step 2 command. Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/review/repository.py packages/backend/tests/test_review_repository.py
+git add packages/backend/src/episignal_backend/review/repository.py packages/backend/tests/test_review_repository.py STATUS.md
 git commit -m "feat(review): store and query review cases"
 ```
 
@@ -499,6 +511,7 @@ git commit -m "feat(review): store and query review cases"
 - Modify: `packages/backend/src/episignal_backend/ai/repository.py`
 - Modify: `packages/backend/src/episignal_backend/ai/classify.py`
 - Modify: `packages/backend/src/episignal_backend/ai/extract.py`
+- Modify: `packages/backend/src/episignal_backend/ingestion/protocol.py`
 - Modify: `packages/backend/src/episignal_backend/ingestion/repository.py`
 - Modify: `packages/backend/src/episignal_backend/ingestion/discovery.py`
 - Modify: `packages/backend/src/episignal_backend/events/protocol.py`
@@ -618,7 +631,7 @@ Expected: pass.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/ai packages/backend/src/episignal_backend/ingestion packages/backend/src/episignal_backend/events packages/backend/tests
+git add packages/backend/src/episignal_backend/ai packages/backend/src/episignal_backend/ingestion packages/backend/src/episignal_backend/events packages/backend/tests STATUS.md
 git commit -m "feat(review): record every review cause"
 ```
 
@@ -671,7 +684,7 @@ Run the Step 2 command. Expected: all pass with unchanged automated behavior.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/events packages/backend/tests/test_event_finalize.py packages/backend/tests/test_event_assemble.py
+git add packages/backend/src/episignal_backend/events packages/backend/tests/test_event_finalize.py packages/backend/tests/test_event_assemble.py STATUS.md
 git commit -m "refactor(events): share event finalization"
 ```
 
@@ -686,8 +699,24 @@ git commit -m "refactor(events): share event finalization"
 
 - [ ] **Step 1: Write one failing behavior test per command**
 
-Cover `retry_retrieval`, `retry_extraction`, `assign_disease`, `dismiss`, wrong
-reason/action, missing target, already-resolved case, and exception rollback:
+Cover `retry_retrieval`, `retry_extraction`, `assign_disease`,
+`retry_geocoding`, `dismiss`, wrong reason/action, missing target,
+already-resolved case, and exception rollback. The geocoding slice is exact:
+
+```python
+def test_retry_geocoding_returns_signal_to_extracted() -> None:
+    repo = FakeReviewRepository(reason=ReviewReason.LOCATION_UNRESOLVED)
+    result = resolve_review_case(repo, RetryGeocodingCommand(
+        case_id=repo.case_id,
+        action=ReviewResolution.RETRY_GEOCODING,
+        reviewed_by="shift operator",
+    ))
+    assert repo.status_updates == [(repo.signal_id, ProcessingStatus.EXTRACTED)]
+    assert result.processing_status is ProcessingStatus.EXTRACTED
+    assert repo.committed and not repo.rolled_back
+```
+
+Also add the disease slice:
 
 ```python
 def test_assign_disease_returns_signal_to_geocoded() -> None:
@@ -743,9 +772,9 @@ except Exception:
 
 Do not catch domain errors and turn them into success. `assign_disease` verifies
 the canonical disease exists. `retry_retrieval` resets attempts to zero but
-keeps `needs_review`; `retry_extraction` sets `classified`; dismissal sets
-`dismissed`. `resolve_case` records identity, note, targets, and one shared UTC
-timestamp.
+keeps `needs_review`; `retry_extraction` sets `classified`; `retry_geocoding`
+sets `extracted`; dismissal sets `dismissed`. `resolve_case` records identity,
+note, targets, and one shared UTC timestamp.
 
 - [ ] **Step 4: Run resolver/repository tests**
 
@@ -754,7 +783,7 @@ Run the Step 2 command. Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/review packages/backend/tests/test_review_resolve.py packages/backend/tests/test_review_repository.py
+git add packages/backend/src/episignal_backend/review packages/backend/tests/test_review_resolve.py packages/backend/tests/test_review_repository.py STATUS.md
 git commit -m "feat(review): resolve pipeline review cases"
 ```
 
@@ -826,7 +855,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/review packages/backend/tests/test_review_protocol.py packages/backend/tests/test_review_resolve.py packages/backend/tests/test_review_repository.py
+git add packages/backend/src/episignal_backend/review packages/backend/tests/test_review_protocol.py packages/backend/tests/test_review_resolve.py packages/backend/tests/test_review_repository.py STATUS.md
 git commit -m "feat(review): resolve ambiguous event matches"
 ```
 
@@ -898,7 +927,7 @@ no credential.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add packages/backend/src/episignal_backend/config.py packages/backend/tests/test_config.py apps/api/src/episignal_api/dependencies.py apps/api/tests/test_api.py .env.example apps/api/.env.example
+git add packages/backend/src/episignal_backend/config.py packages/backend/tests/test_config.py apps/api/src/episignal_api/dependencies.py apps/api/tests/test_api.py .env.example apps/api/.env.example STATUS.md
 git commit -m "feat(review): protect admin review access"
 ```
 
@@ -959,7 +988,7 @@ Run the Step 2 command. Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add apps/api/src/episignal_api/routes/reviews.py apps/api/src/episignal_api/dependencies.py apps/api/src/episignal_api/factory.py apps/api/tests/test_reviews.py
+git add apps/api/src/episignal_api/routes/reviews.py apps/api/src/episignal_api/dependencies.py apps/api/src/episignal_api/factory.py apps/api/tests/test_reviews.py STATUS.md
 git commit -m "feat(review): expose authenticated review queue"
 ```
 
@@ -971,6 +1000,7 @@ git commit -m "feat(review): expose authenticated review queue"
 - Modify: `apps/api/src/episignal_api/dependencies.py`
 - Modify: `apps/api/src/episignal_api/factory.py`
 - Modify: `apps/api/tests/test_reviews.py`
+- Create: `apps/api/integration_tests/test_review_resolution_concurrency.py`
 - Modify generated: `packages/contracts/openapi.json`
 - Modify generated: `packages/contracts/src/index.d.ts`
 
@@ -979,6 +1009,15 @@ git commit -m "feat(review): expose authenticated review queue"
 Test all action JSON shapes, exact success response, `401`, `404`, each `409`,
 `422`, `503`, rollback behavior through dependency fake, and rejected extra
 fields. Assert CORS permits `GET` and `POST` but no wider methods.
+
+Add a PostgreSQL-only contention test guarded by
+`EPISIGNAL_TEST_DATABASE_URL`. Reject a URL equal to
+`EPISIGNAL_DATABASE_URL`; seed one disposable open dismissal case, open two
+independent SQLAlchemy sessions, synchronize two `resolve_review_case` calls
+with `threading.Barrier(2)`, and assert exactly one succeeds while the other
+raises `ReviewAlreadyResolved`. In a third session, assert one closed case, one
+signal status mutation, and no duplicate durable side effect. The API test for
+the losing state must assert HTTP `409` with code `REVIEW_ALREADY_RESOLVED`.
 
 - [ ] **Step 2: Run endpoint tests and confirm red**
 
@@ -1018,10 +1057,21 @@ uv run pytest apps/api/tests/test_reviews.py apps/api/tests/test_openapi.py -q
 
 Expected: generated files change once; parity and tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the real two-session contention proof**
 
 ```powershell
-git add apps/api/src/episignal_api packages/contracts apps/api/tests/test_reviews.py apps/api/tests/test_openapi.py
+$env:EPISIGNAL_TEST_DATABASE_URL = '<operator-provided disposable PostgreSQL URL>'
+uv run pytest apps/api/integration_tests/test_review_resolution_concurrency.py -q
+```
+
+Expected: both sessions contend on the same case; one commit succeeds, one
+stable already-resolved conflict occurs, and the final database assertions show
+one mutation only. Never substitute `EPISIGNAL_DATABASE_URL`.
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add apps/api/src/episignal_api packages/contracts apps/api/tests/test_reviews.py apps/api/tests/test_openapi.py apps/api/integration_tests/test_review_resolution_concurrency.py STATUS.md
 git commit -m "feat(review): resolve reviews through admin API"
 ```
 
@@ -1094,7 +1144,7 @@ Run the Step 3 command. Expected: pass.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add apps/web/src/lib/api-reviews.ts apps/web/src/lib/api-reviews.test.ts
+git add apps/web/src/lib/api-reviews.ts apps/web/src/lib/api-reviews.test.ts STATUS.md
 git commit -m "feat(web): validate admin review contracts"
 ```
 
@@ -1169,7 +1219,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add apps/web/src/components/admin-review-queue.tsx apps/web/src/components/admin-review-queue.test.tsx
+git add apps/web/src/components/admin-review-queue.tsx apps/web/src/components/admin-review-queue.test.tsx STATUS.md
 git commit -m "feat(web): add manual review queue"
 ```
 
@@ -1181,6 +1231,7 @@ git commit -m "feat(web): add manual review queue"
 - Modify: `apps/web/src/app/globals.css`
 - Modify: `apps/web/src/components/home-shell.tsx`
 - Modify: `apps/web/src/components/home-shell.test.tsx`
+- Modify: `apps/web/src/components/admin-review-queue.test.tsx`
 
 - [ ] **Step 1: Add the failing navigation and route test**
 
@@ -1269,7 +1320,7 @@ this browser proof.
 - [ ] **Step 8: Commit**
 
 ```powershell
-git add apps/web/src/app/admin/reviews/page.tsx apps/web/src/app/globals.css apps/web/src/components/home-shell.tsx apps/web/src/components/home-shell.test.tsx apps/web/src/components/admin-review-queue.test.tsx
+git add apps/web/src/app/admin/reviews/page.tsx apps/web/src/app/globals.css apps/web/src/components/home-shell.tsx apps/web/src/components/home-shell.test.tsx apps/web/src/components/admin-review-queue.test.tsx STATUS.md
 git commit -m "feat(web): mount the inspired review workspace"
 ```
 
@@ -1312,7 +1363,7 @@ corepack pnpm db:check
 uv run --package episignal-backend python -m episignal_backend.schema_check
 ```
 
-Expected: migration head `20260829_0010`, `database=up`, `postgis=up`, and schema
+Expected: migration head `20260829_0014`, `database=up`, `postgis=up`, and schema
 contract clean.
 
 - [ ] **Step 4: Capture non-destructive live queue proof**

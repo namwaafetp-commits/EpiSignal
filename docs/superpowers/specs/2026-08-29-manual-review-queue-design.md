@@ -167,7 +167,10 @@ leave the case open.
 
 ## Migration and compatibility
 
-Create Alembic revision `20260829_0010_manual_review_cases` after `0009`.
+Create Alembic revision `20260829_0014_manual_review_cases` after
+`20260829_0013_story_groups`. Items `O` and the Gemini roster reorder landed
+after this design was first written, so the review migration must extend the
+current single head rather than reuse the earlier planned number.
 
 Forward order:
 
