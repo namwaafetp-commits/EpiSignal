@@ -87,28 +87,28 @@ def test_it_satisfies_the_storage_boundary() -> None:
     assert isinstance(SqlAlchemyAiRepository(FakeSession()), AiRepository)
 
 
-def test_only_normalized_signals_are_offered_for_classification() -> None:
-    session = FakeSession([FakeResult([])])
-
-    SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
-
-    statement = session.executed[0]
-    assert isinstance(statement, Select)
-    rendered = str(statement.compile(compile_kwargs={"literal_binds": True}))
-    assert f"'{ProcessingStatus.NORMALIZED.value}'" in rendered
-    assert f"'{ProcessingStatus.DUPLICATE.value}'" not in rendered
-    assert f"'{ProcessingStatus.NEEDS_REVIEW.value}'" not in rendered
-    assert "raw_text IS NOT NULL" in rendered
+def test_classification_is_bypassed_immediately() -> None:
+    session = FakeSession()
+    res = SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
+    assert res == ()
+    assert session.executed == []
 
 
-def test_only_relevant_classified_signals_are_offered_for_extraction() -> None:
+def test_only_normalized_non_deferred_signals_are_offered_for_extraction() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
 
     rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
-    assert ProcessingStatus.CLASSIFIED.value in rendered
-    assert "public_health_relevant" in rendered
+    assert ProcessingStatus.NORMALIZED.value in rendered
+    assert "WHERE" in rendered
+    # Extract the WHERE clause part to ensure it does not check public_health_relevant
+    where_part = rendered.split("WHERE")[1]
+    assert "public_health_relevant" not in where_part
+    assert "story_group_members" in where_part
+
+
+
 
 
 def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:
@@ -272,26 +272,31 @@ class FakeSignalModel:
             self.content_hash = compute_hash(title, raw_text or "")
 
 
-def test_awaiting_classification_scans_past_mismatched_content_hash_honoring_limit(
-    caplog: Any,
-) -> None:
+def test_awaiting_extraction_does_not_stall_when_corrupted_row_persists_at_head() -> None:
     corrupted = FakeSignalModel(
         title="Pennsylvania measles",
         raw_text="Luanda cholera",
         content_hash="bad_hash_00000000000000000000000000000000000000000000000000000000",
     )
-    valid1 = FakeSignalModel(title="Valid title 1", raw_text="Valid body 1")
-    valid2 = FakeSignalModel(title="Valid title 2", raw_text="Valid body 2")
-    session = FakeSession([FakeResult([corrupted, valid1, valid2])])
+    valid1 = FakeSignalModel(title="Valid 1", raw_text="Body 1")
+    valid2 = FakeSignalModel(title="Valid 2", raw_text="Body 2")
+    valid3 = FakeSignalModel(title="Valid 3", raw_text="Body 3")
+    valid4 = FakeSignalModel(title="Valid 4", raw_text="Body 4")
 
-    with caplog.at_level("WARNING"):
-        results = SqlAlchemyAiRepository(session).awaiting_classification(limit=2)
+    # Batch 1: corrupt row at head followed by valid1, valid2, valid3
+    session1 = FakeSession([FakeResult([corrupted, valid1, valid2, valid3])])
+    batch1 = SqlAlchemyAiRepository(session1).awaiting_extraction(limit=2)
+    assert len(batch1) == 2
+    assert batch1[0].id == valid1.id
+    assert batch1[1].id == valid2.id
 
-    assert len(results) == 2
-    assert results[0].id == valid1.id
-    assert results[1].id == valid2.id
-    assert str(corrupted.id) in caplog.text
-    assert "failed content hash integrity" in caplog.text
+    # Batch 2: valid1 and valid2 have been extracted, so their status has advanced.
+    # The next query still sees the corrupted row at the head, then valid3 and valid4.
+    session2 = FakeSession([FakeResult([corrupted, valid3, valid4])])
+    batch2 = SqlAlchemyAiRepository(session2).awaiting_extraction(limit=2)
+    assert len(batch2) == 2
+    assert batch2[0].id == valid3.id
+    assert batch2[1].id == valid4.id
 
 
 def test_awaiting_extraction_scans_past_mismatched_content_hash_honoring_limit(
@@ -338,28 +343,3 @@ def test_awaiting_backfill_scans_past_mismatched_content_hash_honoring_limit(
     assert "failed content hash integrity" in caplog.text
 
 
-def test_awaiting_classification_does_not_stall_when_corrupted_row_persists_at_head() -> None:
-    corrupted = FakeSignalModel(
-        title="Pennsylvania measles",
-        raw_text="Luanda cholera",
-        content_hash="bad_hash_00000000000000000000000000000000000000000000000000000000",
-    )
-    valid1 = FakeSignalModel(title="Valid 1", raw_text="Body 1")
-    valid2 = FakeSignalModel(title="Valid 2", raw_text="Body 2")
-    valid3 = FakeSignalModel(title="Valid 3", raw_text="Body 3")
-    valid4 = FakeSignalModel(title="Valid 4", raw_text="Body 4")
-
-    # Batch 1: corrupt row at head followed by valid1, valid2, valid3
-    session1 = FakeSession([FakeResult([corrupted, valid1, valid2, valid3])])
-    batch1 = SqlAlchemyAiRepository(session1).awaiting_classification(limit=2)
-    assert len(batch1) == 2
-    assert batch1[0].id == valid1.id
-    assert batch1[1].id == valid2.id
-
-    # Batch 2: valid1 and valid2 have been classified, so their status has advanced.
-    # The next query still sees the corrupted row at the head, then valid3 and valid4.
-    session2 = FakeSession([FakeResult([corrupted, valid3, valid4])])
-    batch2 = SqlAlchemyAiRepository(session2).awaiting_classification(limit=2)
-    assert len(batch2) == 2
-    assert batch2[0].id == valid3.id
-    assert batch2[1].id == valid4.id

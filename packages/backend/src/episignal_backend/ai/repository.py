@@ -106,39 +106,19 @@ class SqlAlchemyAiRepository:
         )
 
     def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
-        # The enforcement of the first invariant: `duplicate`, `needs_review`,
-        # and `fetched` are simply not selectable here, so no later change can
-        # send one to a model by accident.
+        # Bypassed in Phase 2: relevance classification is skipped and representatives
+        # of open groups are extracted directly.
+        return ()
+
+    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         stmt = (
             select(Signal)
             .where(
                 Signal.processing_status == ProcessingStatus.NORMALIZED,
                 Signal.raw_text.is_not(None),
                 # Pre-group deferral: a member waiting on its open group's
-                # representative is not selectable. Exclusion is unconditional
-                # because it is inert until the stage writes groups; the flag
-                # gates the writer, never the reader.
+                # representative is not selectable.
                 ~_deferred_by_open_group(),
-            )
-            .order_by(Signal.first_seen_at)
-        )
-        rows = self._scan_valid_signals(stmt, limit, "classification")
-        return tuple(
-            ClassifiableSignal(
-                id=row.id,
-                title=row.title,
-                excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
-            )
-            for row in rows
-        )
-
-    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
-        stmt = (
-            select(Signal)
-            .where(
-                Signal.processing_status == ProcessingStatus.CLASSIFIED,
-                Signal.public_health_relevant.is_(True),
-                Signal.raw_text.is_not(None),
             )
             .order_by(Signal.first_seen_at)
         )
