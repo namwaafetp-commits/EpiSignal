@@ -67,6 +67,9 @@ class DiscoveryConnector(Protocol):
 
     def stub(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal: ...
 
+    def defer(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal: ...
+
+
 
 @runtime_checkable
 class DiscoveryRepository(Protocol):

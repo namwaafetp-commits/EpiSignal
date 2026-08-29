@@ -95,6 +95,7 @@ class FakeConnector:
         self.failing = failing
         self.unavailable = unavailable
         self.retrieved: list[str] = []
+        self.deferred: list[str] = []
 
     def discover(self, rule: QueryRule, window: TimeWindow) -> Sequence[DiscoveredArticle]:
         if self.unavailable:
@@ -109,6 +110,11 @@ class FakeConnector:
 
     def stub(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:
         return self._signal(article, first_seen_at, ProcessingStatus.NEEDS_REVIEW, None)
+
+    def defer(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:
+        self.deferred.append(article.canonical_url)
+        return self._signal(article, first_seen_at, ProcessingStatus.FETCHED, None)
+
 
     def _signal(
         self,
@@ -152,7 +158,7 @@ def test_already_seen_urls_are_never_retrieved() -> None:
     result = run(connector, repository)
 
     # The ordering that matters: a URL already stored costs no page fetch.
-    assert connector.retrieved == ["https://example.vn/b"]
+    assert connector.deferred == ["https://example.vn/b"]
     assert result.duplicate == 1
     assert result.stored == 1
 
@@ -161,7 +167,7 @@ def test_the_per_run_cap_bounds_retrieval() -> None:
     repository = FakeRepository()
     connector = FakeConnector(tuple(article(f"/{index}") for index in range(10)))
     result = run(connector, repository, max_articles=3)
-    assert len(connector.retrieved) == 3
+    assert len(connector.deferred) == 3
     assert result.stored == 3
     assert result.deferred == 7
 
@@ -177,21 +183,8 @@ def test_the_cap_takes_the_oldest_sightings_first() -> None:
     )
     connector = FakeConnector((article("/new"), older))
     run(connector, repository, max_articles=1)
-    assert connector.retrieved == ["https://example.vn/old"]
+    assert connector.deferred == ["https://example.vn/old"]
 
-
-def test_a_failed_retrieval_stores_a_stub_and_continues() -> None:
-    repository = FakeRepository()
-    connector = FakeConnector(
-        (article("/a"), article("/b")), failing=frozenset({"https://example.vn/a"})
-    )
-    result = run(connector, repository)
-
-    assert result.stored == 1
-    assert result.needs_review == 1
-    statuses = {signal.canonical_url: signal.processing_status for signal, _ in repository.added}
-    assert statuses["https://example.vn/a"] is ProcessingStatus.NEEDS_REVIEW
-    assert statuses["https://example.vn/b"] is ProcessingStatus.FETCHED
 
 
 def test_publisher_registration_is_reused_within_a_run() -> None:
@@ -290,7 +283,7 @@ def test_a_rejected_article_is_never_fetched() -> None:
 
     result = run_discovery(repository, connector, now=NOW)
 
-    assert connector.retrieved == []
+    assert connector.deferred == []
     assert repository.added == []
     assert result.rejected == 1
     assert result.stored == 0
@@ -316,7 +309,7 @@ def test_a_kept_article_is_still_fetched_and_stored() -> None:
 
     result = run_discovery(repository, connector, now=NOW)
 
-    assert connector.retrieved == ["https://example.vn/a"]
+    assert connector.deferred == ["https://example.vn/a"]
     assert result.stored == 1
     assert result.rejected == 1
 
@@ -330,7 +323,7 @@ def test_filtering_runs_before_the_per_run_cap() -> None:
 
     # The one slot goes to the article worth having, not to the one about to be
     # thrown away.
-    assert connector.retrieved == ["https://example.vn/b"]
+    assert connector.deferred == ["https://example.vn/b"]
     assert result.deferred == 0
 
 
@@ -361,6 +354,21 @@ def test_an_article_survives_when_its_rejection_cannot_be_recorded() -> None:
     result = run_discovery(repository, connector, now=NOW)
 
     # A lost audit row must not also lose the article.
-    assert connector.retrieved == ["https://example.vn/a"]
+    assert connector.deferred == ["https://example.vn/a"]
     assert result.failed == 1
     assert result.rejected == 0
+
+
+def test_discovery_defers_every_retrieval() -> None:
+    repository = FakeRepository()
+    connector = FakeConnector(articles=(article("/a"),))
+
+    result = run_discovery(repository, connector, now=NOW)
+
+    assert len(connector.retrieved) == 0
+    assert len(connector.deferred) == 1
+    assert result.stored == 1
+    assert result.needs_review == 0
+    assert repository.added[0][0].processing_status is ProcessingStatus.FETCHED
+    assert repository.added[0][0].raw_text is None
+

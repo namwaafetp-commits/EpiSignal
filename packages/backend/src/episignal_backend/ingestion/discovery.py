@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.ingestion.documents import DiscoveredArticle, Rejection, TimeWindow
 from episignal_backend.ingestion.filtering import compile_rules, evaluate
 from episignal_backend.ingestion.protocol import (
@@ -20,6 +21,7 @@ from episignal_backend.ingestion.protocol import (
     DiscoveryRepository,
     RetrievalFailed,
 )
+
 
 DEFAULT_WINDOW_MINUTES = 20
 DEFAULT_MAX_ARTICLES = 200
@@ -144,15 +146,9 @@ def run_discovery(
 
     for article in selected:
         first_seen = repository.first_seen_at(article.canonical_url) or moment
-        try:
-            signal = connector.retrieve(article, first_seen)
-        except RetrievalFailed as reason:
-            signal = connector.stub(article, first_seen)
-            logger.info(
-                "Stored %s as needs_review (%s)",
-                article.canonical_url,
-                reason,
-            )
+        # Retrieval moved behind the keyword gate: a body is downloaded in the
+        # retrieve stage, and only for an article whose title earned it.
+        signal = connector.defer(article, first_seen)
 
         try:
             source_id = repository.publisher_source_id(signal.publisher)
@@ -168,10 +164,11 @@ def run_discovery(
             )
             continue
 
-        if signal.raw_text is None:
+        if signal.processing_status == ProcessingStatus.NEEDS_REVIEW:
             needs_review += 1
         else:
             stored += 1
+
 
     return DiscoveryResult(
         rules_run=len(rules),

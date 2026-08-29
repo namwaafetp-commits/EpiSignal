@@ -104,6 +104,32 @@ class GdeltConnector:
             processing_status=ProcessingStatus.NEEDS_REVIEW,
         )
 
+    def defer(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:
+        """A sighting stored before anyone has asked the publisher for the page.
+
+        Distinct from `stub`, which records a page that was asked for and
+        refused: this one is `fetched` and selectable by the retrieve stage,
+        because nothing has gone wrong with it. The hash covers the title
+        alone; `promote` recomputes it when the body arrives.
+        """
+        return DiscoveredSignal(
+            url=article.url,
+            canonical_url=article.canonical_url,
+            title=article.title,
+            raw_text=None,
+            published_at=None,
+            published_at_offset_minutes=None,
+            retrieved_at=self._now(),
+            first_seen_at=first_seen_at,
+            gdelt_seen_at=article.gdelt_seen_at,
+            language=article.language,
+            content_hash=content_hash(article.title, ""),
+            publisher=self._publisher(article, None),
+            query_rule_id=article.query_rule_id,
+            processing_status=ProcessingStatus.FETCHED,
+        )
+
+
     def _publisher(self, article: DiscoveredArticle, site_name: str | None) -> Publisher:
         return Publisher(
             domain=article.domain,

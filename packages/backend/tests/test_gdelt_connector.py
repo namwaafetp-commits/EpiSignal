@@ -141,3 +141,17 @@ def test_stub_for_a_failed_retrieval_is_built_by_the_connector() -> None:
     assert stub.title == "Dos residentes - Example News ( 39 )"
     assert stub.publisher.name == "example.vn"
     assert len(stub.content_hash) == 64
+
+
+def test_a_deferred_discovery_carries_no_body_and_no_fetch() -> None:
+    fetcher = FakeFetcher(FULL_PAGE)
+    c = GdeltConnector(search=FakeSearch(), fetcher=fetcher, now=lambda: NOW) # type: ignore[arg-type]
+
+    signal = c.defer(article(), FIRST)
+
+    assert fetcher.calls == []
+    assert signal.raw_text is None
+    assert signal.processing_status is ProcessingStatus.FETCHED
+    assert signal.title == article().title
+    assert signal.published_at is None
+
