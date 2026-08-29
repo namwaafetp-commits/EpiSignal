@@ -1,13 +1,13 @@
 """Tests for manual review authentication and admin token verification."""
 
 from unittest.mock import MagicMock
-import pytest
-from fastapi import HTTPException, Request
-from pydantic import SecretStr
 
+import pytest
 from episignal_api.dependencies import verify_admin_token
 from episignal_backend.config import Settings
+from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import SecretStr
 
 
 def _mock_request(settings: Settings) -> Request:
@@ -35,7 +35,9 @@ def test_verify_admin_token_succeeds_with_x_admin_token_header() -> None:
         _env_file=None,
     )
     req = _mock_request(settings)
-    principal = verify_admin_token(request=req, credentials=None, x_admin_token="super-secret-token")
+    principal = verify_admin_token(
+        request=req, credentials=None, x_admin_token="super-secret-token"
+    )
     assert principal == "admin"
 
 

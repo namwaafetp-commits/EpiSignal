@@ -93,7 +93,7 @@ class EventRepository(Protocol):
         reason: ReviewReason,
         candidate_scores: Mapping[UUID, float] | None = None,
     ) -> None:
-        """Route an unclusterable or refused signal to processing_status = 'needs_review' and record a typed case."""
+        """Route an unclusterable or refused signal to needs_review and record a typed case."""
         ...
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:

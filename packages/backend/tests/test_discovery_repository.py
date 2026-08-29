@@ -343,7 +343,7 @@ def test_initial_contentless_discovery_opens_retrieval_failed_case() -> None:
 
 
 def test_record_failed_attempt_opens_retrieval_failed_when_max_attempts_reached() -> None:
-    from episignal_backend.db.types import ReviewReason, ReviewStatus
+    from episignal_backend.db.types import ReviewReason
     from episignal_backend.models.review import SignalReviewCase
 
     row = stub_row(attempts=2)
@@ -380,10 +380,9 @@ def test_promotion_closes_open_retrieval_case_automatically() -> None:
 
 
 def test_promotion_does_not_close_non_retrieval_case() -> None:
-    from episignal_backend.db.types import ReviewReason, ReviewStatus
 
     row = stub_row()
-    # If the case reason is not RETRIEVAL_FAILED, query returns None because query filters by reason=RETRIEVAL_FAILED
+    # Non-retrieval cases are not closed because query filters by RETRIEVAL_FAILED
     session = FakeSession([None], stored={row.id: row})
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
 

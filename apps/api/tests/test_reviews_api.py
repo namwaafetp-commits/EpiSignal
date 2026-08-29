@@ -3,10 +3,6 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-import pytest
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
-
 from episignal_api.dependencies import get_review_queue_page, get_review_resolver
 from episignal_api.factory import create_app
 from episignal_backend.config import Settings
@@ -19,8 +15,6 @@ from episignal_backend.db.types import (
     VerificationStatus,
 )
 from episignal_backend.review.documents import (
-    DismissCommand,
-    LinkEventCommand,
     ReviewActionNotAllowed,
     ReviewAlreadyResolved,
     ReviewCandidateEvent,
@@ -32,6 +26,8 @@ from episignal_backend.review.documents import (
     ReviewSignalLocation,
     ReviewTargetStale,
 )
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 TEST_SETTINGS = Settings(
     database_url="postgresql://test:test@localhost/test",

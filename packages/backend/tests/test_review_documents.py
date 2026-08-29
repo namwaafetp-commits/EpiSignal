@@ -1,8 +1,6 @@
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from episignal_backend.db.types import (
     ProcessingStatus,
     ReviewReason,
@@ -11,15 +9,10 @@ from episignal_backend.db.types import (
 )
 from episignal_backend.review.documents import (
     ALLOWED_RESOLUTIONS,
-    AssignDiseaseCommand,
-    CreateEventCommand,
     DismissCommand,
-    LinkEventCommand,
-    ResolveReviewCommand,
-    RetryExtractionCommand,
-    RetryGeocodingCommand,
     RetryRetrievalCommand,
 )
+from pydantic import ValidationError
 
 
 def test_review_vocabularies_are_closed() -> None:
@@ -64,30 +57,44 @@ def test_commands_forbid_extra_fields() -> None:
 
 
 def test_reason_action_matrix_is_closed() -> None:
-    assert ALLOWED_RESOLUTIONS[ReviewReason.RETRIEVAL_FAILED] == frozenset({
-        ReviewResolution.RETRY_RETRIEVAL,
-        ReviewResolution.DISMISS,
-    })
-    assert ALLOWED_RESOLUTIONS[ReviewReason.EXTRACTION_REJECTED] == frozenset({
-        ReviewResolution.RETRY_EXTRACTION,
-        ReviewResolution.DISMISS,
-    })
-    assert ALLOWED_RESOLUTIONS[ReviewReason.DISEASE_UNRESOLVED] == frozenset({
-        ReviewResolution.ASSIGN_DISEASE,
-        ReviewResolution.DISMISS,
-    })
-    assert ALLOWED_RESOLUTIONS[ReviewReason.LOCATION_UNRESOLVED] == frozenset({
-        ReviewResolution.RETRY_GEOCODING,
-        ReviewResolution.DISMISS,
-    })
-    assert ALLOWED_RESOLUTIONS[ReviewReason.EVENT_MATCH_AMBIGUOUS] == frozenset({
-        ReviewResolution.LINK_EVENT,
-        ReviewResolution.CREATE_EVENT,
-        ReviewResolution.DISMISS,
-    })
-    assert ALLOWED_RESOLUTIONS[ReviewReason.CONTENT_INTEGRITY] == frozenset({
-        ReviewResolution.DISMISS,
-    })
-    assert ALLOWED_RESOLUTIONS[ReviewReason.LEGACY_UNCLASSIFIED] == frozenset({
-        ReviewResolution.DISMISS,
-    })
+    assert ALLOWED_RESOLUTIONS[ReviewReason.RETRIEVAL_FAILED] == frozenset(
+        {
+            ReviewResolution.RETRY_RETRIEVAL,
+            ReviewResolution.DISMISS,
+        }
+    )
+    assert ALLOWED_RESOLUTIONS[ReviewReason.EXTRACTION_REJECTED] == frozenset(
+        {
+            ReviewResolution.RETRY_EXTRACTION,
+            ReviewResolution.DISMISS,
+        }
+    )
+    assert ALLOWED_RESOLUTIONS[ReviewReason.DISEASE_UNRESOLVED] == frozenset(
+        {
+            ReviewResolution.ASSIGN_DISEASE,
+            ReviewResolution.DISMISS,
+        }
+    )
+    assert ALLOWED_RESOLUTIONS[ReviewReason.LOCATION_UNRESOLVED] == frozenset(
+        {
+            ReviewResolution.RETRY_GEOCODING,
+            ReviewResolution.DISMISS,
+        }
+    )
+    assert ALLOWED_RESOLUTIONS[ReviewReason.EVENT_MATCH_AMBIGUOUS] == frozenset(
+        {
+            ReviewResolution.LINK_EVENT,
+            ReviewResolution.CREATE_EVENT,
+            ReviewResolution.DISMISS,
+        }
+    )
+    assert ALLOWED_RESOLUTIONS[ReviewReason.CONTENT_INTEGRITY] == frozenset(
+        {
+            ReviewResolution.DISMISS,
+        }
+    )
+    assert ALLOWED_RESOLUTIONS[ReviewReason.LEGACY_UNCLASSIFIED] == frozenset(
+        {
+            ReviewResolution.DISMISS,
+        }
+    )

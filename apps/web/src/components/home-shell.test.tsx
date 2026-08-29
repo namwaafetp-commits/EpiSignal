@@ -96,7 +96,16 @@ describe("HomeShell", () => {
     render(
       <HomeShell
         apiStatus="ready"
-        radarFeed={{ status: "ready", data: { items: [], window_start: "", window_end: "", hours: 48, limit: 50 } }}
+        radarFeed={{
+          status: "ready",
+          data: {
+            items: [],
+            window_start: "",
+            window_end: "",
+            hours: 48,
+            limit: 50,
+          },
+        }}
       />,
     );
 
@@ -104,10 +113,9 @@ describe("HomeShell", () => {
       "href",
       "/admin/reviews",
     );
-    expect(screen.getByRole("link", { name: /pipeline monitor/i })).toHaveAttribute(
-      "href",
-      "/admin/pipeline",
-    );
+    expect(
+      screen.getByRole("link", { name: /pipeline monitor/i }),
+    ).toHaveAttribute("href", "/admin/pipeline");
   });
 
   it("renders loading state when radar feed is loading", () => {

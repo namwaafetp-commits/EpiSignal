@@ -213,9 +213,7 @@ def run_retry(
             signal = connector.retrieve(waiting.article, waiting.first_seen_at)
         except RetrievalFailed as reason:
             try:
-                repository.record_failed_attempt(
-                    waiting.signal_id, max_attempts=max_attempts
-                )
+                repository.record_failed_attempt(waiting.signal_id, max_attempts=max_attempts)
                 repository.commit()
             except Exception as error:
                 repository.rollback()

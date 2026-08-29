@@ -77,13 +77,17 @@ export function AdminReviewQueue() {
     text: string;
   } | null>(null);
 
-  const items = queueState.status === "ready" && queueState.data ? queueState.data.items : [];
-  const diseaseOptions = queueState.status === "ready" && queueState.data ? queueState.data.disease_options : [];
+  const items =
+    queueState.status === "ready" && queueState.data
+      ? queueState.data.items
+      : [];
+  const diseaseOptions =
+    queueState.status === "ready" && queueState.data
+      ? queueState.data.disease_options
+      : [];
 
   const activeCase: ReviewQueueItem | null =
-    items.find((item) => item.case_id === selectedCaseId) ??
-    items[0] ??
-    null;
+    items.find((item) => item.case_id === selectedCaseId) ?? items[0] ?? null;
 
   function selectCase(caseItem: ReviewQueueItem) {
     setSelectedCaseId(caseItem.case_id);
@@ -92,7 +96,7 @@ export function AdminReviewQueue() {
     setSelectedEventId(
       caseItem.candidate_events && caseItem.candidate_events.length > 0
         ? caseItem.candidate_events[0].event_id
-        : ""
+        : "",
     );
     setSelectedDiseaseId("");
     setNote("");
@@ -227,7 +231,7 @@ export function AdminReviewQueue() {
       // Remove the case from current queue state
       if (queueState.status === "ready" && queueState.data) {
         const remaining = queueState.data.items.filter(
-          (item) => item.case_id !== activeCase.case_id
+          (item) => item.case_id !== activeCase.case_id,
         );
         const updatedTotal = Math.max(0, queueState.data.total_open_cases - 1);
         setQueueState({
@@ -270,8 +274,8 @@ export function AdminReviewQueue() {
           Admin Authentication
         </h2>
         <p className="text-sm text-slate-400 mb-6">
-          Enter administrator secret token and operator identifier to review
-          and resolve signals requiring human judgment.
+          Enter administrator secret token and operator identifier to review and
+          resolve signals requiring human judgment.
         </p>
 
         <form onSubmit={handleUnlock} className="space-y-4">
@@ -345,9 +349,7 @@ export function AdminReviewQueue() {
           signals.
         </p>
         <button
-          onClick={() =>
-            setQueueState({ status: "locked", data: null })
-          }
+          onClick={() => setQueueState({ status: "locked", data: null })}
           className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg text-sm font-semibold transition-colors"
         >
           Re-enter Credentials
@@ -386,8 +388,8 @@ export function AdminReviewQueue() {
             Queue Clear
           </h2>
           <p className="text-sm text-slate-400 mb-4">
-            No signals are currently awaiting manual review. All ingested signals
-            have either matched cleanly or were automatically resolved.
+            No signals are currently awaiting manual review. All ingested
+            signals have either matched cleanly or were automatically resolved.
           </p>
           <button
             onClick={handleReloadQueue}
@@ -401,9 +403,7 @@ export function AdminReviewQueue() {
   }
 
   const isDismissDisabled =
-    pendingCaseId === activeCase?.case_id ||
-    !note.trim() ||
-    !dismissConfirmed;
+    pendingCaseId === activeCase?.case_id || !note.trim() || !dismissConfirmed;
 
   // 6. Ready Workspace
   return (
@@ -415,7 +415,8 @@ export function AdminReviewQueue() {
             Open Review Cases ({queueState.data?.total_open_cases ?? 0})
           </h2>
           <p className="text-xs text-slate-400">
-            Operator: <span className="text-cyan-400 font-medium">{reviewedBy}</span>
+            Operator:{" "}
+            <span className="text-cyan-400 font-medium">{reviewedBy}</span>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -446,8 +447,8 @@ export function AdminReviewQueue() {
               statusMessage.type === "success"
                 ? "bg-emerald-950/60 border-emerald-800 text-emerald-300"
                 : statusMessage.type === "conflict"
-                ? "bg-amber-950/60 border-amber-800 text-amber-300"
-                : "bg-rose-950/60 border-rose-800 text-rose-300"
+                  ? "bg-amber-950/60 border-amber-800 text-amber-300"
+                  : "bg-rose-950/60 border-rose-800 text-rose-300"
             }`}
           >
             {statusMessage.text}
@@ -458,7 +459,10 @@ export function AdminReviewQueue() {
       {/* Main Review Console Grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
         {/* Left: Case Rail */}
-        <aside className="md:col-span-5 space-y-3" aria-label="Review Cases Rail">
+        <aside
+          className="md:col-span-5 space-y-3"
+          aria-label="Review Cases Rail"
+        >
           {items.map((item) => {
             const isSelected = activeCase?.case_id === item.case_id;
             return (
@@ -542,7 +546,9 @@ export function AdminReviewQueue() {
                   </a>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Retrieval Attempts:</span>
+                  <span className="text-slate-500 block">
+                    Retrieval Attempts:
+                  </span>
                   <span>{activeCase.retrieval_attempts}</span>
                 </div>
               </div>
@@ -550,13 +556,17 @@ export function AdminReviewQueue() {
               {/* Disease info */}
               <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2">
                 <div>
-                  <span className="text-slate-500 block">Extracted Disease Text:</span>
+                  <span className="text-slate-500 block">
+                    Extracted Disease Text:
+                  </span>
                   <span className="text-slate-300">
                     {activeCase.extracted_disease_text || "None extracted"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Canonical Disease:</span>
+                  <span className="text-slate-500 block">
+                    Canonical Disease:
+                  </span>
                   <span className="text-cyan-300 font-medium">
                     {activeCase.canonical_disease || "Unassigned"}
                   </span>
@@ -573,7 +583,10 @@ export function AdminReviewQueue() {
                         key={idx}
                         className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[11px]"
                       >
-                        {loc.resolved_name || loc.place_name || loc.country_name || "Location"}
+                        {loc.resolved_name ||
+                          loc.place_name ||
+                          loc.country_name ||
+                          "Location"}
                       </span>
                     ))}
                   </div>
@@ -582,7 +595,10 @@ export function AdminReviewQueue() {
             </div>
 
             {/* Decision Action Form */}
-            <form onSubmit={(e) => handleResolve(actionChoice, e)} className="space-y-4">
+            <form
+              onSubmit={(e) => handleResolve(actionChoice, e)}
+              className="space-y-4"
+            >
               <fieldset className="space-y-4">
                 <legend className="text-sm font-bold text-slate-200 mb-2">
                   Resolution Decision
@@ -712,7 +728,9 @@ export function AdminReviewQueue() {
                       onClick={(e) => {
                         handleResolve("link_event", e);
                       }}
-                      disabled={pendingCaseId === activeCase.case_id || !selectedEventId}
+                      disabled={
+                        pendingCaseId === activeCase.case_id || !selectedEventId
+                      }
                       className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 font-bold rounded-lg text-xs transition-colors"
                     >
                       Link to Selected Event
@@ -736,7 +754,9 @@ export function AdminReviewQueue() {
                     onClick={(e) => {
                       handleResolve("assign_disease", e);
                     }}
-                    disabled={pendingCaseId === activeCase.case_id || !selectedDiseaseId}
+                    disabled={
+                      pendingCaseId === activeCase.case_id || !selectedDiseaseId
+                    }
                     className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 font-bold rounded-lg text-xs transition-colors"
                   >
                     Assign Disease and Match

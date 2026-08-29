@@ -4,14 +4,6 @@ from collections.abc import Callable
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from episignal_api.dependencies import (
-    get_review_queue_page,
-    get_review_resolver,
-    verify_admin_token,
-)
 from episignal_backend.db.types import ReviewResolution, VerificationStatus
 from episignal_backend.review.documents import (
     AssignDiseaseCommand,
@@ -29,6 +21,14 @@ from episignal_backend.review.documents import (
     ReviewCaseResult,
     ReviewQueuePage,
     ReviewTargetStale,
+)
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from episignal_api.dependencies import (
+    get_review_queue_page,
+    get_review_resolver,
+    verify_admin_token,
 )
 
 router = APIRouter(prefix="/api/v1/admin/reviews", tags=["admin-reviews"])
@@ -117,13 +117,19 @@ def _build_command(
         return RetryExtractionCommand(case_id=case_id, reviewed_by=reviewed_by, note=request.note)
     elif isinstance(request, AssignDiseaseRequest):
         return AssignDiseaseCommand(
-            case_id=case_id, reviewed_by=reviewed_by, disease_id=request.disease_id, note=request.note
+            case_id=case_id,
+            reviewed_by=reviewed_by,
+            disease_id=request.disease_id,
+            note=request.note,
         )
     elif isinstance(request, RetryGeocodingRequest):
         return RetryGeocodingCommand(case_id=case_id, reviewed_by=reviewed_by, note=request.note)
     elif isinstance(request, LinkEventRequest):
         return LinkEventCommand(
-            case_id=case_id, reviewed_by=reviewed_by, event_id=request.resolved_event_id, note=request.note
+            case_id=case_id,
+            reviewed_by=reviewed_by,
+            event_id=request.resolved_event_id,
+            note=request.note,
         )
     elif isinstance(request, CreateEventRequest):
         return CreateEventCommand(

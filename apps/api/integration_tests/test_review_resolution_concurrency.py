@@ -8,10 +8,6 @@ import threading
 from uuid import uuid4
 
 import pytest
-from pydantic import SecretStr
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session, sessionmaker
-
 from episignal_backend.db.models import Signal, SignalReviewCase
 from episignal_backend.db.types import (
     ProcessingStatus,
@@ -22,6 +18,8 @@ from episignal_backend.db.types import (
 )
 from episignal_backend.review.documents import DismissCommand, ReviewAlreadyResolved
 from episignal_backend.review.repository import SqlAlchemyReviewRepository
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
 
 def _get_test_db_url() -> str | None:

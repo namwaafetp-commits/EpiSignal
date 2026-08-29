@@ -2,10 +2,9 @@
 
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
-
 from episignal_backend.db.types import (
     ProcessingStatus,
     ReviewReason,
@@ -25,7 +24,6 @@ from episignal_backend.review.documents import (
     RetryRetrievalCommand,
     ReviewActionNotAllowed,
     ReviewAlreadyResolved,
-    ReviewCaseNotFound,
     ReviewTargetStale,
 )
 from episignal_backend.review.repository import SqlAlchemyReviewRepository

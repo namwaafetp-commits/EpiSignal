@@ -4,14 +4,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from episignal_backend.ai.documents import ModelSpec
-from episignal_backend.ai.schema import BriefPoint, BriefSlot, Extraction
+from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import (
     CredibilityTier,
     LocationRole,
     Precision,
     RelationshipType,
-    SignalType,
     VerificationStatus,
 )
 from episignal_backend.events.documents import (

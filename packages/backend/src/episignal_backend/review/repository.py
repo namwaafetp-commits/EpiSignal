@@ -3,10 +3,9 @@
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import (
@@ -35,14 +34,9 @@ from episignal_backend.models.review import (
 from episignal_backend.review.documents import (
     ALLOWED_RESOLUTIONS,
     AssignDiseaseCommand,
-    CreateEventCommand,
     DiseaseNotFound,
-    DismissCommand,
     LinkEventCommand,
     ResolveReviewCommand,
-    RetryExtractionCommand,
-    RetryGeocodingCommand,
-    RetryRetrievalCommand,
     ReviewActionNotAllowed,
     ReviewAlreadyResolved,
     ReviewCandidateEvent,
@@ -142,11 +136,7 @@ class SqlAlchemyReviewRepository:
 
     def lock_review_case(self, case_id: UUID) -> LockedReviewCase:
         """Lock and return the review case, underlying signal, and candidate snapshot."""
-        stmt = (
-            select(SignalReviewCase)
-            .where(SignalReviewCase.id == case_id)
-            .with_for_update()
-        )
+        stmt = select(SignalReviewCase).where(SignalReviewCase.id == case_id).with_for_update()
         case = self._session.execute(stmt).scalar_one_or_none()
         if case is None:
             raise ReviewCaseNotFound(case_id)
@@ -165,9 +155,7 @@ class SqlAlchemyReviewRepository:
             status=case.status,
         )
 
-    def resolve_review(
-        self, case_id: UUID, command: ResolveReviewCommand
-    ) -> ReviewCaseResult:
+    def resolve_review(self, case_id: UUID, command: ResolveReviewCommand) -> ReviewCaseResult:
         """Resolve a review case transactionally according to domain rules."""
         from episignal_backend.events.documents import StoryCluster
         from episignal_backend.events.finalize import (
@@ -176,11 +164,7 @@ class SqlAlchemyReviewRepository:
         )
         from episignal_backend.events.repository import SqlAlchemyEventRepository
 
-        stmt = (
-            select(SignalReviewCase)
-            .where(SignalReviewCase.id == case_id)
-            .with_for_update()
-        )
+        stmt = select(SignalReviewCase).where(SignalReviewCase.id == case_id).with_for_update()
         case = self._session.execute(stmt).scalar_one_or_none()
         if case is None:
             raise ReviewCaseNotFound(case_id)
@@ -271,13 +255,10 @@ class SqlAlchemyReviewRepository:
 
     def recover_retrieval_automatically(self, signal_id: UUID) -> None:
         """Close only the open retrieval_failed case when discovery succeeds."""
-        stmt = (
-            select(SignalReviewCase)
-            .where(
-                SignalReviewCase.signal_id == signal_id,
-                SignalReviewCase.status == ReviewStatus.OPEN,
-                SignalReviewCase.reason == ReviewReason.RETRIEVAL_FAILED,
-            )
+        stmt = select(SignalReviewCase).where(
+            SignalReviewCase.signal_id == signal_id,
+            SignalReviewCase.status == ReviewStatus.OPEN,
+            SignalReviewCase.reason == ReviewReason.RETRIEVAL_FAILED,
         )
         case = self._session.execute(stmt).scalar_one_or_none()
         if case is not None:
@@ -384,9 +365,7 @@ def query_review_queue(
                 )
             )
 
-    disease_stmt = select(Disease.id, Disease.canonical_name).order_by(
-        Disease.canonical_name.asc()
-    )
+    disease_stmt = select(Disease.id, Disease.canonical_name).order_by(Disease.canonical_name.asc())
     disease_options = [
         ReviewDiseaseOption(id=row.id, canonical_name=row.canonical_name)
         for row in session.execute(disease_stmt).all()

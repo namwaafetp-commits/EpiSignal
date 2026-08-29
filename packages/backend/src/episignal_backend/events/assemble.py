@@ -218,9 +218,7 @@ def run_event_assembly(
 
         elif decision.action is MatchAction.REFUSE:
             scores_to_snapshot = {
-                eid: score
-                for eid, score in decision.candidate_scores.items()
-                if score >= 0.60
+                eid: score for eid, score in decision.candidate_scores.items() if score >= 0.60
             }
             for sig in cluster.signals:
                 repo.open_review(

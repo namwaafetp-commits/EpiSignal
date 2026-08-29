@@ -12,7 +12,6 @@ from episignal_backend.db.types import (
     ProcessingStatus,
     ReviewReason,
     ReviewResolution,
-    ReviewStatus,
     VerificationStatus,
 )
 
@@ -59,33 +58,47 @@ class DiseaseNotFound(Exception):
 
 
 ALLOWED_RESOLUTIONS: dict[ReviewReason, frozenset[ReviewResolution]] = {
-    ReviewReason.RETRIEVAL_FAILED: frozenset({
-        ReviewResolution.RETRY_RETRIEVAL,
-        ReviewResolution.DISMISS,
-    }),
-    ReviewReason.EXTRACTION_REJECTED: frozenset({
-        ReviewResolution.RETRY_EXTRACTION,
-        ReviewResolution.DISMISS,
-    }),
-    ReviewReason.DISEASE_UNRESOLVED: frozenset({
-        ReviewResolution.ASSIGN_DISEASE,
-        ReviewResolution.DISMISS,
-    }),
-    ReviewReason.LOCATION_UNRESOLVED: frozenset({
-        ReviewResolution.RETRY_GEOCODING,
-        ReviewResolution.DISMISS,
-    }),
-    ReviewReason.EVENT_MATCH_AMBIGUOUS: frozenset({
-        ReviewResolution.LINK_EVENT,
-        ReviewResolution.CREATE_EVENT,
-        ReviewResolution.DISMISS,
-    }),
-    ReviewReason.CONTENT_INTEGRITY: frozenset({
-        ReviewResolution.DISMISS,
-    }),
-    ReviewReason.LEGACY_UNCLASSIFIED: frozenset({
-        ReviewResolution.DISMISS,
-    }),
+    ReviewReason.RETRIEVAL_FAILED: frozenset(
+        {
+            ReviewResolution.RETRY_RETRIEVAL,
+            ReviewResolution.DISMISS,
+        }
+    ),
+    ReviewReason.EXTRACTION_REJECTED: frozenset(
+        {
+            ReviewResolution.RETRY_EXTRACTION,
+            ReviewResolution.DISMISS,
+        }
+    ),
+    ReviewReason.DISEASE_UNRESOLVED: frozenset(
+        {
+            ReviewResolution.ASSIGN_DISEASE,
+            ReviewResolution.DISMISS,
+        }
+    ),
+    ReviewReason.LOCATION_UNRESOLVED: frozenset(
+        {
+            ReviewResolution.RETRY_GEOCODING,
+            ReviewResolution.DISMISS,
+        }
+    ),
+    ReviewReason.EVENT_MATCH_AMBIGUOUS: frozenset(
+        {
+            ReviewResolution.LINK_EVENT,
+            ReviewResolution.CREATE_EVENT,
+            ReviewResolution.DISMISS,
+        }
+    ),
+    ReviewReason.CONTENT_INTEGRITY: frozenset(
+        {
+            ReviewResolution.DISMISS,
+        }
+    ),
+    ReviewReason.LEGACY_UNCLASSIFIED: frozenset(
+        {
+            ReviewResolution.DISMISS,
+        }
+    ),
 }
 
 

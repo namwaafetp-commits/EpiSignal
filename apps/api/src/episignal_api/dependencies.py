@@ -1,6 +1,7 @@
 import secrets
 from datetime import UTC, datetime
 from typing import Annotated, Any
+from uuid import UUID
 
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import connection_scope, session_scope
@@ -10,11 +11,9 @@ from episignal_backend.radar import PipelineRunPage, RadarPage, query_pipeline_r
 from episignal_backend.review.documents import (
     ResolveReviewCommand,
     ReviewCaseResult,
-    ReviewQueuePage,
 )
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from uuid import UUID
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -28,9 +27,7 @@ def verify_admin_token(
     app_state = getattr(request, "app", None)
     settings = getattr(getattr(app_state, "state", None), "settings", None) or get_settings()
     expected = (
-        settings.review_admin_token.get_secret_value()
-        if settings.review_admin_token
-        else None
+        settings.review_admin_token.get_secret_value() if settings.review_admin_token else None
     )
 
     provided: str | None = None

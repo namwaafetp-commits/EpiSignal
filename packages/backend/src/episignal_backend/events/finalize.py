@@ -5,14 +5,13 @@ creating new events, recording observations, adding locations, updating scores,
 and optionally triggering delta generation.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
 from episignal_backend.ai.documents import ModelSpec
 from episignal_backend.ai.ladder import cost_row
 from episignal_backend.ai.protocol import ChatModel
-from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import AiPurpose, RelationshipType
 from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
 from episignal_backend.events.documents import (
@@ -82,9 +81,7 @@ def finalize_event_link(
         and signal.extraction.brief
     ):
         target_brief = signal.extraction.brief
-        result = run_delta(
-            delta_model, delta_spec, previous=previous_brief, new=target_brief
-        )
+        result = run_delta(delta_model, delta_spec, previous=previous_brief, new=target_brief)
         if result.attempt is not None:
             repo.record_ai_request(
                 cost_row(
@@ -118,9 +115,7 @@ def finalize_event_creation(
     for idx, sig in enumerate(cluster.signals):
         is_primary = idx == 0
         rel_type = (
-            RelationshipType.INITIAL_REPORT
-            if is_primary
-            else RelationshipType.SUPPORTING_SOURCE
+            RelationshipType.INITIAL_REPORT if is_primary else RelationshipType.SUPPORTING_SOURCE
         )
         repo.attach_signal(
             event_id,

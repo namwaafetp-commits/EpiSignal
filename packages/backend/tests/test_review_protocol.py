@@ -1,11 +1,9 @@
 """Tests for review protocol contracts and repository interfaces."""
 
-from collections.abc import Mapping
 from datetime import datetime
 from uuid import UUID, uuid4
 
 from episignal_backend.db.types import (
-    ProcessingStatus,
     ReviewReason,
     ReviewResolution,
     ReviewStatus,
@@ -75,15 +73,17 @@ class FakeReviewRepository:
         selected_event_id: UUID | None = None,
         resolved_at: datetime | None = None,
     ) -> None:
-        self.resolutions.append({
-            "case_id": case_id,
-            "resolution": resolution,
-            "reviewed_by": reviewed_by,
-            "note": note,
-            "selected_disease_id": selected_disease_id,
-            "selected_event_id": selected_event_id,
-            "resolved_at": resolved_at,
-        })
+        self.resolutions.append(
+            {
+                "case_id": case_id,
+                "resolution": resolution,
+                "reviewed_by": reviewed_by,
+                "note": note,
+                "selected_disease_id": selected_disease_id,
+                "selected_event_id": selected_event_id,
+                "resolved_at": resolved_at,
+            }
+        )
         self.status = ReviewStatus.RESOLVED
 
     def commit(self) -> None:

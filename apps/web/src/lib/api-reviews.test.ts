@@ -159,7 +159,7 @@ describe("getReviewQueue and resolveReview fetchers", () => {
       {
         action: "link_event",
         event_id: "c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f",
-      }
+      },
     );
     expect(result.status).toBe("success");
   });
@@ -174,7 +174,7 @@ describe("getReviewQueue and resolveReview fetchers", () => {
     const result = await resolveReview(
       "valid-token",
       "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-      { action: "dismiss", note: "Duplicate" }
+      { action: "dismiss", note: "Duplicate" },
     );
     expect(result.status).toBe("conflict");
   });

@@ -110,7 +110,7 @@ function hasForbiddenKeys(record: Record<string, unknown>): boolean {
 }
 
 export function isReviewCandidateEvent(
-  value: unknown
+  value: unknown,
 ): value is ReviewCandidateEvent {
   if (!isRecord(value) || hasForbiddenKeys(value)) return false;
   return (
@@ -127,7 +127,7 @@ export function isReviewCandidateEvent(
 }
 
 export function isReviewDiseaseOption(
-  value: unknown
+  value: unknown,
 ): value is ReviewDiseaseOption {
   if (!isRecord(value) || hasForbiddenKeys(value)) return false;
   return (
@@ -139,7 +139,7 @@ export function isReviewDiseaseOption(
 }
 
 export function isReviewSignalLocation(
-  value: unknown
+  value: unknown,
 ): value is ReviewSignalLocation {
   if (!isRecord(value) || hasForbiddenKeys(value)) return false;
   return (
@@ -198,7 +198,7 @@ export function isReviewQueueItem(value: unknown): value is ReviewQueueItem {
   ) {
     if (
       !value.allowed_resolutions.every(
-        (action) => typeof action === "string" && VALID_RESOLUTIONS.has(action)
+        (action) => typeof action === "string" && VALID_RESOLUTIONS.has(action),
       )
     ) {
       return false;
@@ -250,7 +250,7 @@ export async function getReviewQueue(
   limit = 50,
   offset = 0,
   reason?: string,
-  status?: string
+  status?: string,
 ): Promise<ReviewQueueState> {
   const baseUrl =
     process.env.NEXT_PUBLIC_EPISIGNAL_API_URL ?? "http://127.0.0.1:8000";
@@ -270,7 +270,7 @@ export async function getReviewQueue(
         },
         cache: "no-store",
         signal: AbortSignal.timeout(5000),
-      }
+      },
     );
 
     if (response.status === 401) {
@@ -293,7 +293,7 @@ export async function getReviewQueue(
 export async function resolveReview(
   token: string,
   caseId: string,
-  command: ResolveReviewRequest
+  command: ResolveReviewRequest,
 ): Promise<ReviewResolutionState> {
   const baseUrl =
     process.env.NEXT_PUBLIC_EPISIGNAL_API_URL ?? "http://127.0.0.1:8000";
@@ -309,7 +309,7 @@ export async function resolveReview(
         body: JSON.stringify(command),
         cache: "no-store",
         signal: AbortSignal.timeout(5000),
-      }
+      },
     );
 
     if (response.status === 401) {

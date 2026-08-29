@@ -85,7 +85,9 @@ describe("AdminReviewQueue component", () => {
   it("renders locked state requiring admin token with password input", () => {
     render(<AdminReviewQueue />);
     expect(screen.getByText(/admin authentication/i)).toBeDefined();
-    const tokenInput = screen.getByLabelText(/admin token/i) as HTMLInputElement;
+    const tokenInput = screen.getByLabelText(
+      /admin token/i,
+    ) as HTMLInputElement;
     expect(tokenInput.type).toBe("password");
   });
 
@@ -100,14 +102,19 @@ describe("AdminReviewQueue component", () => {
 
     const tokenInput = screen.getByLabelText(/admin token/i);
     const operatorInput = screen.getByLabelText(/operator name/i);
-    const unlockButton = screen.getByRole("button", { name: /unlock review queue/i });
+    const unlockButton = screen.getByRole("button", {
+      name: /unlock review queue/i,
+    });
 
     await user.type(tokenInput, "secret-token-123");
     await user.type(operatorInput, "Dr. Jones");
     await user.click(unlockButton);
 
     await waitFor(() => {
-      expect(screen.getAllByText("First Oldest Case — Ambiguous Dengue Signal").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("First Oldest Case — Ambiguous Dengue Signal")
+          .length,
+      ).toBeGreaterThanOrEqual(1);
     });
 
     // Check workspace rendered candidate event details
@@ -137,30 +144,38 @@ describe("AdminReviewQueue component", () => {
       data: createFixtureQueue(),
     });
 
-    const mockResolve = vi.spyOn(apiReviews, "resolveReview").mockResolvedValue({
-      status: "success",
-      data: {
-        case_id: "11111111-1111-1111-1111-111111111111",
-        signal_id: "22222222-2222-2222-2222-222222222222",
-        resolution: "link_event",
-        processing_status: "matched",
-        selected_disease_id: null,
-        selected_event_id: "33333333-3333-3333-3333-333333333333",
-        resolved_at: "2026-08-29T12:00:00Z",
-      },
-    });
+    const mockResolve = vi
+      .spyOn(apiReviews, "resolveReview")
+      .mockResolvedValue({
+        status: "success",
+        data: {
+          case_id: "11111111-1111-1111-1111-111111111111",
+          signal_id: "22222222-2222-2222-2222-222222222222",
+          resolution: "link_event",
+          processing_status: "matched",
+          selected_disease_id: null,
+          selected_event_id: "33333333-3333-3333-3333-333333333333",
+          resolved_at: "2026-08-29T12:00:00Z",
+        },
+      });
 
     render(<AdminReviewQueue />);
 
     await user.type(screen.getByLabelText(/admin token/i), "secret-token-123");
     await user.type(screen.getByLabelText(/operator name/i), "Dr. Jones");
-    await user.click(screen.getByRole("button", { name: /unlock review queue/i }));
+    await user.click(
+      screen.getByRole("button", { name: /unlock review queue/i }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /link to selected event/i })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: /link to selected event/i }),
+      ).toBeDefined();
     });
 
-    const linkButton = screen.getByRole("button", { name: /link to selected event/i });
+    const linkButton = screen.getByRole("button", {
+      name: /link to selected event/i,
+    });
     await user.click(linkButton);
 
     await waitFor(() => {
@@ -170,14 +185,18 @@ describe("AdminReviewQueue component", () => {
         expect.objectContaining({
           action: "link_event",
           event_id: "33333333-3333-3333-3333-333333333333",
-        })
+        }),
       );
     });
 
     // Case is removed and next case is active
     await waitFor(() => {
-      expect(screen.queryByText("First Oldest Case — Ambiguous Dengue Signal")).toBeNull();
-      expect(screen.getAllByText("Second Case — Unresolved Disease").length).toBeGreaterThan(0);
+      expect(
+        screen.queryByText("First Oldest Case — Ambiguous Dengue Signal"),
+      ).toBeNull();
+      expect(
+        screen.getAllByText("Second Case — Unresolved Disease").length,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -192,13 +211,19 @@ describe("AdminReviewQueue component", () => {
 
     await user.type(screen.getByLabelText(/admin token/i), "secret-token-123");
     await user.type(screen.getByLabelText(/operator name/i), "Dr. Jones");
-    await user.click(screen.getByRole("button", { name: /unlock review queue/i }));
+    await user.click(
+      screen.getByRole("button", { name: /unlock review queue/i }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /dismiss signal/i })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: /dismiss signal/i }),
+      ).toBeDefined();
     });
 
-    const dismissButton = screen.getByRole("button", { name: /dismiss signal/i });
+    const dismissButton = screen.getByRole("button", {
+      name: /dismiss signal/i,
+    });
     expect(dismissButton.hasAttribute("disabled")).toBe(true);
 
     // Fill note and check confirm

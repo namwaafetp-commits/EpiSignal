@@ -221,9 +221,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.PrimaryKeyConstraint(
-            "review_case_id", "event_id", name="pk_signal_review_candidates"
-        ),
+        sa.PrimaryKeyConstraint("review_case_id", "event_id", name="pk_signal_review_candidates"),
         sa.CheckConstraint(
             "match_score >= 0 AND match_score <= 1",
             name="match_score_range",
@@ -252,12 +250,16 @@ def upgrade() -> None:
                 gen_random_uuid(),
                 s.id,
                 CASE
-                    WHEN s.id = '852aa204-846d-4aa6-a256-82c187fdeaef'::uuid THEN 'content_integrity'
-                    WHEN s.raw_text IS NULL OR trim(s.raw_text) = '' THEN 'retrieval_failed'
+                    WHEN s.id = '852aa204-846d-4aa6-a256-82c187fdeaef'::uuid
+                        THEN 'content_integrity'
+                    WHEN s.raw_text IS NULL OR trim(s.raw_text) = ''
+                        THEN 'retrieval_failed'
                     WHEN s.ai_extraction IS NULL AND EXISTS (
-                        SELECT 1 FROM ai_requests r WHERE r.signal_id = s.id AND r.outcome = 'rejected'
+                        SELECT 1 FROM ai_requests r
+                        WHERE r.signal_id = s.id AND r.outcome = 'rejected'
                     ) THEN 'extraction_rejected'
-                    WHEN s.ai_extraction IS NOT NULL AND s.disease_id IS NULL THEN 'disease_unresolved'
+                    WHEN s.ai_extraction IS NOT NULL AND s.disease_id IS NULL
+                        THEN 'disease_unresolved'
                     ELSE 'legacy_unclassified'
                 END,
                 'open',
@@ -289,7 +291,8 @@ def upgrade() -> None:
         ).all()
         if unreconciled:
             raise RuntimeError(
-                f"Review migration cardinality failure: {len(unreconciled)} needs_review signal(s) lack exactly one open case"
+                f"Review migration cardinality failure: {len(unreconciled)} "
+                "needs_review signal(s) lack exactly one open case"
             )
 
         orphaned = conn.execute(
@@ -304,26 +307,29 @@ def upgrade() -> None:
         ).all()
         if orphaned:
             raise RuntimeError(
-                f"Review migration validation failure: {len(orphaned)} open case(s) point to non-needs_review signals"
+                f"Review migration validation failure: {len(orphaned)} "
+                "open case(s) point to non-needs_review signals"
             )
 
 
 def downgrade() -> None:
     if not op.get_context().as_sql:
         conn = op.get_bind()
-        result = conn.execute(
-            sa.text(
-                """
+        result = (
+            conn.execute(
+                sa.text(
+                    """
                 SELECT
                   (SELECT count(*) FROM signal_review_cases) AS review_cases,
                   (SELECT count(*) FROM signals WHERE processing_status = 'dismissed') AS dismissed
                 """
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         if result["review_cases"] > 0 or result["dismissed"] > 0:
-            raise RuntimeError(
-                "Cannot downgrade manual review schema after review data exists"
-            )
+            raise RuntimeError("Cannot downgrade manual review schema after review data exists")
 
     op.drop_table("signal_review_candidates")
     op.drop_table("signal_review_cases")
