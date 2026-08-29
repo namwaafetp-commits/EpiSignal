@@ -17,15 +17,11 @@ rules for who edits this file are in
 | Spec | [2026-08-29-manual-review-queue-design.md](docs/superpowers/specs/2026-08-29-manual-review-queue-design.md) |
 | Plan | [2026-08-29-manual-review-queue.md](docs/superpowers/plans/2026-08-29-manual-review-queue.md) |
 
-Last item completed: `E` — Signal Radar API, Signal Radar UI, and admin
-monitoring, `verified` on 2026-08-29
-([report](docs/reports/2026-08-28-subproject-e-report.md)). All 15 plan tasks are
-ticked. The completion report records its zero-failure gate, including 828
-Python tests and 58 web tests across 8 files. The planner independently re-ran
-`corepack pnpm verify` at `2499e4e` on `main`: 848 Python tests and 58 web tests
-across 8 files passed, Ruff and ESLint were clean, mypy and tsc were clean
-across 97 source files, the contract diff was clean, and the Next production
-build succeeded.
+Most recently verified: parallel item `O` — High-efficiency pipeline and Gemini
+transition, `verified` on 2026-08-29
+([report](docs/reports/2026-08-29-subproject-o-report.md)). `E` remains the last
+completed dependency on `M`'s path. `M` stays the active item and retains
+`HANDOFF.md`.
 
 The extraction stall was then fixed on `main`. Structured outputs now reach
 geocoding and event assembly; the live proof recorded 28 extracted signals with
@@ -39,31 +35,35 @@ start Task 1 test-first. Set `M` to `building` in the Task 1 commit and tick eac
 ledger item only in the commit that completes it. Stop after Task 15 and hand
 the completion report back to the planner; do not mark `M` verified.
 
-## Parallel track `O` — high-efficiency pipeline, planned
+## Parallel track `O` — high-efficiency pipeline, verified
 
 On the operator's instruction of 2026-08-29, issue
-[#1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) was designed
-and planned as roadmap item `O` in parallel with `M`; the two items touch
-disjoint files except for this file and `ROADMAP.md`, where edits stay in
-separate sections and rows. `O` is `planned`: its
-[spec](docs/superpowers/specs/2026-08-29-high-efficiency-pipeline-design.md)
-and [plan](docs/superpowers/plans/2026-08-29-high-efficiency-pipeline.md) are
-committed, and its task ledger will be added here when a worker takes the item.
-Its `HANDOFF.md` is written only when `M` closes and the position moves — the
-file currently belongs to `M`, and overwriting it mid-build is forbidden. The
-`O` worker needs `EPISIGNAL_GEMINI_API_KEY` for the plan's live validation
-task; absent the key, that task records the blocker and the rest proceeds.
+[#1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) was built in
+parallel with `M`. All 14 tasks are complete. The worker gate passed at
+`48da153`; the planner independently reran `corepack pnpm verify` at clean
+commit `efb80f2` and recorded the real output in the
+[report](docs/reports/2026-08-29-subproject-o-report.md). `O` is `verified`.
+This parallel verification does not retarget the active position or overwrite
+`M`'s `HANDOFF.md`.
 
 **Roster reorder, 2026-08-29, operator instruction (commit `02c23a7`):** the
 active ladder is `google/gemini-3.1-flash-lite` (T1), `google/gemini-3.5-flash-lite`
 (T2), `mistralai/mistral-small-24b-instruct-2501` (T3, the one OpenRouter
 fallback rung). `gemini-2.5-flash-lite` is retired for new API keys — the
 live API answers 404 — so 3.1 takes the everyday role; the seed keeps the
-retired row inactive so it can never silently reactivate. The reorder is
-seeded live and seed-tested, but its first live extraction climb was
-cancelled by the operator: the next session should run one
-`corepack pnpm extract:signals -- --limit 10` and read the ledger to confirm
-the T1→T2→T3 order and 3.1's acceptance rate before trusting it overnight.
+retired row inactive so it can never silently reactivate. The planner's live
+10-signal climb confirmed T1, then T2, then T3 fallback order. Classification
+at T1 accepted its one 10-signal batch. T1 extraction accepted 0 of 7 attempts
+(6 shape rejections, 1 ungrounded); T2 accepted 3 of 7; T3 accepted all 4
+fallbacks. The run extracted all 7 relevant signals with no review or
+unavailable result, but the Gemini-first extraction roster is not trusted for
+overnight operation from this evidence.
+
+`F` is the next planner recommendation after active `M`: persist acceptance,
+cost-per-accepted, grounding, and brief-quality measurements by model and
+purpose. Do not wire batch jobs while trailing spend remains below target. Do
+not make a hidden roster change before `F` can compare a Gemini prompt fix with
+purpose-specific model routing.
 
 ## Settled for `M`, so the worker does not redesign it
 
@@ -113,7 +113,8 @@ the T1→T2→T3 order and 3.1's acceptance rate before trusting it overnight.
 - [x] 2. Pin the seed library to English.
 - [x] 3. Make provider a roster fact.
 - [x] 4. Build `GeminiChatModel`.
-- [x] 5. Resolve rungs through provider adapters.- [x] 6. Validate Gemini live on ten to twenty real signals.
+- [x] 5. Resolve rungs through provider adapters.
+- [x] 6. Validate Gemini live on ten to twenty real signals.
 - [x] 7. Add the delta pass.
 - [x] 8. Wire the delta pass after attach.
 - [x] 9. Build the Gemini batch client.
@@ -129,8 +130,8 @@ the T1→T2→T3 order and 3.1's acceptance rate before trusting it overnight.
 
 ## Verified baseline
 
-Everything below was true at commit `48da153` on `main`. Recorded from the
-`O` run logged untruncated in
+Everything below was true at clean commit `efb80f2` on `main`. Recorded from
+the planner's independent `O` gate and live proof in
 [docs/reports/2026-08-29-subproject-o-report.md](docs/reports/2026-08-29-subproject-o-report.md).
 
 | Fact | Value |
@@ -138,7 +139,7 @@ Everything below was true at commit `48da153` on `main`. Recorded from the
 | Verification command | `corepack pnpm verify` — exit code 0 |
 | Python tests | 905 passed, 1 warning |
 | Web tests | 58 passed, 8 files |
-| Lint and format | `ruff check` and `eslint` clean, 190 files formatted |
+| Lint and format | `ruff check` and `eslint` clean, 211 files formatted |
 | Types | `tsc` and `mypy` clean across 107 source files |
 | Migration revision | `20260829_0013_story_groups` |
 | Live database | `db:migrate` and `db:seed` applied: query_rules=62 (English-only active), ai_models=5 |
@@ -146,10 +147,10 @@ Everything below was true at commit `48da153` on `main`. Recorded from the
 | Canonical sources | 2 stable and inactive |
 | Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title, provider-routed structured outputs |
 | Model ladder | `google/gemini-3.1-flash-lite` (T1), `google/gemini-3.5-flash-lite` (T2), `mistralai/mistral-small-24b-instruct-2501` (T3 fallback); reordered at `02c23a7` per operator instruction |
-| Trailing AI spend | `spend:report` — 30 days, 139 requests, $0.118554 |
+| Trailing AI spend | `spend:report` after the planner proof — 30 days, 173 requests, $0.174529 |
 | Pre-group stage | Built, `pregroup_enabled=false`; measurement gate decided no flip |
 | Radar endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs` |
-| Live extraction proof (O) | 20 classified, 13 extracted; Gemini accepted 4, Mistral tier-2 caught all 9 rejects; run cost $0.0390 |
+| Live extraction proof (O) | `--limit 10`: 10 classified, 7 relevant, 7 extracted, 0 review, 0 unavailable; T1 extraction 0/7, T2 3/7, T3 4/4; run cost $0.032040 |
 
 Reproduce with:
 

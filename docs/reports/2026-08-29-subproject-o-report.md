@@ -23,6 +23,50 @@ An earlier gate run at `aae2b7e` failed exactly one test — the migration-head
 canary still pinned at the previous revision — and passed everywhere else;
 the pin update is the commit this gate ran at.
 
+### Planner verification after the roster reorder
+
+The planner independently ran `corepack pnpm verify` at clean commit `efb80f2`
+after the operator-directed roster reorder in `02c23a7`. Exit code was 0:
+
+- 211 files passed formatting checks;
+- Ruff and ESLint passed;
+- mypy and tsc passed across 107 source files;
+- 58 web tests passed across 8 files;
+- 905 Python tests passed with 1 Starlette deprecation warning (`161.52s`);
+- generated contracts matched;
+- the Next.js 16.3.2 production build succeeded for `/` and
+  `/admin/pipeline`.
+
+The planner then ran exactly one live
+`corepack pnpm extract:signals -- --limit 10`. It completed with:
+
+```text
+classified=10 relevant=7 irrelevant=3 extracted=7 review=0 unavailable=0 requests=19 stopped_early=False
+```
+
+The 19 new `ai_requests` rows confirmed the active T1, T2, T3 rung set and
+fallback insertion order for every climb. Classification used T1 once and
+accepted the 10-signal batch. Extraction results were:
+
+- `google/gemini-3.1-flash-lite` (T1): 0/7 accepted; 6 `shape` rejections and
+  1 `ungrounded` rejection;
+- `google/gemini-3.5-flash-lite` (T2): 3/7 accepted; all 4 rejections were
+  `ungrounded`;
+- `mistralai/mistral-small-24b-instruct-2501` (T3): 4/4 accepted.
+
+The run cost `$0.032040`: T1 `$0.013711`, T2 `$0.017624`, and T3 `$0.000705`.
+Trailing 30-day spend after the run was 173 requests and `$0.174529`, still
+below the operator's `$0.50/month` target.
+
+The ledger gives each climb's attempts one shared `requested_at` and has no
+durable attempt ordinal. Physical insertion order matched the tier-sorted
+`Ladder.build` behavior, but item `F` should add a first-class climb/attempt
+measurement rather than rely on storage order. The evidence supports Gemini
+classification but not overnight Gemini-first extraction: T1 accepted none of
+seven extractions. No roster was silently changed. `F` should compare a
+Gemini-specific prompt-adherence correction with purpose-specific routing;
+batch wiring remains unjustified while spend stays below target.
+
 ## Live proofs, all performed this session
 
 - **Migration chain**: `db:migrate` applied revisions `20260829_0010`

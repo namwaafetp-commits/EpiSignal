@@ -41,7 +41,7 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [######---] 6/9  D2b, F, and O remain
+Band 2  GDELT discovery layer   [#######--] 7/9  D2b and F remain
 Band 3  Product surface         [#-----] 1/6  E verified; G, H, I, J, K remain
 Band 4  Operations              [#--]    1/3  M and N remain
 Band 5  Acceptance              [-]      0/1
@@ -91,7 +91,7 @@ Umbrella architecture and shared invariants:
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
-| `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, Gemini 2.5 Flash-Lite is the tier-1 roster rung with the OpenRouter ladder as fallback, event follow-ups carry a recorded delta, scheduled extraction runs batch mode, and trailing 30-day spend read from `ai_requests` is below one US dollar — or every lever is built and the measured figure is reported honestly. | `C2`, `D2a`, `L` | `building` |
+| `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. | `C2`, `D2a`, `L` | `verified` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·
@@ -115,6 +115,7 @@ Artifacts:
 [report](docs/reports/2026-08-28-subproject-d2a-report.md) —
 `O` [spec](docs/superpowers/specs/2026-08-29-high-efficiency-pipeline-design.md) ·
 [plan](docs/superpowers/plans/2026-08-29-high-efficiency-pipeline.md) ·
+[report](docs/reports/2026-08-29-subproject-o-report.md) ·
 [issue #1](https://github.com/namwaafetp-commits/EpiSignal/issues/1)
 
 ### Pipeline as it stands
@@ -131,17 +132,18 @@ Artifacts:
 [Ambiguous match] ->  D2b ---                    not started
 [Radar surface]   ->  E   radar.py + Next UI     verified
 [Manual review]   ->  M   ---                    planned
-[Efficiency]      ->  O   lang + provider + delta planned
+[Efficiency]      ->  O   lang + provider + delta verified
 
 [Runs it daily]   ->  L   pipeline_runner.py     verified
 ```
 
-`O` comes from the operator's architecture proposal (issue #1) and is planned
-in phases with a measurement gate: language and provider first, event delta and
-batch mode next, and a default-off pre-group stage whose final position is
-decided by the trailing spend the cost ledger records, never by an estimate. It
-runs as a parallel planner track beside `M`; whichever worker takes it works
-from its own handoff, not `M`'s.
+`O` came from the operator's architecture proposal (issue #1) and passed its
+measurement gate. English discovery, provider routing, event deltas, the batch
+client, and default-off pre-group machinery are built. Trailing spend remained
+below the operator's target, so pre-group stays off and batch-job wiring remains
+deferred. The 2026-08-29 roster proof confirmed cross-provider fallback but did
+not justify overnight trust in Gemini extraction; that model-quality decision
+belongs to `F`, not to an unmeasured roster edit.
 
 The chain runs unattended, which is what `L` was for. The extraction
 configuration blocker is resolved: OpenRouter receives a strict Pydantic-derived
