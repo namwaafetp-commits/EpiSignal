@@ -21,6 +21,10 @@ from episignal_backend.db.types import AiPurpose, RelationshipType, ReviewReason
 from episignal_backend.events.cluster import build_clusters
 from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
 from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
+from episignal_backend.events.finalize import (
+    finalize_event_creation,
+    finalize_event_link,
+)
 from episignal_backend.events.match import DEFAULT_MATCH_WEIGHTS, decide
 from episignal_backend.events.protocol import EventRepository
 from episignal_backend.events.score import (
@@ -167,23 +171,23 @@ def run_event_assembly(
             event_id = decision.event_id
             match_score = decision.match_score if decision.match_score is not None else 1.0
             chosen = next((cand for cand in candidates if cand.event_id == event_id), None)
-            # Read before the attach lands: the delta compares against what the
-            # event was, not what this run is about to make it.
             previous_brief = repo.latest_brief(event_id)
+
             for sig in cluster.signals:
-                repo.attach_signal(
-                    event_id,
-                    sig.signal_id,
+                finalize_event_link(
+                    repo,
+                    event_id=event_id,
+                    signal=sig,
                     relationship_type=RelationshipType.SUPPORTING_SOURCE,
                     match_score=match_score,
                     is_primary=False,
+                    early_signal_weights=early_signal_weights,
+                    evidence_weights=evidence_weights,
+                    now=now,
                 )
-                repo.record_observation(event_id, sig)
-                repo.add_locations(event_id, sig.locations)
-                repo.mark_matched(sig.signal_id)
                 signals_attached += 1
 
-            # Recompute scores on target event
+            # Recompute cluster-level scores across all attached cluster signals
             early = early_signal_score(cluster.signals, now=now, weights=early_signal_weights)
             evid = evidence_score(cluster.signals, weights=evidence_weights)
             v_status = verification_status(cluster.signals)
@@ -202,34 +206,15 @@ def run_event_assembly(
             )
 
         elif decision.action is MatchAction.CREATE:
-            created = repo.create_event(cluster)
+            finalize_event_creation(
+                repo,
+                cluster=cluster,
+                early_signal_weights=early_signal_weights,
+                evidence_weights=evidence_weights,
+                now=now,
+            )
             events_created += 1
-            event_id = created.event_id
-
-            for idx, sig in enumerate(cluster.signals):
-                is_primary = idx == 0
-                rel_type = (
-                    RelationshipType.INITIAL_REPORT
-                    if is_primary
-                    else RelationshipType.SUPPORTING_SOURCE
-                )
-                repo.attach_signal(
-                    event_id,
-                    sig.signal_id,
-                    relationship_type=rel_type,
-                    match_score=1.0,
-                    is_primary=is_primary,
-                )
-                repo.record_observation(event_id, sig)
-                repo.add_locations(event_id, sig.locations)
-                repo.mark_matched(sig.signal_id)
-                signals_attached += 1
-
-            # Compute scores on created event
-            early = early_signal_score(cluster.signals, now=now, weights=early_signal_weights)
-            evid = evidence_score(cluster.signals, weights=evidence_weights)
-            v_status = verification_status(cluster.signals)
-            repo.apply_scores(event_id, early.total, evid.total, v_status)
+            signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.REFUSE:
             scores_to_snapshot = {
