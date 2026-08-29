@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from episignal_backend.db.types import (
     CredibilityTier,
     DiscoveryMethod,
+    FilterRuleGroup,
     ProcessingStatus,
     ReviewReason,
     SourceType,
@@ -33,6 +34,7 @@ from episignal_backend.ingestion.documents import (
     StubRetrieval,
 )
 from episignal_backend.models import (
+    Disease,
     GdeltQueryRule,
     RejectedSighting,
     Signal,
@@ -40,6 +42,7 @@ from episignal_backend.models import (
     Source,
 )
 from episignal_backend.review.repository import SqlAlchemyReviewRepository
+
 
 
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
@@ -163,6 +166,71 @@ class SqlAlchemyDiscoveryRepository:
             for row in rows
         )
 
+    def keyword_rules(self) -> Sequence[FilterRule]:
+        """The gate's rule set: seeded context terms plus the reviewed vocabulary.
+
+        The disease names are read rather than copied into the seed, so adding
+        a disease widens the gate in the same commit that widens the
+        vocabulary, and the two can never disagree.
+        """
+        seeded = self._session.execute(
+            select(SignalFilterRule)
+            .where(
+                SignalFilterRule.active.is_(True),
+                SignalFilterRule.rule_group == FilterRuleGroup.TITLE_INCLUSION,
+            )
+            .order_by(SignalFilterRule.label)
+        ).scalars()
+        rules = [
+            FilterRule(
+                id=row.id,
+                rule_group=FilterRuleGroup.TITLE_INCLUSION,
+                pattern=row.pattern,
+                label=row.label,
+            )
+            for row in seeded
+        ]
+
+        diseases = self._session.execute(
+            select(Disease.canonical_name, Disease.synonyms).order_by(Disease.canonical_name)
+        ).all()
+        for canonical_name, synonyms in diseases:
+            for name in (canonical_name, *synonyms):
+                collapsed = " ".join(name.split()).casefold()
+                # Below four characters a substring match is an accident
+                # waiting to happen, and the vocabulary holds a few acronyms.
+                if len(collapsed) < 4:
+                    continue
+                rules.append(
+                    FilterRule(
+                        id=None,
+                        rule_group=FilterRuleGroup.TITLE_INCLUSION,
+                        pattern=collapsed,
+                        label=f"Disease: {canonical_name}",
+                    )
+                )
+        return tuple(rules)
+
+    def gated_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int
+    ) -> Sequence[StubRetrieval]:
+        """Discoveries stored without a body, waiting for the gate.
+
+        Distinct from `stubs_awaiting_retrieval`, which serves articles whose
+        page already failed. These have never been asked for.
+        """
+        return self._retrievals(
+            ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit
+        )
+
+    def record_filtered(self, signal_id: UUID) -> None:
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == signal_id)
+            .values(processing_status=ProcessingStatus.FILTERED)
+        )
+
+
     def record_rejection(self, rejection: Rejection) -> None:
         # Conflict-do-nothing: the same article is sighted in several
         # consecutive windows, and one row per article is the useful record.
@@ -245,10 +313,21 @@ class SqlAlchemyDiscoveryRepository:
             )
 
     def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
+        return self._retrievals(
+            ProcessingStatus.NEEDS_REVIEW, max_attempts=max_attempts, limit=limit
+        )
+
+    def _retrievals(
+        self, status: ProcessingStatus, *, max_attempts: int, limit: int
+    ) -> Sequence[StubRetrieval]:
         rows = self._session.execute(
             select(Signal, Source.domain, Source.country_code)
             .join(Source, Signal.source_id == Source.id)
             .where(
+                # The status filter is load-bearing: without it this query
+                # returns every bodyless signal, including the ones the gate
+                # has not seen and the ones it filtered.
+                Signal.processing_status == status,
                 Signal.discovered_via == DiscoveryMethod.GDELT,
                 Signal.raw_text.is_(None),
                 Signal.retrieval_attempts < max_attempts,
@@ -280,6 +359,7 @@ class SqlAlchemyDiscoveryRepository:
                 )
             )
         return tuple(stubs)
+
 
     def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
         stub = self._session.get(Signal, signal_id)

@@ -387,3 +387,119 @@ def test_promotion_does_not_close_non_retrieval_case() -> None:
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
 
     assert repository.promote(row.id, discovered()) is True
+
+
+DEFERRED_SIGNAL_ID = uuid4()
+
+
+def deferred_signal_row() -> Any:
+    from episignal_backend.db.types import DiscoveryMethod
+    from episignal_backend.models import Signal
+
+    return Signal(
+        id=DEFERRED_SIGNAL_ID,
+        source_id=uuid4(),
+        url="https://example.vn/deferred",
+        canonical_url="https://example.vn/deferred",
+        title="Deferred Report",
+        raw_text=None,
+        retrieved_at=NOW,
+        first_seen_at=FIRST,
+        gdelt_seen_at=SEEN,
+        language="vi",
+        content_hash="f" * 64,
+        discovered_via=DiscoveryMethod.GDELT,
+        retrieval_attempts=0,
+        processing_status=ProcessingStatus.FETCHED,
+    )
+
+
+def test_keyword_rules_union_the_seed_and_the_disease_vocabulary() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.models import SignalFilterRule
+
+    rule_row = SignalFilterRule(
+        rule_group=FilterRuleGroup.TITLE_INCLUSION,
+        pattern="outbreak",
+        label="Context: outbreak",
+        active=True,
+    )
+    rule_row.id = uuid4()
+
+    session = FakeSession([[rule_row], [("Cholera", ["evd", "cholera"])]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    rules = repository.keyword_rules()
+    patterns = {rule.pattern for rule in rules}
+
+    assert "outbreak" in patterns  # a seeded title_inclusion row
+    assert "cholera" in patterns  # a diseases.canonical_name, case-folded
+    assert all(rule.rule_group is FilterRuleGroup.TITLE_INCLUSION for rule in rules)
+
+
+def test_a_disease_synonym_is_also_a_keyword() -> None:
+    session = FakeSession([[], [("Ebola virus disease", ["ebola", "evd"])]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    patterns = {rule.pattern for rule in repository.keyword_rules()}
+
+    assert "ebola" in patterns
+
+
+def test_gated_signals_awaiting_retrieval_are_bodyless_and_fetched() -> None:
+    row = deferred_signal_row()
+    session = FakeSession([[(row, "example.vn", "VN")]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    waiting = repository.gated_awaiting_retrieval(max_attempts=3, limit=10)
+
+    assert {item.signal_id for item in waiting} == {DEFERRED_SIGNAL_ID}
+
+
+def test_a_filtered_signal_is_never_selected_for_retrieval() -> None:
+    session = FakeSession([None, []])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+    repository.record_filtered(DEFERRED_SIGNAL_ID)
+
+    assert repository.gated_awaiting_retrieval(max_attempts=3, limit=10) == ()
+
+
+def test_recording_filtered_preserves_the_row() -> None:
+    from sqlalchemy import Update
+
+    from episignal_backend.models import Signal
+
+    class UpdatingFakeSession(FakeSession):
+        def execute(self, statement: Any) -> Any:
+            self.executed.append(statement)
+            if isinstance(statement, Update):
+                for row in self.stored.values():
+                    row.processing_status = ProcessingStatus.FILTERED
+            return FakeResult(self.results.pop(0) if self.results else None)
+
+    row = deferred_signal_row()
+    session = UpdatingFakeSession([None], stored={row.id: row})
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+    repository.record_filtered(row.id)
+
+    res = session.get(Signal, row.id)
+    assert res is not None
+    assert res.processing_status is ProcessingStatus.FILTERED
+    assert res.title == "Deferred Report"
+    assert res.url == "https://example.vn/deferred"
+
+
+
+def test_the_retry_pass_only_sees_needs_review_stubs() -> None:
+    from sqlalchemy import Select
+
+    session = FakeSession([[]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    repository.stubs_awaiting_retrieval(max_attempts=3, limit=10)
+
+    statement = session.executed[0]
+    assert isinstance(statement, Select)
+    rendered = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert f"signals.processing_status = '{ProcessingStatus.NEEDS_REVIEW.value}'" in rendered
+

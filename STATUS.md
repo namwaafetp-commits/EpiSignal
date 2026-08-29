@@ -135,7 +135,7 @@ purpose-specific model routing.
 - [x] 1. Seed the `title_inclusion` keyword rules.
 - [x] 2. Add the `filtered` processing status and its migration.
 - [x] 3. Write the keyword gate function.
-- [ ] 4. Add the repository seams and fix the stub status filter.
+- [x] 4. Add the repository seams and fix the stub status filter.
 - [ ] 5. Store discoveries without fetching the page.
 - [ ] 6. Write the gate-and-fetch retrieval pass.
 - [ ] 7. Add the `retrieve` stage and its runner.
