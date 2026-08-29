@@ -88,7 +88,6 @@ def _run(arguments: Arguments) -> tuple[ClassificationResult, ExtractionResult]:
                 batch_size=batch_size,
                 limit=limit,
                 max_tier=settings.ai_max_tier,
-                max_input_characters=settings.ai_max_input_characters,
             )
         if arguments.stage in {"extract", "both"}:
             extracted = run_extraction(

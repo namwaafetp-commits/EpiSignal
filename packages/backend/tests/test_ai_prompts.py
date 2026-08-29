@@ -56,21 +56,21 @@ def test_a_classification_prompt_addresses_every_signal_by_id() -> None:
         ClassifiableSignal(id=FIRST, title="Cholera cases rise", excerpt="Health officials said"),
     )
 
-    _, user = classification_prompt(batch, max_characters=1000)
+    _, user = classification_prompt(batch)
 
     assert str(FIRST) in user
     assert "Cholera cases rise" in user
 
 
-def test_a_classification_prompt_divides_the_budget_across_the_batch() -> None:
-    batch = tuple(
-        ClassifiableSignal(id=FIRST, title=f"Title {index}", excerpt="word " * 200)
-        for index in range(4)
-    )
+def test_a_classification_prompt_sends_titles_only() -> None:
+    """The relevance gate is intentionally cheap: the headline decides, and the
+    unsure-means-relevant rule protects recall."""
+    batch = (ClassifiableSignal(id=FIRST, title="Cholera cases rise", excerpt="word " * 200),)
 
-    _, user = classification_prompt(batch, max_characters=400)
+    _, user = classification_prompt(batch)
 
-    assert len(user) < 1200
+    assert "excerpt" not in user
+    assert len(user) < 200
 
 
 def test_the_extraction_system_prompt_contains_the_generated_schema() -> None:

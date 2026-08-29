@@ -139,7 +139,6 @@ def _extract() -> Mapping[str, int]:
             batch_size=settings.ai_batch_size,
             limit=settings.ai_signal_batch_limit,
             max_tier=settings.ai_max_tier,
-            max_input_characters=settings.ai_max_input_characters,
         )
         extracted = run_extraction(
             repository,

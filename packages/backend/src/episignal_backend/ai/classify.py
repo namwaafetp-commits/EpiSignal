@@ -37,7 +37,6 @@ from episignal_backend.db.types import AiPurpose, ReviewReason
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
-DEFAULT_MAX_INPUT_CHARACTERS = 12000
 
 logger = logging.getLogger("episignal_backend.ai.classify")
 
@@ -83,7 +82,6 @@ def run_classification(
     batch_size: int = DEFAULT_BATCH_SIZE,
     limit: int = DEFAULT_LIMIT,
     max_tier: int = DEFAULT_MAX_TIER,
-    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ClassificationResult:
     ladder = Ladder.build(repository.models(), max_tier=max_tier)
@@ -99,7 +97,7 @@ def run_classification(
 
     for batch in _batches(pending, batch_size):
         identifiers = [signal.id for signal in batch]
-        system, user = classification_prompt(batch, max_characters=max_input_characters)
+        system, user = classification_prompt(batch)
         attempts: list[Attempt] = []
 
         result = climb(

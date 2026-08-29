@@ -67,16 +67,15 @@ def extraction_prompt(signal: ExtractableSignal, *, max_characters: int) -> tupl
     return system, user
 
 
-def classification_prompt(
-    batch: Sequence[ClassifiableSignal], *, max_characters: int
-) -> tuple[str, str]:
+def classification_prompt(batch: Sequence[ClassifiableSignal]) -> tuple[str, str]:
+    """The title-only relevance gate.
+
+    The operator's call: relevance is decided from the headline alone, so an
+    irrelevant item leaves the funnel for the cost of a few tokens. Recall is
+    protected by the unsure-means-relevant rule above, and a headline that
+    hides a relevant story is caught one stage later by the full-text
+    extraction pass -- never by a guess at what the article might contain.
+    """
     system = CLASSIFICATION_RULES + json.dumps(classification_json_schema(), sort_keys=True)
-    # The budget is divided rather than applied per item, so a batch of twenty
-    # costs the same input as a batch of four and the run's cost stays
-    # predictable from the settings alone.
-    share = max(1, max_characters // max(1, len(batch)))
-    items = "\n\n".join(
-        f"id: {signal.id}\ntitle: {signal.title}\nexcerpt: {truncate(signal.excerpt, share)}"
-        for signal in batch
-    )
+    items = "\n\n".join(f"id: {signal.id}\ntitle: {signal.title}" for signal in batch)
     return system, items
