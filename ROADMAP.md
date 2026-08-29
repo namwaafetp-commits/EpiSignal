@@ -42,7 +42,7 @@ small items.
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
 Band 2  GDELT discovery layer   [######--] 6/8  D2b and F remain
-Band 3  Product surface         [------] 0/6  E designed
+Band 3  Product surface         [#-----] 1/6  E verified; G, H, I, J, K remain
 Band 4  Operations              [#--]    1/3  M and N remain
 Band 5  Acceptance              [-]      0/1
 ```
@@ -95,10 +95,10 @@ Umbrella architecture and shared invariants:
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·
 [plan](docs/superpowers/plans/2026-08-27-gdelt-discovery.md) ·
-[report](reportback.md) —
+[report](docs/reports/2026-08-27-subproject-a-report.md) —
 `B` [spec](docs/superpowers/specs/2026-08-27-gdelt-stage0-filtering-design.md) ·
 [plan](docs/superpowers/plans/2026-08-27-gdelt-stage0-filtering.md) ·
-[report](report.md) —
+[report](docs/reports/2026-08-27-subproject-b-report.md) —
 `C` [spec](docs/superpowers/specs/2026-08-27-ai-extraction-design.md) ·
 [plan](docs/superpowers/plans/2026-08-27-ai-extraction.md) ·
 [report](docs/reports/2026-08-27-subproject-c-report.md) —
@@ -125,25 +125,23 @@ Artifacts:
 [Geocoding]       ->  D1  geocode_runner.py      verified
 [Clustering]      ->  D2a event_runner.py        verified
 [Ambiguous match] ->  D2b ---                    not started
-[Radar surface]   ->  E   ---                    designed      <-- next
+[Radar surface]   ->  E   radar.py + Next UI     verified
+[Manual review]   ->  M   ---                    not started
 
 [Runs it daily]   ->  L   pipeline_runner.py     verified
 ```
 
-The chain now runs unattended, which is what `L` was for. Running it also showed
-where it stops: `extract` raised `EPISIGNAL_OPENROUTER_API_KEY is not set` on
-every live run, so the last recorded backlog was 46 signals sitting at
-`normalized` with nothing downstream of them to do. That is a configuration
-blocker on the machine, recorded in [STATUS.md](STATUS.md), not a defect in any
-item on this map.
+The chain runs unattended, which is what `L` was for. The extraction
+configuration blocker is resolved: OpenRouter receives a strict Pydantic-derived
+JSON schema with a compatibility fallback, and the refreshed ladder completed
+28 live extractions with zero shape rejections. The same proof reached 32
+geocoded signals and created the first 3 events. Details and the bounded backlog
+requeue are recorded in the
+[extraction stall fix report](docs/reports/2026-08-28-extraction-stall-fix-report.md).
 
-The key was set on 2026-08-28, so the chain can now reach its AI stage.
-
-`C2` now gives `E` its display contract: an English title and five ordered brief
-slots, with evidence spans kept in the publisher's language. `E` renders that
-shape rather than summarizing again. Its first decision is already settled: the
-homepage becomes the radar, a map of the last day or two above a list ranked by
-recency and heat.
+`C2` gives `E` its display contract: an English title and five ordered brief
+slots, with evidence spans kept in the publisher's language. `E` now renders
+that shape on the signal-first radar, with event context when one exists.
 
 ---
 
@@ -154,7 +152,7 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `building` |
+| `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `verified` |
 | `G` | Public event API | Read-only events list, event detail, observations, sources, and filters are served and contract-checked. Phase 1 spec §46. | `D2a` | `not-started` |
 | `H` | Homepage world map and event feed | A usable world map and list view render real events, responsive from the first commit. Phase 1 spec §26–§28. | `G` | `not-started` |
 | `I` | Event page: overview, timeline, sources, data | Every claim on the page shows the source that made it, the time it was made, and the previous value. Phase 1 spec §30–§34. | `G` | `not-started` |
@@ -163,7 +161,8 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 
 Artifacts: `E`
 [spec](docs/superpowers/specs/2026-08-28-signal-radar-design.md) ·
-[plan](docs/superpowers/plans/2026-08-28-signal-radar.md)
+[plan](docs/superpowers/plans/2026-08-28-signal-radar.md) ·
+[report](docs/reports/2026-08-28-subproject-e-report.md)
 
 ---
 

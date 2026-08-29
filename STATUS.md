@@ -4,7 +4,7 @@ Small and volatile by design. The long road is in [ROADMAP.md](ROADMAP.md); the
 rules for who edits this file are in
 [docs/agents/workflow.md](docs/agents/workflow.md).
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-29
 
 ## Position
 
@@ -12,43 +12,43 @@ rules for who edits this file are in
 | --- | --- |
 | Band | 3 — Product surface |
 | Item | `E` — Signal Radar API, Signal Radar UI, admin monitoring |
-| Status | `planned` |
+| Status | `verified` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [2026-08-28-signal-radar-design.md](docs/superpowers/specs/2026-08-28-signal-radar-design.md) |
 | Plan | [2026-08-28-signal-radar.md](docs/superpowers/plans/2026-08-28-signal-radar.md) |
+| Report | [2026-08-28-subproject-e-report.md](docs/reports/2026-08-28-subproject-e-report.md) |
 
-Last item completed: `C2` — English title and the five-slot brief, `verified`
-on 2026-08-28
-([report](docs/reports/2026-08-28-subproject-c2-report.md)). The worker's gate at
-`b26e794` passed with 789 Python tests and 10 web tests. The planner independently
-re-ran `corepack pnpm verify` at `888369c` with the same counts and a clean
-contract diff and production build, then confirmed the documentation-only
-closure through `caefb6d` with `git diff --check` and a clean tree.
+Last item completed: `E` — Signal Radar API, Signal Radar UI, and admin
+monitoring, `verified` on 2026-08-29
+([report](docs/reports/2026-08-28-subproject-e-report.md)). All 15 plan tasks are
+ticked. The completion report records its zero-failure gate, including 828
+Python tests and 58 web tests across 8 files. The planner independently re-ran
+`corepack pnpm verify` at `2499e4e` on `main`: 848 Python tests and 58 web tests
+across 8 files passed, Ruff and ESLint were clean, mypy and tsc were clean
+across 97 source files, the contract diff was clean, and the Next production
+build succeeded.
 
-`C2` is taken before `E` on the operator's instruction that briefs read in
-English as five bullets. An extraction is paid for once: fixing its shape now
-means the corpus grows in its final form, and fixing it after `E` means paying a
-second time for every article already read.
+The extraction stall was then fixed on `main`. Structured outputs now reach
+geocoding and event assembly; the live proof recorded 28 extracted signals with
+zero shape rejections, 32 geocoded signals, and the first 3 events.
 
 ## Next action
 
-**Worker.** Read `HANDOFF.md` and the committed `E` implementation plan. Start
-Task 1 test-first, set `E` to `building` in `ROADMAP.md`, and tick each task in
-this ledger in the same commit as the work. Stop after Task 15 and hand the
-verified report back to the planner; do not mark `E` verified.
+**Planner.** Choose the next dependency-ready item, design it, write its
+implementation plan, archive this `E` briefing, and retarget `HANDOFF.md` and
+the task ledger together. Do not begin implementation in the planner role.
 
-## Settled for `E`, so the next planner does not re-ask
+## Settled by `E`, so later work does not re-ask
 
 - The homepage becomes the radar. `/` carries a large map of the last day or
   two, with a list beneath it ranked by recency and heat. `H` later refines that
   same page rather than replacing it with a second homepage.
 - `E` renders briefs, so it follows `C2`.
-- `feat/map-hero` is still unmerged and far behind `main`. It vendors a MapLibre
-  hero that draws `signal_locations` sized by recorded precision — the map `E`
-  needs. `E`'s design decides whether to salvage or abandon it; it is not left
-  hanging a third time.
-- Zero events exist, so a radar built only on `events` renders nothing. `E` is
-  designed against signals, with events as the layer above them.
+- `feat/map-hero` is superseded. `E` shipped its own smaller MapLibre module and
+  deliberately did not merge or copy the branch's generic map module. Retire
+  the branch and worktree after operator approval.
+- The radar is signal-first, with events as optional context above signals. It
+  remains useful while the event table is sparse.
 
 ## Task ledger
 
@@ -70,11 +70,11 @@ verified report back to the planner; do not mark `E` verified.
 
 ## Blockers
 
-**None.** `E` implementation and verification gate complete.
+**None.** `E` is verified. Next-item selection is planner work.
 
 ## Verified baseline
 
-Everything below was true at commit `117d0c8` on `fix/extraction-structured-outputs`, tree clean. Recorded
+Everything below was true at commit `2499e4e` on `main`, tree clean. Recorded
 from the extraction stall resolution run logged untruncated in
 [docs/reports/2026-08-28-extraction-stall-fix-report.md](docs/reports/2026-08-28-extraction-stall-fix-report.md).
 
