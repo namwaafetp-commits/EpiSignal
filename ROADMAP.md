@@ -130,7 +130,7 @@ Artifacts:
 [Clustering]      ->  D2a event_runner.py        verified
 [Ambiguous match] ->  D2b ---                    not started
 [Radar surface]   ->  E   radar.py + Next UI     verified
-[Manual review]   ->  M   ---                    not started
+[Manual review]   ->  M   ---                    planned
 [Efficiency]      ->  O   lang + provider + delta planned
 
 [Runs it daily]   ->  L   pipeline_runner.py     verified

@@ -68,12 +68,11 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - A single bearer token protects review reads and writes. It is entered by the
   operator and kept only in browser component memory; no account system is in
   scope.
-- Radar, pipeline, and review surfaces share the supplied dark, map-dominant
-  surveillance-console direction: navy structure, cyan selection, and dense
-  desktop rails that collapse cleanly on mobile. Adapt the current
-  Fraunces/Inter, semantic CSS, Tailwind, and MapLibre infrastructure; add no UI
-  dependency. The reference image is presentation guidance only; its severity,
-  counts, and publishers are not product data.
+- The new review workspace borrows the supplied console's navy structure, cyan
+  selection, and dense rail/work-area composition. It reuses the current
+  Fraunces/Inter, semantic CSS, Tailwind, and web shell with no UI dependency.
+  `M` does not restyle the existing radar, map, or pipeline; the reference's
+  severity, counts, and publishers are not product data.
 - Migration downgrade refuses to erase live review history.
 - Live planning evidence was 37 review rows: 28 unresolved diseases, 7
   missing-text retrieval rows, 1 content-integrity quarantine, and 1 ambiguous
@@ -94,7 +93,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [ ] 11. Expose transactional resolution and regenerate contracts.
 - [ ] 12. Strictly validate the review API in the web client.
 - [ ] 13. Build the accessible cause-specific review queue.
-- [ ] 14. Apply the surveillance-console visual direction across web surfaces.
+- [ ] 14. Mount the inspired review workspace in the existing web shell.
 - [ ] 15. Review, verify, capture safe live proof, and report.
 
 ## Task ledger — `O` (parallel track)
