@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     ai_request_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
     ai_max_attempts_per_tier: int = Field(default=3, ge=1, le=10)
     ai_max_tier: int = Field(default=3, ge=1, le=3)
+    # Extraction climbs run concurrently: the work is HTTP-bound, so N workers
+    # cut wall clock roughly N-fold without changing what any one climb does.
+    # The repository stays single-threaded; only the model calls move.
+    ai_extraction_workers: int = Field(default=8, ge=1, le=32)
 
     geocode_batch_size: int = Field(default=200, ge=1, le=5000)
     geocode_max_signals_per_run: int = Field(default=2000, ge=1, le=100000)

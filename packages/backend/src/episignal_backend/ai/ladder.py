@@ -7,6 +7,7 @@ how much of the run remains.
 This module imports neither SQLAlchemy nor httpx.
 """
 
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -51,17 +52,29 @@ class Guards:
 
 @dataclass
 class RunBudget:
+    """Shared run budget, safe to record from concurrent climbs.
+
+    A pass that climbs several signals at once still has one budget, so the
+    record lock is what keeps the guard's arithmetic honest under
+    concurrency: two attempts landing together must both count.
+    """
+
     guards: Guards
     requests: int = 0
     spent: Decimal = field(default=Decimal("0"))
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record(self, amount: Decimal) -> None:
-        self.requests += 1
-        self.spent += amount
+        with self._lock:
+            self.requests += 1
+            self.spent += amount
 
     @property
     def exhausted(self) -> bool:
-        return self.requests >= self.guards.max_requests or self.spent >= self.guards.max_cost_usd
+        with self._lock:
+            return (
+                self.requests >= self.guards.max_requests or self.spent >= self.guards.max_cost_usd
+            )
 
 
 @dataclass(frozen=True)
@@ -71,16 +84,27 @@ class Ladder:
     rungs: tuple[ModelSpec, ...]
 
     @classmethod
-    def build(cls, specs: Sequence[ModelSpec], *, max_tier: int) -> "Ladder":
+    def build(cls, specs: Sequence[ModelSpec], *, max_tier: int, min_tier: int = 1) -> "Ladder":
         # Sorted by tier then model id: a stable order matters because two rows
         # may share a tier, and a run that climbs in a different order each time
         # cannot be compared with the previous one.
+        within_max = (spec for spec in specs if spec.tier <= max_tier)
         rungs = tuple(
             sorted(
-                (spec for spec in specs if spec.tier <= max_tier),
+                (spec for spec in within_max if spec.tier >= min_tier),
                 key=lambda spec: (spec.tier, spec.model_id),
             )
         )
+        if not rungs and min_tier > 1:
+            # A floor above every configured rung must not empty the ladder:
+            # the pass falls back to the lowest available rung rather than
+            # refusing to work.
+            rungs = tuple(
+                sorted(
+                    (spec for spec in specs if spec.tier <= max_tier),
+                    key=lambda spec: (spec.tier, spec.model_id),
+                )
+            )
         if not rungs:
             raise NoModelsConfigured("no active model at or below the configured maximum tier")
         return cls(rungs=rungs)

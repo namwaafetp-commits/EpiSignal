@@ -4,7 +4,13 @@ from pathlib import Path
 from uuid import UUID
 
 from episignal_backend.ai.classify_disease import DiseaseCandidate
-from episignal_backend.ai.documents import ExtractableSignal, StoredExtraction, Verdict
+from episignal_backend.ai.documents import (
+    ChatResponse,
+    ExtractableSignal,
+    StoredExtraction,
+    TokenUsage,
+    Verdict,
+)
 from episignal_backend.ai.extract import ExtractionResult, run_backfill, run_extraction
 from episignal_backend.ai.protocol import ModelUnavailable
 from episignal_backend.db.types import AiOutcome, AiPurpose, ReviewReason
@@ -159,7 +165,8 @@ def test_a_grounded_extraction_is_stored_with_its_model_and_time() -> None:
         examined=1, extracted=1, reviewed=0, unavailable=0, requests=1, stopped_early=False
     )
     assert repository.stored[FIRST].processed_at == NOW
-    assert repository.stored[FIRST].model_id == "vendor1/model:free"
+    # The extraction ladder floors at tier 2, so the first ask is the T2 rung.
+    assert repository.stored[FIRST].model_id == "vendor2/model:free"
     assert (
         repository.stored[FIRST].extraction.brief[-1].text
         == "Reported by Angola's health ministry."
@@ -201,7 +208,7 @@ def test_a_vocabulary_miss_asks_the_smartest_rung_and_stores_its_answer() -> Non
     run(repository, model)
 
     assert repository.stored[FIRST].disease_id == CHOLERA
-    assert model.asked == ["vendor1/model:free", "vendor3/model:free"]
+    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
     classification = [
         record for record in repository.requests if record.purpose is AiPurpose.CLASSIFICATION
     ]
@@ -378,3 +385,61 @@ def test_a_rolled_back_backfill_is_not_reported_as_extracted() -> None:
     assert result.extracted == 0
     assert result.storage_failed == 1
     assert repository.rollbacks == 1
+
+
+class BarrierModel:
+    """Answers only when `parties` climbs are in flight at once.
+
+    A sequential pass would deadlock on the barrier and time out, so a green
+    run is the proof that the climbs really ran concurrently.
+    """
+
+    def __init__(self, parties: int, answer: str) -> None:
+        import threading
+
+        self._barrier = threading.Barrier(parties)
+        self._answer = answer
+        self.completed = 0
+        self._lock = threading.Lock()
+
+    def complete(self, request):
+        self._barrier.wait(timeout=10)
+        response = ChatResponse(
+            content=self._answer,
+            usage=TokenUsage(prompt_tokens=10, completion_tokens=10),
+            http_status=200,
+            latency_ms=1,
+        )
+        with self._lock:
+            self.completed += 1
+        return response
+
+
+def test_extraction_climbs_run_concurrently_and_land_in_order() -> None:
+    signals = tuple(
+        ExtractableSignal(
+            id=UUID("b3f1c2d4-0000-4000-8000-00000000000" + str(index)),
+            title=f"Cholera cases rise {index}",
+            raw_text=BODY,
+        )
+        for index in range(1, 5)
+    )
+    repository = ExtractRepository(signals)
+    model = BarrierModel(parties=4, answer=GOOD)
+
+    result = run_extraction(
+        repository,
+        model,
+        guards=guards(),
+        limit=100,
+        workers=4,
+        now=lambda: NOW,
+    )
+
+    assert model.completed == 4
+    assert result.extracted == 4
+    # Writes stay on the calling thread, in selection order.
+    assert list(repository.stored) == [signal.id for signal in signals]
+    assert all(
+        record.signal_id in {signal.id for signal in signals} for record in repository.requests
+    )

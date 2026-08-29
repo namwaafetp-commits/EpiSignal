@@ -149,6 +149,7 @@ def _extract() -> Mapping[str, int]:
             max_tier=settings.ai_max_tier,
             max_input_characters=settings.ai_max_input_characters,
             min_confidence=settings.ai_min_confidence,
+            workers=settings.ai_extraction_workers,
         )
     return {
         "classified": classified.examined,

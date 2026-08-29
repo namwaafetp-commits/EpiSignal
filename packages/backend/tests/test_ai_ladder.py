@@ -281,3 +281,31 @@ def test_a_cost_row_carries_the_price_that_was_in_force() -> None:
 
     assert row.prompt_price_per_million == Decimal("0.100000")
     assert row.cost_usd == Decimal("0.100000")
+
+
+def test_the_ladder_floor_skips_rungs_below_it() -> None:
+    ladder = Ladder.build((spec(1), spec(2), spec(3)), max_tier=3, min_tier=2)
+
+    assert [rung.tier for rung in ladder.rungs] == [2, 3]
+
+
+def test_the_ladder_floor_falls_back_when_every_rung_is_below_it() -> None:
+    ladder = Ladder.build((spec(1),), max_tier=3, min_tier=2)
+
+    # A floor above every configured rung must not empty the ladder.
+    assert [rung.tier for rung in ladder.rungs] == [1]
+
+
+def test_the_budget_counts_concurrent_records_exactly() -> None:
+    import threading
+
+    budget = RunBudget(Guards(max_requests=100, max_cost_usd=Decimal("10")))
+    threads = [threading.Thread(target=budget.record, args=(Decimal("0.01"),)) for _ in range(50)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert budget.requests == 50
+    assert budget.spent == Decimal("0.50")
+    assert budget.exhausted is False

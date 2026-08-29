@@ -1,14 +1,16 @@
 """The epidemiological extraction pass.
 
-Extracts structured epidemiological facts from relevant news articles, one
-signal at a time. Every extracted number and transmission flag is grounded in
-the source text.
+Extracts structured epidemiological facts from relevant news articles. Every
+extracted number and transmission flag is grounded in the source text. The
+network climbs run concurrently; every read or write that touches the
+repository stays on the calling thread, in selection order.
 
 This module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -25,6 +27,7 @@ from episignal_backend.ai.documents import (
 from episignal_backend.ai.ladder import (
     Attempt,
     ClimbOutcome,
+    ClimbResult,
     Guards,
     Ladder,
     RunBudget,
@@ -41,6 +44,14 @@ DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
 DEFAULT_MAX_INPUT_CHARACTERS = 12000
 DEFAULT_MIN_CONFIDENCE = 0.5
+# Sequential by default so a pass stays deterministic unless the caller asks
+# for concurrency; production wires EPISIGNAL_AI_EXTRACTION_WORKERS here.
+DEFAULT_WORKERS = 1
+# The floor under the extraction ladder. Live climbs recorded T1 Gemini
+# accepting 0 of 7 extraction attempts (6 shape rejections, 1 ungrounded)
+# while T2 and T3 carried the accepted answers, so starting below T2 spends
+# tokens on a rung that, on this evidence, never answers first.
+EXTRACTION_MIN_TIER = 2
 EXTRACTION_TEMPERATURE = 0.0
 EXTRACTION_SCHEMA_NAME = "extraction_response"
 # Why a second pass that answered holds no disease: the model said null, or a
@@ -144,6 +155,13 @@ def _escalate_disease(
         return None
 
 
+def _chunks(
+    pending: Sequence[ExtractableSignal], size: int
+) -> Iterator[Sequence[ExtractableSignal]]:
+    for start in range(0, len(pending), size):
+        yield pending[start : start + size]
+
+
 def _run_pass(
     repository: AiRepository,
     model: ChatModel,
@@ -152,24 +170,21 @@ def _run_pass(
     guards: Guards,
     demote_on_rejection: bool,
     max_tier: int = DEFAULT_MAX_TIER,
+    min_tier: int = EXTRACTION_MIN_TIER,
     max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    workers: int = DEFAULT_WORKERS,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
-    ladder = Ladder.build(repository.models(), max_tier=max_tier)
+    ladder = Ladder.build(repository.models(), max_tier=max_tier, min_tier=min_tier)
     budget = RunBudget(guards)
 
-    extracted = 0
-    reviewed = 0
-    unavailable = 0
-    storage_failed = 0
-    requests = 0
-    stopped_early = False
-
-    for signal in pending:
+    def climb_one(signal: ExtractableSignal) -> tuple[list[Attempt], ClimbResult[Extraction]]:
+        """The network work for one signal. Touches no repository, so it is
+        safe to run on a worker thread; the budget lock keeps the guard's
+        arithmetic honest across concurrent climbs."""
         system, user = extraction_prompt(signal, max_characters=max_input_characters)
         attempts: list[Attempt] = []
-
         result = climb(
             ladder=ladder,
             budget=budget,
@@ -178,68 +193,87 @@ def _run_pass(
             accept=_accept_builder(signal.raw_text, min_confidence),
             on_attempt=attempts.append,
         )
-        requests += len(attempts)
+        return attempts, result
 
-        try:
-            at = now()
-            for attempt in attempts:
-                repository.record_request(
-                    cost_row(
-                        attempt,
-                        purpose=AiPurpose.EXTRACTION,
-                        signal_id=signal.id,
-                        batch_size=1,
-                        at=at,
-                    )
-                )
+    extracted = 0
+    reviewed = 0
+    unavailable = 0
+    storage_failed = 0
+    requests = 0
+    stopped_early = False
 
-            if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
-                disease_id = None
-                if result.value.disease is not None:
-                    disease_id = repository.resolve_disease(result.value.disease.name)
-                    if disease_id is None:
-                        # The exact match missed. One request to the smartest
-                        # rung may still resolve it; failing that, the signal
-                        # keeps the DISEASE_UNRESOLVED review path unchanged.
-                        disease_id = _escalate_disease(
-                            repository,
-                            model,
-                            ladder,
+    # Chunks bound the work in flight and let the writes stream: finished
+    # signals land in the database while later chunks are still climbing.
+    # Submission order is preserved end to end, so the writes a run makes do
+    # not depend on how many workers happened to be used.
+    chunk_size = max(workers, 1) * 2
+    for chunk in _chunks(pending, chunk_size):
+        with ThreadPoolExecutor(max_workers=max(workers, 1)) as pool:
+            outcomes = list(pool.map(climb_one, chunk))
+        for signal, (attempts, result) in zip(chunk, outcomes, strict=True):
+            requests += len(attempts)
+
+            try:
+                at = now()
+                for attempt in attempts:
+                    repository.record_request(
+                        cost_row(
+                            attempt,
+                            purpose=AiPurpose.EXTRACTION,
                             signal_id=signal.id,
-                            name=result.value.disease.name,
+                            batch_size=1,
                             at=at,
                         )
-                repository.record_extraction(
+                    )
+
+                if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
+                    disease_id = None
+                    if result.value.disease is not None:
+                        disease_id = repository.resolve_disease(result.value.disease.name)
+                        if disease_id is None:
+                            # The exact match missed. One request to the smartest
+                            # rung may still resolve it; failing that, the signal
+                            # keeps the DISEASE_UNRESOLVED review path unchanged.
+                            disease_id = _escalate_disease(
+                                repository,
+                                model,
+                                ladder,
+                                signal_id=signal.id,
+                                name=result.value.disease.name,
+                                at=at,
+                            )
+                    repository.record_extraction(
+                        signal.id,
+                        StoredExtraction(
+                            extraction=result.value,
+                            disease_id=disease_id,
+                            model_id=attempts[-1].spec.model_id,
+                            processed_at=at,
+                        ),
+                    )
+                elif result.outcome is ClimbOutcome.REJECTED and demote_on_rejection:
+                    repository.open_review(signal.id, reason=ReviewReason.EXTRACTION_REJECTED)
+
+                repository.commit()
+            except Exception as error:
+                repository.rollback()
+                storage_failed += 1
+                logger.error(
+                    "Could not store extraction for signal %s (%s)",
                     signal.id,
-                    StoredExtraction(
-                        extraction=result.value,
-                        disease_id=disease_id,
-                        model_id=attempts[-1].spec.model_id,
-                        processed_at=at,
-                    ),
+                    type(error).__name__,
                 )
-            elif result.outcome is ClimbOutcome.REJECTED and demote_on_rejection:
-                repository.open_review(signal.id, reason=ReviewReason.EXTRACTION_REJECTED)
-
-            repository.commit()
-        except Exception as error:
-            repository.rollback()
-            storage_failed += 1
-            logger.error(
-                "Could not store extraction for signal %s (%s)",
-                signal.id,
-                type(error).__name__,
-            )
-        else:
-            if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
-                extracted += 1
-            elif result.outcome is ClimbOutcome.REJECTED:
-                reviewed += 1
             else:
-                unavailable += 1
+                if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
+                    extracted += 1
+                elif result.outcome is ClimbOutcome.REJECTED:
+                    reviewed += 1
+                else:
+                    unavailable += 1
 
-        if result.outcome is ClimbOutcome.GUARD:
-            stopped_early = True
+            if result.outcome is ClimbOutcome.GUARD:
+                stopped_early = True
+        if stopped_early:
             break
 
     return ExtractionResult(
@@ -262,6 +296,7 @@ def run_extraction(
     max_tier: int = DEFAULT_MAX_TIER,
     max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    workers: int = DEFAULT_WORKERS,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
     """Extract from signals nobody has extracted from yet."""
@@ -274,6 +309,7 @@ def run_extraction(
         max_tier=max_tier,
         max_input_characters=max_input_characters,
         min_confidence=min_confidence,
+        workers=workers,
         now=now,
     )
 
@@ -287,6 +323,7 @@ def run_backfill(
     max_tier: int = DEFAULT_MAX_TIER,
     max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    workers: int = DEFAULT_WORKERS,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
     """Re-extract signals whose stored extraction predates the current schema.
@@ -305,5 +342,6 @@ def run_backfill(
         max_tier=max_tier,
         max_input_characters=max_input_characters,
         min_confidence=min_confidence,
+        workers=workers,
         now=now,
     )

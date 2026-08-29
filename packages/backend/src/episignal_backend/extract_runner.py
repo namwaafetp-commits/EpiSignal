@@ -99,6 +99,7 @@ def _run(arguments: Arguments) -> tuple[ClassificationResult, ExtractionResult]:
                 max_tier=settings.ai_max_tier,
                 max_input_characters=settings.ai_max_input_characters,
                 min_confidence=settings.ai_min_confidence,
+                workers=settings.ai_extraction_workers,
             )
 
     return classified, extracted
