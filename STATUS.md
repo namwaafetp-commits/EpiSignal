@@ -110,7 +110,7 @@ purpose-specific model routing.
 - [x] 6. Extract one event-finalization implementation.
 - [x] 7. Resolve retry, disease, and dismissal cases transactionally.
 - [x] 8. Resolve ambiguous event cases through shared finalization.
-- [ ] 9. Add secret admin authentication and safe configuration.
+- [x] 9. Add secret admin authentication and safe configuration.
 - [ ] 10. Expose authenticated queue reads.
 - [ ] 11. Expose transactional resolution and regenerate contracts.
 - [ ] 12. Strictly validate the review API in the web client.

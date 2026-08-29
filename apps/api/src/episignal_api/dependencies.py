@@ -1,9 +1,4 @@
-"""Injectable database reads.
-
-Routes depend on these callables rather than opening sessions themselves, so
-unit tests can override them and never reach the hosted project.
-"""
-
+import secrets
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -12,7 +7,48 @@ from episignal_backend.db.session import connection_scope, session_scope
 from episignal_backend.evidence import EvidencePage, query_evidence_page
 from episignal_backend.health import DatabaseHealth, check_database
 from episignal_backend.radar import PipelineRunPage, RadarPage, query_pipeline_runs, query_radar
-from fastapi import Query
+from fastapi import Depends, Header, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def verify_admin_token(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
+    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
+) -> str:
+    """Validate administrator token via Bearer header or X-Admin-Token header."""
+    settings = get_settings()
+    expected = (
+        settings.review_admin_token.get_secret_value()
+        if settings.review_admin_token
+        else None
+    )
+
+    provided: str | None = None
+    if credentials and credentials.credentials:
+        provided = credentials.credentials
+    elif x_admin_token:
+        provided = x_admin_token
+
+    if expected is not None:
+        if provided is None or not secrets.compare_digest(provided, expected):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: invalid or missing admin token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return "admin"
+
+    if settings.env == "production":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin token is not configured in production",
+        )
+
+    if provided is not None:
+        return "admin"
+    return "dev-admin"
 
 
 def get_database_health() -> DatabaseHealth:
