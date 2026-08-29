@@ -99,9 +99,7 @@ class GdeltDocClient:
                 continue
             articles.append(article)
         if dropped_by_language:
-            logger.debug(
-                "Dropped %d entries not reporting the rule language", dropped_by_language
-            )
+            logger.debug("Dropped %d entries not reporting the rule language", dropped_by_language)
         return tuple(articles)
 
     def _article(self, entry: object, rule: QueryRule) -> DiscoveredArticle | None:
