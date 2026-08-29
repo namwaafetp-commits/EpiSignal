@@ -24,6 +24,10 @@ from episignal_backend.review.documents import (
     ReviewTargetStale,
 )
 from episignal_backend.review.protocol import LockedReviewCase, ReviewRepository
+from episignal_backend.review.repository import (
+    SqlAlchemyReviewRepository,
+    query_review_queue,
+)
 
 __all__ = [
     "ALLOWED_RESOLUTIONS",
@@ -49,4 +53,6 @@ __all__ = [
     "ReviewRepository",
     "ReviewSignalLocation",
     "ReviewTargetStale",
+    "SqlAlchemyReviewRepository",
+    "query_review_queue",
 ]
