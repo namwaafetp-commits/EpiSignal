@@ -171,13 +171,14 @@ Artifacts: `E`
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `verified` |
-| `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `not-started` |
+| `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `designed` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
 
 Artifacts:
 `L` [spec](docs/superpowers/specs/2026-08-28-scheduler-design.md) ·
 [plan](docs/superpowers/plans/2026-08-28-scheduler.md) ·
-[report](docs/reports/2026-08-28-subproject-l-report.md)
+[report](docs/reports/2026-08-28-subproject-l-report.md) —
+`M` [spec](docs/superpowers/specs/2026-08-29-manual-review-queue-design.md)
 
 `L` was taken ahead of Band 3 deliberately. It depends only on `D2a`, and the
 items that follow it are worth more once real events exist to build against.

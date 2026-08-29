@@ -79,6 +79,26 @@ One fixed category within a brief (`what_where`, `counts`, `timing`, `spread`,
 `reporting`). Slots are ordered and non-optional.
 _Avoid_: section, field, category.
 
+### Human review
+
+**Review case**:
+One explicit request for a human decision about one signal, opened with the
+reason automation refused to continue. A signal can have several review cases
+over its lifetime, but only one may be open at a time.
+_Avoid_: queue item, ticket, alert.
+
+**Resolution**:
+The recorded human decision that closes a review case. It says who decided,
+when, why, and which disease or event was selected when the decision needs one.
+It never erases the review case or the evidence that caused it.
+_Avoid_: fix, override, approval.
+
+**Dismissal**:
+A resolution that deliberately ends automated processing for a signal while
+preserving the signal and its review history. It is not deletion and does not
+mean the source was wrong.
+_Avoid_: ignore, reject, drop.
+
 ### The model ladder
 
 **Tier**:
