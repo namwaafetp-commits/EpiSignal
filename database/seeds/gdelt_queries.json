@@ -54,5 +54,11 @@
   { "rule_group": "public_health_abnormality", "query": "\"unusual cluster\"", "label": "Unusual cluster" },
   { "rule_group": "public_health_abnormality", "query": "\"mass absenteeism\"", "label": "Mass absenteeism" },
   { "rule_group": "public_health_abnormality", "query": "\"unexplained neurological illness\"", "label": "Unexplained neurological illness" },
-  { "rule_group": "public_health_abnormality", "query": "\"hemorrhagic illness\"", "label": "Haemorrhagic illness" }
+  { "rule_group": "public_health_abnormality", "query": "\"hemorrhagic illness\"", "label": "Haemorrhagic illness" },
+  { "rule_group": "public_health_abnormality", "query": "\"disease outbreak\"", "label": "Disease outbreak" },
+  { "rule_group": "public_health_abnormality", "query": "\"virus outbreak\"", "label": "Virus outbreak" },
+  { "rule_group": "public_health_abnormality", "query": "\"bacterial outbreak\"", "label": "Bacterial outbreak" },
+  { "rule_group": "public_health_abnormality", "query": "\"infection outbreak\"", "label": "Infection outbreak" },
+  { "rule_group": "public_health_abnormality", "query": "\"public health emergency\"", "label": "Public health emergency" },
+  { "rule_group": "public_health_abnormality", "query": "\"health alert\"", "label": "Health alert" }
 ]
