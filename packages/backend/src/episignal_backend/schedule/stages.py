@@ -41,6 +41,7 @@ from episignal_backend.ingestion.repository import (
     SqlAlchemyDiscoveryRepository,
     SqlAlchemySignalRepository,
 )
+from episignal_backend.ingestion.retrieval import run_retrieval
 from episignal_backend.ingestion.who_don import WhoDonConnector
 from episignal_backend.schedule.documents import DiscoveryWindow, StageName
 from episignal_backend.schedule.run import StageRunner
@@ -98,6 +99,33 @@ def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
     }
 
 
+def _retrieve() -> Mapping[str, int]:
+    settings = get_settings()
+    connector = GdeltConnector(
+        search=GdeltDocClient(),
+        fetcher=ArticleFetcher(
+            delay_seconds=settings.gdelt_article_delay_seconds,
+            user_agent=settings.gdelt_user_agent,
+            timeout_seconds=settings.gdelt_article_timeout_seconds,
+        ),
+    )
+    with session_scope() as session:
+        result = run_retrieval(
+            SqlAlchemyDiscoveryRepository(session),
+            connector,
+            max_attempts=settings.gdelt_max_retrieval_attempts,
+            batch_size=settings.gdelt_retry_batch_size,
+        )
+    return {
+        "examined": result.examined,
+        "filtered": result.filtered,
+        "retrieved": result.retrieved,
+        "redundant": result.redundant,
+        "still_failing": result.still_failing,
+        "failed": result.failed,
+    }
+
+
 def _dedupe() -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
@@ -117,6 +145,10 @@ def _dedupe() -> Mapping[str, int]:
         "duplicates": result.duplicates,
         "failed": result.failed,
     }
+
+
+def _pregroup() -> Mapping[str, int]:
+    return {}
 
 
 def _extract() -> Mapping[str, int]:
@@ -231,7 +263,9 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
         StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector()),
         StageName.INGEST_ECDC: lambda: _ingest(EcdcEpiConnector()),
         StageName.DISCOVER: lambda: _discover(window),
+        StageName.RETRIEVE: _retrieve,
         StageName.DEDUPE: _dedupe,
+        StageName.PREGROUP: _pregroup,
         StageName.EXTRACT: _extract,
         StageName.GEOCODE: _geocode,
         StageName.MATCH: _match,

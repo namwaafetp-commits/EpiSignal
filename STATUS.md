@@ -138,7 +138,7 @@ purpose-specific model routing.
 - [x] 4. Add the repository seams and fix the stub status filter.
 - [x] 5. Store discoveries without fetching the page.
 - [x] 6. Write the gate-and-fetch retrieval pass.
-- [ ] 7. Add the `retrieve` stage and its runner.
+- [x] 7. Add the `retrieve` stage and its runner.
 - [ ] 8. Add the `pregroup` stage and enable it by default.
 - [ ] 9. Select for extraction without the relevance pass.
 - [ ] 10. Move the extraction schema to version 3.

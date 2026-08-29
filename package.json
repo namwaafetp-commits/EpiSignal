@@ -24,6 +24,7 @@
     "db:rollback": "uv run --package episignal-api alembic -c database/alembic.ini downgrade -1",
     "db:seed": "uv run --package episignal-backend python -m episignal_backend.seed_runner",
     "discover:gdelt": "uv run --package episignal-backend python -m episignal_backend.discover_runner",
+    "retrieve:gdelt": "uv run --package episignal-backend python -m episignal_backend.retrieve_runner",
     "dedupe:signals": "uv run --package episignal-backend python -m episignal_backend.dedupe_runner",
     "pregroup:signals": "uv run --package episignal-backend python -m episignal_backend.pregroup_runner",
     "spend:report": "uv run --package episignal-backend python -m episignal_backend.spend_runner",

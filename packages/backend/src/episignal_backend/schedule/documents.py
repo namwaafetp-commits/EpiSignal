@@ -17,10 +17,13 @@ class StageName(StrEnum):
     INGEST_WHO = "ingest_who"
     INGEST_ECDC = "ingest_ecdc"
     DISCOVER = "discover"
+    RETRIEVE = "retrieve"
     DEDUPE = "dedupe"
+    PREGROUP = "pregroup"
     EXTRACT = "extract"
     GEOCODE = "geocode"
     MATCH = "match"
+
 
 
 @dataclass(frozen=True)
