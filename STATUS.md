@@ -106,7 +106,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [ ] 6. Validate Gemini live on ten to twenty real signals.
 - [x] 7. Add the delta pass.
 - [x] 8. Wire the delta pass after attach.
-- [ ] 9. Build the Gemini batch client.
+- [x] 9. Build the Gemini batch client.
 - [ ] 10. Wire batch mode into scheduled extraction.
 - [ ] 11. Build the pre-group stage.
 - [ ] 12. Store pre-groups and change selection.

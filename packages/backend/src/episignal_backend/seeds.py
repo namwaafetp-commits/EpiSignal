@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -239,6 +240,25 @@ def seed_database(session: Session) -> SeedResult:
         GdeltQueryRule,
         [item.model_dump() for item in query_rules],
         ("query", "language"),
+    )
+    # Deactivation lives here as well as in the revision because the two can
+    # run in either order: a database that migrates before it seeds has no
+    # English rows for the revision to see, and would serve both rows at once.
+    # Repeated runs are no-ops, which is what makes this the reliable half.
+    session.execute(
+        sa.text(
+            """
+            UPDATE gdelt_query_rules AS unrestricted
+            SET active = false
+            WHERE unrestricted.language = 'any'
+              AND unrestricted.active
+              AND EXISTS (
+                  SELECT 1 FROM gdelt_query_rules AS english
+                  WHERE english.query = unrestricted.query
+                    AND english.language = 'en'
+              )
+            """
+        )
     )
     _upsert(
         session,
