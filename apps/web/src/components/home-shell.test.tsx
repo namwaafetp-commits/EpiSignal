@@ -92,6 +92,24 @@ const SAMPLE_READY_RADAR: RadarFeedState = {
 };
 
 describe("HomeShell", () => {
+  it("renders masthead navigation including Review Queue link", () => {
+    render(
+      <HomeShell
+        apiStatus="ready"
+        radarFeed={{ status: "ready", data: { items: [], window_start: "", window_end: "", hours: 48, limit: 50 } }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /review queue/i })).toHaveAttribute(
+      "href",
+      "/admin/reviews",
+    );
+    expect(screen.getByRole("link", { name: /pipeline monitor/i })).toHaveAttribute(
+      "href",
+      "/admin/pipeline",
+    );
+  });
+
   it("renders loading state when radar feed is loading", () => {
     render(
       <HomeShell

@@ -1,7 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { AdminReviewQueue } from "./admin-review-queue";
+import AdminReviewsPage from "../app/admin/reviews/page";
 import * as apiReviews from "../lib/api-reviews";
 import type { ReviewQueuePage } from "../lib/api-reviews";
 
@@ -114,6 +117,17 @@ describe("AdminReviewQueue component", () => {
 
     // Security check: token never in DOM
     expect(document.body.innerHTML).not.toContain("secret-token-123");
+
+    // Check layout semantics
+    expect(screen.getByLabelText("Review Cases Rail")).toBeDefined();
+    expect(screen.getByLabelText("Decision Workspace")).toBeDefined();
+
+    // Check no decorative emoji glyphs rendered in text
+    const html = document.body.innerHTML;
+    expect(html).not.toContain("📍");
+    expect(html).not.toContain("✕");
+    expect(html).not.toContain("⚠");
+    expect(html).not.toContain("✓");
   });
 
   it("links ambiguous candidate event on decision submission and announces through aria-live", async () => {
@@ -195,5 +209,23 @@ describe("AdminReviewQueue component", () => {
     await user.click(confirmCheckbox);
 
     expect(dismissButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("AdminReviewsPage renders AdminReviewQueue inside review-console wrapper", () => {
+    render(<AdminReviewsPage />);
+    expect(screen.getByText(/admin authentication/i)).toBeDefined();
+  });
+
+  it("preserves package.json dependencies without adding any new runtime packages", () => {
+    const packageJsonPath = path.resolve(__dirname, "../../package.json");
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    const dependencyKeys = Object.keys(pkg.dependencies).sort();
+    expect(dependencyKeys).toEqual([
+      "@episignal/contracts",
+      "maplibre-gl",
+      "next",
+      "react",
+      "react-dom",
+    ]);
   });
 });

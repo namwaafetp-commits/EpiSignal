@@ -472,3 +472,18 @@ main {
     scroll-behavior: auto !important;
   }
 }
+
+/* Review Queue Console Adaptation ---------------------------------------- */
+
+.review-console {
+  --review-canvas: #061321;
+  --review-panel: #0b1d2d;
+  --review-line: #20384a;
+  --review-ink: #f3f7fb;
+  --review-muted: #9eb0c2;
+  --review-accent: #37d6df;
+  background-color: var(--review-canvas);
+  color: var(--review-ink);
+  min-height: 100vh;
+}
+

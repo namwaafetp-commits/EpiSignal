@@ -87,6 +87,7 @@ export function HomeShell({
           <a href="#radar-map">Map</a>
           <a href="#signals-list">Signals</a>
           <Link href="/admin/pipeline">Pipeline Monitor</Link>
+          <Link href="/admin/reviews">Review Queue</Link>
           <a href="#about">About</a>
         </nav>
         <span className={`system-pill system-pill--${apiStatus}`}>

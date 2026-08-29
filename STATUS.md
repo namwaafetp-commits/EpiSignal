@@ -115,7 +115,7 @@ purpose-specific model routing.
 - [x] 11. Expose transactional resolution and regenerate contracts.
 - [x] 12. Strictly validate the review API in the web client.
 - [x] 13. Build the accessible cause-specific review queue.
-- [ ] 14. Mount the inspired review workspace in the existing web shell.
+- [x] 14. Mount the inspired review workspace in the existing web shell.
 - [ ] 15. Review, verify, capture safe live proof, and report.
 
 ## Task ledger — `O` (parallel track)
