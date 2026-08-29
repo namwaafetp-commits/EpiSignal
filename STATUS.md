@@ -39,18 +39,20 @@ start Task 1 test-first. Set `M` to `building` in the Task 1 commit and tick eac
 ledger item only in the commit that completes it. Stop after Task 15 and hand
 the completion report back to the planner; do not mark `M` verified.
 
-## Filed for the planner, so the next retarget sees it
+## Parallel track `O` — high-efficiency pipeline, planned
 
-Issue
-[#1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) — high-efficiency
-pipeline (English-first discovery, pre-AI story grouping, 10-day event
-follow-up) and the Gemini 2.5 Flash-Lite transition, filed `ready-for-agent` on
-the operator's instruction on 2026-08-29 — is design work, not a plan. Its open
-decisions (pre-AI grouping versus the verified dedupe and clustering stages,
-adapter route versus a roster row, the updated flag against the existing
-verification-status vocabulary, batch pricing verification) are settled in a
-committed design spec before any roadmap row is added. Workers do not implement
-from the issue; it enters the roadmap only through the planner.
+On the operator's instruction of 2026-08-29, issue
+[#1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) was designed
+and planned as roadmap item `O` in parallel with `M`; the two items touch
+disjoint files except for this file and `ROADMAP.md`, where edits stay in
+separate sections and rows. `O` is `planned`: its
+[spec](docs/superpowers/specs/2026-08-29-high-efficiency-pipeline-design.md)
+and [plan](docs/superpowers/plans/2026-08-29-high-efficiency-pipeline.md) are
+committed, and its task ledger will be added here when a worker takes the item.
+Its `HANDOFF.md` is written only when `M` closes and the position moves — the
+file currently belongs to `M`, and overwriting it mid-build is forbidden. The
+`O` worker needs `EPISIGNAL_GEMINI_API_KEY` for the plan's live validation
+task; absent the key, that task records the blocker and the rest proceeds.
 
 ## Settled for `M`, so the worker does not redesign it
 
