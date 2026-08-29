@@ -18,6 +18,7 @@ def test_missing_tables_are_reported_in_declaration_order() -> None:
         "pipeline_runs",
         "signal_review_cases",
         "signal_review_candidates",
+        "geocode_cache",
     ]
 
 
