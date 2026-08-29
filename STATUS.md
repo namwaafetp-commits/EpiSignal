@@ -10,13 +10,12 @@ rules for who edits this file are in
 
 | Field | Value |
 | --- | --- |
-| Band | 3 — Product surface |
-| Item | `E` — Signal Radar API, Signal Radar UI, admin monitoring |
-| Status | `verified` |
+| Band | 4 — Operations |
+| Item | `M` — Manual review queue |
+| Status | `planned` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | [2026-08-28-signal-radar-design.md](docs/superpowers/specs/2026-08-28-signal-radar-design.md) |
-| Plan | [2026-08-28-signal-radar.md](docs/superpowers/plans/2026-08-28-signal-radar.md) |
-| Report | [2026-08-28-subproject-e-report.md](docs/reports/2026-08-28-subproject-e-report.md) |
+| Spec | [2026-08-29-manual-review-queue-design.md](docs/superpowers/specs/2026-08-29-manual-review-queue-design.md) |
+| Plan | [2026-08-29-manual-review-queue.md](docs/superpowers/plans/2026-08-29-manual-review-queue.md) |
 
 Last item completed: `E` — Signal Radar API, Signal Radar UI, and admin
 monitoring, `verified` on 2026-08-29
@@ -34,43 +33,52 @@ zero shape rejections, 32 geocoded signals, and the first 3 events.
 
 ## Next action
 
-**Planner.** Choose the next dependency-ready item, design it, write its
-implementation plan, archive this `E` briefing, and retarget `HANDOFF.md` and
-the task ledger together. Do not begin implementation in the planner role.
+**Worker.** Read `HANDOFF.md` and the committed `M` implementation plan. Create
+`codex/manual-review-queue` in a separate worktree, run a clean baseline, then
+start Task 1 test-first. Set `M` to `building` in the Task 1 commit and tick each
+ledger item only in the commit that completes it. Stop after Task 15 and hand
+the completion report back to the planner; do not mark `M` verified.
 
-## Settled by `E`, so later work does not re-ask
+## Settled for `M`, so the worker does not redesign it
 
-- The homepage becomes the radar. `/` carries a large map of the last day or
-  two, with a list beneath it ranked by recency and heat. `H` later refines that
-  same page rather than replacing it with a second homepage.
-- `E` renders briefs, so it follows `C2`.
-- `feat/map-hero` is superseded. `E` shipped its own smaller MapLibre module and
-  deliberately did not merge or copy the branch's generic map module. Retire
-  the branch and worktree after operator approval.
-- The radar is signal-first, with events as optional context above signals. It
-  remains useful while the event table is sparse.
+- Open review cases are durable records with typed reasons, not a view inferred
+  forever from nullable signal fields.
+- One signal has at most one open case, but every closed case remains as audit
+  history.
+- Cause-specific resolution either requeues the existing pipeline, finalizes
+  an event through shared rules, or sets terminal `dismissed`; no evidence is
+  deleted or edited.
+- Event-link choices are limited to candidate IDs and match scores stored when
+  deterministic matching refused.
+- A single bearer token protects review reads and writes. It is entered by the
+  operator and kept only in browser component memory; no account system is in
+  scope.
+- Migration downgrade refuses to erase live review history.
+- Live planning evidence was 37 review rows: 28 unresolved diseases, 7
+  missing-text retrieval rows, 1 content-integrity quarantine, and 1 ambiguous
+  event match. Re-query before migration; never hard-code these counts.
 
 ## Task ledger
 
-- [x] 1. Preserve exception types in pipeline history.
-- [x] 2. Define the radar read contracts and representative location rule.
-- [x] 3. Query and assemble recent radar signals.
-- [x] 4. Query counts-only pipeline history.
-- [x] 5. Expose `GET /api/v1/radar`.
-- [x] 6. Expose `GET /api/v1/admin/pipeline-runs`.
-- [x] 7. Regenerate and lock the API contracts.
-- [x] 8. Strictly validate radar responses in the web client.
-- [x] 9. Add only the map dependencies and pure marker helpers.
-- [x] 10. Mount a small resilient MapLibre component.
-- [x] 11. Replace the homepage with the radar map and list.
-- [x] 12. Wire server fetching, loading, responsive CSS, and build safety.
-- [x] 13. Strictly validate pipeline history in the web client.
-- [x] 14. Build the read-only pipeline monitor page.
-- [x] 15. Review, run the full gate, capture live proof, and write the report.
+- [ ] 1. Define review vocabularies and ORM shape.
+- [ ] 2. Add reversible schema expansion and conservative backfill.
+- [ ] 3. Define review commands, read models, and storage interface.
+- [ ] 4. Persist typed case opening, queue reads, and automatic recovery.
+- [ ] 5. Make every `needs_review` writer record a typed cause.
+- [ ] 6. Extract one event-finalization implementation.
+- [ ] 7. Resolve retry, disease, and dismissal cases transactionally.
+- [ ] 8. Resolve ambiguous event cases through shared finalization.
+- [ ] 9. Add secret admin authentication and safe configuration.
+- [ ] 10. Expose authenticated queue reads.
+- [ ] 11. Expose transactional resolution and regenerate contracts.
+- [ ] 12. Strictly validate the review API in the web client.
+- [ ] 13. Build the accessible cause-specific review queue.
+- [ ] 14. Mount the admin page and navigation without widening scope.
+- [ ] 15. Review, verify, capture safe live proof, and report.
 
 ## Blockers
 
-**None.** `E` is verified. Next-item selection is planner work.
+**None.** `M` is planned and dependency-ready. Implementation has not started.
 
 ## Verified baseline
 

@@ -1,74 +1,124 @@
-# Handoff — Sub-Project E: Signal Radar
+# Handoff — Sub-Project M: Manual Review Queue
 
-**Date:** 2026-08-28
-**Branch:** `main`
-**State:** `E` is **planned**. The design and the 15-task implementation plan are committed.
+**Date:** 2026-08-29
+**Branch:** create `codex/manual-review-queue` in a separate worktree
+**State:** `M` is **planned**. The design and 15-task implementation plan are committed.
 **Role:** Implementation worker.
 
 ---
 
 ## Outcome
 
-Replace the evidence-proof homepage with a real signal-first radar. The same
-validated recent-signal response must drive a MapLibre map and an accessible
-ranked list. Every card must show its English title, the five ordered C2 brief
-slots, separate uncertainty facts, honest location precision, and the original
-publisher link. Add a separate read-only `/admin/pipeline` page for counts-only
-pipeline history.
+Build the authenticated internal escape hatch for signals where automation
+refuses to continue. Every transition to `needs_review` must open a durable,
+typed review case. The operator sees safe decision evidence and may retry the
+responsible stage, assign a canonical disease, link or create an event through
+the existing event-finalization rules, or dismiss the signal without deleting
+evidence. Every resolution records who decided, when, why, and any selected
+disease or event.
 
 The approved design is
-`docs/superpowers/specs/2026-08-28-signal-radar-design.md`. The executable plan
-is `docs/superpowers/plans/2026-08-28-signal-radar.md`.
+`docs/superpowers/specs/2026-08-29-manual-review-queue-design.md`. The executable
+plan is `docs/superpowers/plans/2026-08-29-manual-review-queue.md`.
 
 ## Start here
 
-1. Read `AGENTS.md`, `STATUS.md`, and `docs/agents/workflow.md`.
+1. Read `AGENTS.md`, `STATUS.md`, `CONTEXT.md`, and
+   `docs/agents/workflow.md`.
 2. Read the approved design and implementation plan in full.
-3. Load `superpowers:executing-plans`, then the project-local `lean-build`,
-   `tdd`, and `migration` skills.
-4. Before editing Next.js files, read the applicable local documentation under
-   `apps/web/node_modules/next/dist/docs/` as required by `apps/web/AGENTS.md`.
-5. Start Task 1. Set the `E` roadmap row to `building` in that task's commit and
-   tick the matching `STATUS.md` checkbox in every task commit.
+3. Load `superpowers:using-git-worktrees`, create
+   `codex/manual-review-queue` from current `main`, and work only in that
+   worktree. Never check out a feature branch in the primary tree.
+4. Load `superpowers:executing-plans` or
+   `superpowers:subagent-driven-development`, then project-local `lean-build`,
+   `tdd`, and `migration`.
+5. Before editing Next.js files, read `apps/web/AGENTS.md` and the applicable
+   installed guides under `apps/web/node_modules/next/dist/docs/`.
+6. Start Task 1 test-first. Set `M` to `building` in `ROADMAP.md` in that first
+   task commit. Tick the matching `STATUS.md` task in every task commit.
+
+## Why this item is next
+
+`E` is verified, so `M` is dependency-ready. A live read on 2026-08-29 found
+37 signals at `needs_review`: 28 accepted extractions whose disease did not map
+to a canonical disease, 7 rows with no retrieved text, 1 quarantined content
+integrity mismatch, and 1 deterministic event-match refusal. The causes are
+inferred from state because the current schema does not store a review reason;
+`M` fixes that provenance gap.
+
+Only 3 events existed in the last recorded live proof. `G` would expose a
+nearly empty table. `D2b` could improve the one ambiguous match, and `F` could
+improve future model choice, but neither resolves the other 36 stopped signals.
 
 ## Load-bearing decisions
 
-- `/api/v1/signals` stays the raw-evidence seam. Add a dedicated
-  `/api/v1/radar?hours=48&limit=50` read.
-- The radar selects schema-v2, non-duplicate signals in `extracted`, `geocoded`,
-  `matched`, or `published` state. It works when no event exists.
-- Recency ranks first; attached-event `early_signal_score` breaks equal-time
-  ties; UUID makes ties deterministic. Never blend it with `evidence_score`.
-- A representative signal location prefers `primary`, then recorded precision,
-  then stable location UUID. Unresolved locations stay list-only; country and
-  province centroids are labelled as coarse.
-- Zero event links means `none`; one means `attached`; several means
-  `ambiguous` with no event selected.
-- `packages/backend/src/episignal_backend/radar.py` owns both read queries.
-- Use `maplibre-gl` directly in one small client component. Do not merge
-  `feat/map-hero` or copy its generic map component.
-- `/api/v1/admin/pipeline-runs` and `/admin/pipeline` expose counts, stage names,
-  and exception type only. They have no controls.
-- Old pipeline failure rows store stage strings. New rows must safely preserve
-  `{stage, error}` while the reader remains backward compatible.
+- A review case is durable history, not a computed view over
+  `processing_status`. Only one case may be open for a signal; closed cases are
+  never erased.
+- Reasons are closed vocabulary: retrieval failure, extraction rejection,
+  unresolved disease, ambiguous event match, content integrity, or conservative
+  legacy fallback.
+- `dismissed` is a new terminal processing status. Dismissal preserves the
+  signal and does not claim its source was wrong.
+- Event refusals snapshot candidate event IDs and deterministic match scores.
+  Manual linking accepts only a stored candidate.
+- Manual link/create and automated assembly share one extracted event
+  finalization module so observations, locations, dual scores, verification
+  status, and provenance cannot drift.
+- Retry never performs model or publisher network work inside the HTTP request.
+  It returns the signal to the earliest safe state for the existing scheduled
+  stage.
+- All review endpoints require `EPISIGNAL_ADMIN_TOKEN`. The browser keeps the
+  operator-entered token only in component memory and sends it only in the
+  `Authorization` header.
+- Queue reads never expose raw text, source spans, prompts, credentials,
+  exception messages, or patient-level data.
+- The migration expands, backfills conservatively, verifies exact case/signal
+  reconciliation, and refuses destructive downgrade after live review history
+  exists.
+
+## Live baseline to preserve
+
+The planner's read-only classification at planning time was:
+
+```text
+needs_review total                    37
+disease_unresolved                   28
+retrieval_failed                      7
+content_integrity                     1
+event_match_ambiguous                 1
+```
+
+These counts are evidence for planning, not hard-coded migration expectations.
+Re-query immediately before migration because the scheduler may change them.
+Preserve the quarantined signal
+`852aa204-846d-4aa6-a256-82c187fdeaef`; do not repair or dismiss it for proof.
 
 ## Scope guard
 
-Do not build event detail APIs/pages, search, export, review actions, scheduler
-controls, auth, alerts, marker clustering, heatmaps, custom basemaps, dark mode,
-or a new design system. Do not expose raw text, prompts, keys, exception
-messages, or patient-level data.
+Do not build accounts, roles, sessions, assignments, comments, notifications,
+batch actions, arbitrary event search, raw-text or extraction editing, location
+editing, event observation editing, automatic corruption repair, `D2b`, `G`,
+`H`, or `I`. Do not delete signals, cases, AI cost rows, events, observations,
+or source evidence.
+
+Do not resolve live reporting solely to demonstrate a button. If no disposable
+fixture exists, use automated mutation proof and say why live mutation was
+deliberately omitted.
 
 ## Completion
 
 Task 15 loads `code-review`, then `verify-and-stop`, runs the real
-`corepack pnpm verify` gate, captures live radar and browser proof, and writes
-`docs/reports/2026-08-28-subproject-e-report.md`. Record the actual output and
-verified baseline, commit the report, and hand back to the planner. The worker
-does not mark `E` verified or begin another roadmap item.
+`corepack pnpm verify` gate, captures safe live queue and database proof, and
+writes `docs/reports/2026-08-29-subproject-m-report.md`. Record exact output and
+update the worker-owned verified baseline. Commit the report and hand back to
+the planner. Do not mark `M` verified and do not begin another roadmap item.
 
 ## Incoming baseline
 
-At `b26e794`, `corepack pnpm verify` passed with 789 Python tests, 10 web tests,
-clean Ruff, mypy across 93 source files, generated-contract parity, and a
-successful Next.js production build. The live database and PostGIS check passed.
+The planner independently ran `corepack pnpm verify` at `2499e4e` on `main`:
+848 Python tests passed with 1 warning, 58 web tests passed across 8 files, Ruff
+and ESLint were clean, mypy and tsc were clean across 97 source files, generated
+contracts matched, and the Next production build succeeded. Documentation-only
+planner commits then reconciled `E`, designed `M`, and committed this plan; run
+the worker's own baseline in the new worktree before Task 1.
