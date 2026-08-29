@@ -106,7 +106,7 @@ purpose-specific model routing.
 - [x] 2. Add reversible schema expansion and conservative backfill.
 - [x] 3. Define review commands, read models, and storage interface.
 - [x] 4. Persist typed case opening, queue reads, and automatic recovery.
-- [ ] 5. Make every `needs_review` writer record a typed cause.
+- [x] 5. Make every `needs_review` writer record a typed cause.
 - [ ] 6. Extract one event-finalization implementation.
 - [ ] 7. Resolve retry, disease, and dismissal cases transactionally.
 - [ ] 8. Resolve ambiguous event cases through shared finalization.

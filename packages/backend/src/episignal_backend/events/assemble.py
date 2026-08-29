@@ -17,7 +17,7 @@ from episignal_backend.ai.documents import ModelSpec
 from episignal_backend.ai.ladder import cost_row
 from episignal_backend.ai.protocol import ChatModel
 from episignal_backend.ai.schema import BriefPoint
-from episignal_backend.db.types import AiPurpose, RelationshipType
+from episignal_backend.db.types import AiPurpose, RelationshipType, ReviewReason
 from episignal_backend.events.cluster import build_clusters
 from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
 from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
@@ -232,12 +232,25 @@ def run_event_assembly(
             repo.apply_scores(event_id, early.total, evid.total, v_status)
 
         elif decision.action is MatchAction.REFUSE:
+            scores_to_snapshot = {
+                eid: score
+                for eid, score in decision.candidate_scores.items()
+                if score >= 0.60
+            }
             for sig in cluster.signals:
-                repo.mark_needs_review(sig.signal_id)
+                repo.open_review(
+                    sig.signal_id,
+                    reason=ReviewReason.EVENT_MATCH_AMBIGUOUS,
+                    candidate_scores=scores_to_snapshot,
+                )
                 signals_refused += 1
 
     for sig in unclusterable:
-        repo.mark_needs_review(sig.signal_id)
+        if sig.disease_id is None:
+            reason = ReviewReason.DISEASE_UNRESOLVED
+        else:
+            reason = ReviewReason.LOCATION_UNRESOLVED
+        repo.open_review(sig.signal_id, reason=reason)
 
     repo.commit()
 

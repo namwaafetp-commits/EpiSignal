@@ -53,7 +53,7 @@ class FakeRepository:
         self.promoted.append((signal_id, signal))
         return not self.conflicting
 
-    def record_failed_attempt(self, signal_id: UUID) -> None:
+    def record_failed_attempt(self, signal_id: UUID, *, max_attempts: int = 3) -> None:
         self.failed_attempts.append(signal_id)
 
     def commit(self) -> None:

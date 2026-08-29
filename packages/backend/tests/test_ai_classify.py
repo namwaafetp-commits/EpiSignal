@@ -1,5 +1,5 @@
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -18,7 +18,7 @@ from episignal_backend.ai.documents import (
 )
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.db.types import AiOutcome
+from episignal_backend.db.types import AiOutcome, ReviewReason
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
@@ -41,8 +41,12 @@ class FakeRepository:
         self._pending = tuple(pending)
         self.requests: list[AiRequestRecord] = []
         self.verdicts: dict[UUID, Verdict] = {}
-        self.reviewed: list[UUID] = []
+        self.review_calls: list[tuple[UUID, ReviewReason, dict[UUID, float]]] = []
         self.commits = 0
+
+    @property
+    def reviewed(self) -> list[UUID]:
+        return [call[0] for call in self.review_calls]
 
     def models(self) -> Sequence[ModelSpec]:
         return (spec(1), spec(2), spec(3))
@@ -65,8 +69,14 @@ class FakeRepository:
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         raise AssertionError("the classification pass must not write an extraction")
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
-        self.reviewed.append(signal_id)
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
+        self.review_calls.append((signal_id, reason, dict(candidate_scores or {})))
 
     def commit(self) -> None:
         self.commits += 1

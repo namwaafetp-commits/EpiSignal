@@ -1,12 +1,12 @@
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from uuid import UUID
 
 from episignal_backend.ai.documents import ExtractableSignal, StoredExtraction, Verdict
 from episignal_backend.ai.extract import ExtractionResult, run_backfill, run_extraction
 from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.db.types import AiOutcome, AiPurpose
+from episignal_backend.db.types import AiOutcome, AiPurpose, ReviewReason
 from test_ai_classify import (
     NOW,
     FakeRepository,
@@ -94,7 +94,13 @@ class BackfillRepository(ExtractRepository):
         self.asked_for_backfill = True
         return self._stale[:limit]
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
         raise AssertionError("a rejected re-extraction must leave the row where it is")
 
 

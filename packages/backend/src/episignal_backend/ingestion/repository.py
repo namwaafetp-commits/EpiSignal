@@ -18,6 +18,7 @@ from episignal_backend.db.types import (
     CredibilityTier,
     DiscoveryMethod,
     ProcessingStatus,
+    ReviewReason,
     SourceType,
 )
 from episignal_backend.ingestion.documents import (
@@ -38,6 +39,7 @@ from episignal_backend.models import (
     SignalFilterRule,
     Source,
 )
+from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
 
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
@@ -231,8 +233,16 @@ class SqlAlchemyDiscoveryRepository:
         return source.id
 
     def add(self, signal: DiscoveredSignal, source_id: UUID) -> None:
-        self._session.add(build_discovered_signal(signal, source_id))
+        db_signal = build_discovered_signal(signal, source_id)
+        self._session.add(db_signal)
         self._session.flush()
+        if (
+            db_signal.processing_status == ProcessingStatus.NEEDS_REVIEW
+            or db_signal.raw_text is None
+        ):
+            SqlAlchemyReviewRepository(self._session).open_review(
+                db_signal.id, reason=ReviewReason.RETRIEVAL_FAILED
+            )
 
     def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
         rows = self._session.execute(
@@ -292,14 +302,24 @@ class SqlAlchemyDiscoveryRepository:
             # a spare row costs less than deleting one on a guess.
             self._session.rollback()
             return False
+        SqlAlchemyReviewRepository(self._session).recover_retrieval_automatically(signal_id)
         return True
 
-    def record_failed_attempt(self, signal_id: UUID) -> None:
-        self._session.execute(
-            update(Signal)
-            .where(Signal.id == signal_id)
-            .values(retrieval_attempts=Signal.retrieval_attempts + 1)
-        )
+    def record_failed_attempt(self, signal_id: UUID, *, max_attempts: int = 3) -> None:
+        stub = self._session.get(Signal, signal_id)
+        if stub is not None:
+            stub.retrieval_attempts = stub.retrieval_attempts + 1
+            if stub.retrieval_attempts >= max_attempts:
+                stub.processing_status = ProcessingStatus.NEEDS_REVIEW
+                SqlAlchemyReviewRepository(self._session).open_review(
+                    signal_id, reason=ReviewReason.RETRIEVAL_FAILED
+                )
+        else:
+            self._session.execute(
+                update(Signal)
+                .where(Signal.id == signal_id)
+                .values(retrieval_attempts=Signal.retrieval_attempts + 1)
+            )
 
     def commit(self) -> None:
         self._session.commit()

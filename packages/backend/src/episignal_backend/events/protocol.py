@@ -7,13 +7,17 @@ is, which is why `commit` and `rollback` sit on the protocol.
 This module imports neither SQLAlchemy nor httpx.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from episignal_backend.ai.documents import AiRequestRecord
 from episignal_backend.ai.schema import BriefPoint
-from episignal_backend.db.types import RelationshipType, VerificationStatus
+from episignal_backend.db.types import (
+    RelationshipType,
+    ReviewReason,
+    VerificationStatus,
+)
 from episignal_backend.events.documents import (
     CandidateEvent,
     LocationForMatching,
@@ -82,8 +86,14 @@ class EventRepository(Protocol):
         """Advance a signal to processing_status = 'matched'."""
         ...
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
-        """Route an unclusterable or refused signal to processing_status = 'needs_review'."""
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
+        """Route an unclusterable or refused signal to processing_status = 'needs_review' and record a typed case."""
         ...
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:

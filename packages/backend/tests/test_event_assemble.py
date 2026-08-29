@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -10,6 +11,7 @@ from episignal_backend.db.types import (
     LocationRole,
     Precision,
     RelationshipType,
+    ReviewReason,
     SignalType,
     VerificationStatus,
 )
@@ -36,12 +38,16 @@ class FakeAssemblyRepository:
         self.added_locations: list[tuple[UUID, LocationForMatching]] = []
         self.applied_scores: dict[UUID, tuple[float, float, VerificationStatus]] = {}
         self.matched_signal_ids: set[UUID] = set()
-        self.needs_review_signal_ids: set[UUID] = set()
+        self.review_calls: list[tuple[UUID, ReviewReason, dict[UUID, float]]] = []
         self.latest_briefs: dict[UUID, tuple[BriefPoint, ...]] = {}
         self.applied_deltas: list[tuple[UUID, UUID, dict]] = []
         self.ai_requests: list[AiRequestRecord] = []
         self.committed = False
         self.rolled_back = False
+
+    @property
+    def needs_review_signal_ids(self) -> set[UUID]:
+        return {call[0] for call in self.review_calls}
 
     def signals_to_match(self, limit: int, *, stale: bool = False) -> list[SignalForMatching]:
         return self._signals[:limit]
@@ -106,8 +112,14 @@ class FakeAssemblyRepository:
     def mark_matched(self, signal_id: UUID) -> None:
         self.matched_signal_ids.add(signal_id)
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
-        self.needs_review_signal_ids.add(signal_id)
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
+        self.review_calls.append((signal_id, reason, dict(candidate_scores or {})))
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:
         return self.latest_briefs.get(event_id)

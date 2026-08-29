@@ -28,9 +28,11 @@ class FakeResult:
         return self
 
     def all(self) -> Any:
-        return self._value
+        return self._value if isinstance(self._value, list) else [self._value]
 
     def scalar_one_or_none(self) -> Any:
+        if isinstance(self._value, list):
+            return self._value[0] if self._value else None
         return self._value
 
 
@@ -42,10 +44,13 @@ class FakeSession:
 
     def execute(self, statement: Any) -> Any:
         self.executed.append(statement)
-        return self._results.pop(0) if self._results else FakeResult([])
+        return self._results.pop(0) if self._results else FakeResult(None)
 
     def add(self, instance: Any) -> None:
         self.added.append(instance)
+
+    def flush(self) -> None:
+        pass
 
     def commit(self) -> None:
         return None
@@ -506,3 +511,20 @@ def test_a_stored_extraction_survives_its_version_key() -> None:
 
 def test_an_unreadable_extraction_is_absence_rather_than_an_exception() -> None:
     assert read_stored_extraction({"signal_type": "not_a_type"}) is None
+
+
+def test_open_review_updates_signal_and_persists_review_case() -> None:
+    from episignal_backend.db.types import ReviewReason, ReviewStatus
+    from episignal_backend.models.review import SignalReviewCase
+
+    sig_id = uuid4()
+    session = FakeSession(results=[FakeResult(None)])
+    repo = SqlAlchemyEventRepository(session)
+    repo.open_review(sig_id, reason=ReviewReason.EVENT_MATCH_AMBIGUOUS)
+
+    assert len(session.executed) == 2  # update signal, select existing case
+    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
+    assert len(cases) == 1
+    assert cases[0].signal_id == sig_id
+    assert cases[0].reason is ReviewReason.EVENT_MATCH_AMBIGUOUS
+    assert cases[0].status is ReviewStatus.OPEN

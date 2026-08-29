@@ -7,7 +7,7 @@ Maps between ORM models and pure domain contracts across the boundary.
 """
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -25,6 +25,7 @@ from episignal_backend.db.types import (
     Precision,
     ProcessingStatus,
     RelationshipType,
+    ReviewReason,
     VerificationStatus,
 )
 from episignal_backend.events.documents import (
@@ -43,6 +44,7 @@ from episignal_backend.models import (
     SignalLocation,
     Source,
 )
+from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
 
 def read_stored_extraction(payload: Any) -> Extraction | None:
@@ -408,11 +410,20 @@ class SqlAlchemyEventRepository:
             .values(processing_status=ProcessingStatus.MATCHED)
         )
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
         self._session.execute(
             update(Signal)
             .where(Signal.id == signal_id)
             .values(processing_status=ProcessingStatus.NEEDS_REVIEW)
+        )
+        SqlAlchemyReviewRepository(self._session).open_review(
+            signal_id, reason=reason, candidate_scores=candidate_scores
         )
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:

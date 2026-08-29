@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from uuid import UUID, uuid4
 
 from episignal_backend.ai.documents import (
@@ -13,6 +13,7 @@ from episignal_backend.ai.documents import (
     Verdict,
 )
 from episignal_backend.ai.protocol import AiRepository, ChatModel
+from episignal_backend.db.types import ReviewReason
 
 
 class StubModel:
@@ -45,7 +46,13 @@ class StubRepository:
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         return None
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
         return None
 
     def commit(self) -> None:

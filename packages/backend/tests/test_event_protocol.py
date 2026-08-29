@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -6,6 +6,7 @@ from episignal_backend.ai.documents import AiRequestRecord
 from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import (
     RelationshipType,
+    ReviewReason,
     VerificationStatus,
 )
 from episignal_backend.events.documents import (
@@ -27,9 +28,13 @@ class InMemoryEventRepository:
         self.added_locations: list[tuple[UUID, LocationForMatching]] = []
         self.scores: dict[UUID, tuple[float, float, VerificationStatus]] = {}
         self.matched_signal_ids: set[UUID] = set()
-        self.needs_review_signal_ids: set[UUID] = set()
+        self.review_calls: list[tuple[UUID, ReviewReason, dict[UUID, float]]] = []
         self.committed = False
         self.rolled_back = False
+
+    @property
+    def needs_review_signal_ids(self) -> set[UUID]:
+        return {call[0] for call in self.review_calls}
 
     def signals_to_match(self, limit: int, *, stale: bool = False) -> Sequence[SignalForMatching]:
         return ()
@@ -94,8 +99,14 @@ class InMemoryEventRepository:
     def mark_matched(self, signal_id: UUID) -> None:
         self.matched_signal_ids.add(signal_id)
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
-        self.needs_review_signal_ids.add(signal_id)
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
+        self.review_calls.append((signal_id, reason, dict(candidate_scores or {})))
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:
         return None

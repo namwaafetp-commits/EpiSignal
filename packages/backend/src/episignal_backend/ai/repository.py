@@ -7,7 +7,7 @@ behalf of the passes above it.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
@@ -25,7 +25,12 @@ from episignal_backend.ai.schema import (
     EXTRACTION_SCHEMA_VERSION,
     EXTRACTION_VERSION_KEY,
 )
-from episignal_backend.db.types import ProcessingStatus, StoryGroupRole, StoryGroupState
+from episignal_backend.db.types import (
+    ProcessingStatus,
+    ReviewReason,
+    StoryGroupRole,
+    StoryGroupState,
+)
 from episignal_backend.ingestion.fingerprint import verify_content_hash
 from episignal_backend.models import (
     AiModel,
@@ -35,6 +40,7 @@ from episignal_backend.models import (
     StoryGroup,
     StoryGroupMember,
 )
+from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
 logger = logging.getLogger(__name__)
 
@@ -240,11 +246,20 @@ class SqlAlchemyAiRepository:
             )
         )
 
-    def mark_needs_review(self, signal_id: UUID) -> None:
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None:
         self._session.execute(
             update(Signal)
             .where(Signal.id == signal_id)
             .values(processing_status=ProcessingStatus.NEEDS_REVIEW)
+        )
+        SqlAlchemyReviewRepository(self._session).open_review(
+            signal_id, reason=reason, candidate_scores=candidate_scores
         )
 
     def commit(self) -> None:

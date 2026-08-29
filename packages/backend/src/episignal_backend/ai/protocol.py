@@ -8,7 +8,7 @@ which is why `commit` and `rollback` sit on this Protocol rather than being
 reached for through a handle the passes were given.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -22,6 +22,7 @@ from episignal_backend.ai.documents import (
     StoredExtraction,
     Verdict,
 )
+from episignal_backend.db.types import ReviewReason
 
 
 @runtime_checkable
@@ -53,7 +54,13 @@ class AiRepository(Protocol):
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None: ...
 
-    def mark_needs_review(self, signal_id: UUID) -> None: ...
+    def open_review(
+        self,
+        signal_id: UUID,
+        *,
+        reason: ReviewReason,
+        candidate_scores: Mapping[UUID, float] | None = None,
+    ) -> None: ...
 
     def commit(self) -> None: ...
 

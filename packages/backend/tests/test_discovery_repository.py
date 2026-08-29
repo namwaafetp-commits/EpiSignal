@@ -171,7 +171,7 @@ def test_a_colliding_publisher_name_falls_back_to_the_domain() -> None:
     assert session.added[0].domain == "example.vn"
 
 
-def stub_row() -> Any:
+def stub_row(attempts: int = 1) -> Any:
     from episignal_backend.db.types import DiscoveryMethod
     from episignal_backend.models import Signal
 
@@ -188,7 +188,7 @@ def stub_row() -> Any:
         language="vi",
         content_hash="d" * 64,
         discovered_via=DiscoveryMethod.GDELT,
-        retrieval_attempts=1,
+        retrieval_attempts=attempts,
         processing_status=ProcessingStatus.NEEDS_REVIEW,
     )
 
@@ -222,7 +222,7 @@ def test_promotion_replaces_the_stub_content_and_counts_the_attempt() -> None:
     from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
 
     row = stub_row()
-    session = FakeSession([], stored={row.id: row})
+    session = FakeSession([None], stored={row.id: row})
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
 
     assert repository.promote(row.id, discovered()) is True
@@ -255,9 +255,9 @@ def test_a_failed_attempt_is_recorded_without_touching_content() -> None:
     row = stub_row()
     session = FakeSession([None], stored={row.id: row})
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
-    repository.record_failed_attempt(row.id)
+    repository.record_failed_attempt(row.id, max_attempts=5)
 
-    assert len(session.executed) == 1
+    assert row.retrieval_attempts == 2
     assert row.raw_text is None
 
 
@@ -323,3 +323,68 @@ def test_recording_a_rejection_issues_one_statement() -> None:
     )
 
     assert len(session.executed) == 1
+
+
+def test_initial_contentless_discovery_opens_retrieval_failed_case() -> None:
+    from episignal_backend.db.types import ReviewReason, ReviewStatus
+    from episignal_backend.models.review import SignalReviewCase
+
+    # When discovering a stub signal with no raw text
+    stub_signal = discovered(raw_text=None, processing_status=ProcessingStatus.NEEDS_REVIEW)
+    session = FakeSession([None])  # select existing case -> None
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    repository.add(stub_signal, uuid4())
+
+    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
+    assert len(cases) == 1
+    assert cases[0].reason is ReviewReason.RETRIEVAL_FAILED
+    assert cases[0].status is ReviewStatus.OPEN
+
+
+def test_record_failed_attempt_opens_retrieval_failed_when_max_attempts_reached() -> None:
+    from episignal_backend.db.types import ReviewReason, ReviewStatus
+    from episignal_backend.models.review import SignalReviewCase
+
+    row = stub_row(attempts=2)
+    session = FakeSession([None], stored={row.id: row})  # select existing case -> None
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    repository.record_failed_attempt(row.id, max_attempts=3)
+
+    assert row.retrieval_attempts == 3
+    assert row.processing_status is ProcessingStatus.NEEDS_REVIEW
+    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
+    assert len(cases) == 1
+    assert cases[0].reason is ReviewReason.RETRIEVAL_FAILED
+
+
+def test_promotion_closes_open_retrieval_case_automatically() -> None:
+    from episignal_backend.db.types import ReviewReason, ReviewResolution, ReviewStatus
+    from episignal_backend.models.review import SignalReviewCase
+
+    row = stub_row()
+    open_case = SignalReviewCase(
+        id=uuid4(),
+        signal_id=row.id,
+        reason=ReviewReason.RETRIEVAL_FAILED,
+        status=ReviewStatus.OPEN,
+        opened_at=NOW,
+    )
+    session = FakeSession([open_case], stored={row.id: row})
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    assert repository.promote(row.id, discovered()) is True
+    assert open_case.status is ReviewStatus.RESOLVED
+    assert open_case.resolution is ReviewResolution.RECOVERED_AUTOMATICALLY
+
+
+def test_promotion_does_not_close_non_retrieval_case() -> None:
+    from episignal_backend.db.types import ReviewReason, ReviewStatus
+
+    row = stub_row()
+    # If the case reason is not RETRIEVAL_FAILED, query returns None because query filters by reason=RETRIEVAL_FAILED
+    session = FakeSession([None], stored={row.id: row})
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    assert repository.promote(row.id, discovered()) is True

@@ -31,7 +31,7 @@ from episignal_backend.ai.prompts import extraction_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.ai.schema import Extraction, extraction_json_schema
 from episignal_backend.ai.validate import validate_extraction
-from episignal_backend.db.types import AiPurpose
+from episignal_backend.db.types import AiPurpose, ReviewReason
 
 DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
@@ -142,7 +142,7 @@ def _run_pass(
                     ),
                 )
             elif result.outcome is ClimbOutcome.REJECTED and demote_on_rejection:
-                repository.mark_needs_review(signal.id)
+                repository.open_review(signal.id, reason=ReviewReason.EXTRACTION_REJECTED)
 
             repository.commit()
         except Exception as error:
