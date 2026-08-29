@@ -81,6 +81,14 @@ class AiPurpose(StrEnum):
     EXTRACTION = "extraction"
 
 
+class AiProvider(StrEnum):
+    """Who serves a roster rung. The ladder stays one ladder; the adapter is
+    chosen per rung from this value."""
+
+    OPENROUTER = "openrouter"
+    GEMINI = "gemini"
+
+
 class AiOutcome(StrEnum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"

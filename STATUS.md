@@ -101,7 +101,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 
 - [x] 1. Enforce the query-rule language in the GDELT client.
 - [x] 2. Pin the seed library to English.
-- [ ] 3. Make provider a roster fact.
+- [x] 3. Make provider a roster fact.
 - [ ] 4. Build `GeminiChatModel`.
 - [ ] 5. Resolve rungs through provider adapters.
 - [ ] 6. Validate Gemini live on ten to twenty real signals.

@@ -124,6 +124,19 @@ def test_the_seeded_roster_covers_all_three_tiers() -> None:
     assert {model.tier for model in models} == {1, 2, 3}
 
 
+def test_the_active_roster_serves_each_tier_once_with_gemini_first() -> None:
+    from episignal_backend.db.types import AiProvider
+    from episignal_backend.seeds import load_ai_models
+
+    active = [model for model in load_ai_models() if model.active]
+
+    assert len(active) == 3
+    assert {model.tier for model in active} == {1, 2, 3}
+    tier_one = next(model for model in active if model.tier == 1)
+    assert tier_one.provider is AiProvider.GEMINI
+    assert all(model.provider is AiProvider.OPENROUTER for model in active if model.tier > 1)
+
+
 def test_every_seeded_model_has_non_negative_prices() -> None:
     from episignal_backend.seeds import load_ai_models
 

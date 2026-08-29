@@ -17,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
-from episignal_backend.db.types import AiOutcome, AiPurpose, vocabulary
+from episignal_backend.db.types import AiOutcome, AiProvider, AiPurpose, vocabulary
 
 PRICE = Numeric(12, 6)
 
@@ -39,6 +39,15 @@ class AiModel(IdentityMixin, TimestampMixin, Base):
     tier: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     model_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     label: Mapped[str] = mapped_column(Text, nullable=False)
+    # Which adapter serves this rung. Existing rows predate the column and are
+    # all OpenRouter, so the backfill in the migration that adds it is a fact
+    # about history rather than a guess.
+    provider: Mapped[AiProvider] = mapped_column(
+        vocabulary(AiProvider, "ai_provider_values"),
+        nullable=False,
+        default=AiProvider.OPENROUTER,
+        server_default=AiProvider.OPENROUTER.value,
+    )
     prompt_price_per_million: Mapped[Decimal] = mapped_column(
         PRICE, nullable=False, server_default="0"
     )

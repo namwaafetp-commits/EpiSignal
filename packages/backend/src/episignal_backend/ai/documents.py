@@ -17,7 +17,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from episignal_backend.ai.schema import Extraction
-from episignal_backend.db.types import AiOutcome, AiPurpose, SignalType
+from episignal_backend.db.types import AiOutcome, AiProvider, AiPurpose, SignalType
 
 LOWEST_TIER = 1
 HIGHEST_TIER = 3
@@ -44,6 +44,7 @@ class ModelSpec(BaseModel):
     tier: int = Field(ge=LOWEST_TIER, le=HIGHEST_TIER)
     model_id: str = Field(min_length=1)
     label: str = Field(min_length=1)
+    provider: AiProvider = AiProvider.OPENROUTER
     prompt_price_per_million: Decimal = Field(ge=0)
     completion_price_per_million: Decimal = Field(ge=0)
 

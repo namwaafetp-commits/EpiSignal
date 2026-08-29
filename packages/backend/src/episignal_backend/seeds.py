@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from episignal_backend.db.types import CredibilityTier, FilterRuleGroup, SourceType
+from episignal_backend.db.types import AiProvider, CredibilityTier, FilterRuleGroup, SourceType
 from episignal_backend.models import (
     AiModel,
     Disease,
@@ -78,6 +78,7 @@ class AiModelSeed(BaseModel):
     tier: int = Field(ge=1, le=3)
     model_id: str = Field(min_length=1)
     label: str = Field(min_length=1)
+    provider: AiProvider = AiProvider.OPENROUTER
     # Strings in the JSON, parsed as Decimal: a price written as a float would
     # be stored as the nearest binary approximation of itself.
     prompt_price_per_million: Decimal = Field(ge=0)
