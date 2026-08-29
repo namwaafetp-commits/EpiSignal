@@ -75,6 +75,8 @@ class Settings(BaseSettings):
 
     openrouter_api_key: SecretStr | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    gemini_api_key: SecretStr | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
     ai_signal_batch_limit: int = Field(default=100, ge=1, le=5000)
     ai_batch_size: int = Field(default=20, ge=1, le=200)

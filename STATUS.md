@@ -102,7 +102,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [x] 2. Pin the seed library to English.
 - [x] 3. Make provider a roster fact.
 - [x] 4. Build `GeminiChatModel`.
-- [ ] 5. Resolve rungs through provider adapters.
+- [x] 5. Resolve rungs through provider adapters.
 - [ ] 6. Validate Gemini live on ten to twenty real signals.
 - [ ] 7. Add the delta pass.
 - [ ] 8. Wire the delta pass after attach.

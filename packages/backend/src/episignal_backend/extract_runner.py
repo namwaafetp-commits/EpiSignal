@@ -18,8 +18,8 @@ from typing import Literal
 from episignal_backend.ai.classify import ClassificationResult, run_classification
 from episignal_backend.ai.extract import ExtractionResult, run_extraction
 from episignal_backend.ai.ladder import Guards
-from episignal_backend.ai.openrouter import OpenRouterChatModel
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
+from episignal_backend.ai.routing import NoProviderKey, RoutedChatModel, build_adapters
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 
@@ -63,15 +63,24 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
 
 def _run(arguments: Arguments) -> tuple[ClassificationResult, ExtractionResult]:
     settings = get_settings()
-    if settings.openrouter_api_key is None:
-        raise RuntimeError("EPISIGNAL_OPENROUTER_API_KEY is not set")
+    try:
+        adapters = build_adapters(
+            openrouter_api_key=(
+                settings.openrouter_api_key.get_secret_value()
+                if settings.openrouter_api_key
+                else None
+            ),
+            gemini_api_key=(
+                settings.gemini_api_key.get_secret_value() if settings.gemini_api_key else None
+            ),
+            openrouter_base_url=settings.openrouter_base_url,
+            gemini_base_url=settings.gemini_base_url,
+            timeout_seconds=settings.ai_request_timeout_seconds,
+            max_attempts=settings.ai_max_attempts_per_tier,
+        )
+    except NoProviderKey as error:
+        raise RuntimeError(str(error)) from error
 
-    model = OpenRouterChatModel(
-        settings.openrouter_api_key.get_secret_value(),
-        base_url=settings.openrouter_base_url,
-        timeout_seconds=settings.ai_request_timeout_seconds,
-        max_attempts=settings.ai_max_attempts_per_tier,
-    )
     guards = Guards(
         max_requests=settings.ai_max_requests_per_run,
         max_cost_usd=settings.ai_max_cost_usd_per_run,
@@ -84,6 +93,7 @@ def _run(arguments: Arguments) -> tuple[ClassificationResult, ExtractionResult]:
 
     with session_scope() as session:
         repository = SqlAlchemyAiRepository(session)
+        model = RoutedChatModel.from_specs(list(repository.models()), adapters)
         if arguments.stage in {"classify", "both"}:
             classified = run_classification(
                 repository,
@@ -119,7 +129,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         # one raised near the client can carry the key.
         print(
             f"Extraction failed before completing ({type(error).__name__}). "
-            "Check the database and EPISIGNAL_OPENROUTER_API_KEY.",
+            "Check the database and the provider keys "
+            "(EPISIGNAL_OPENROUTER_API_KEY, EPISIGNAL_GEMINI_API_KEY).",
             file=sys.stderr,
         )
         return 1
