@@ -26,6 +26,7 @@ class PurposeSpend(BaseModel):
     purpose: str
     outcome: str
     requests: int
+    signals: int
     cost_usd: Decimal
 
 
@@ -35,6 +36,7 @@ class SpendSummary(BaseModel):
     window_days: int
     since: datetime
     requests: int
+    signals: int
     cost_usd: Decimal
     breakdown: tuple[PurposeSpend, ...]
 
@@ -48,9 +50,11 @@ def trailing_spend(
     since = reference - timedelta(days=window_days)
 
     total = session.execute(
-        select(func.count(), func.coalesce(func.sum(AiRequest.cost_usd), 0)).where(
-            AiRequest.requested_at >= since
-        )
+        select(
+            func.count(),
+            func.coalesce(func.sum(AiRequest.batch_size), 0),
+            func.coalesce(func.sum(AiRequest.cost_usd), 0),
+        ).where(AiRequest.requested_at >= since)
     ).one()
     rows = session.execute(
         select(
@@ -58,6 +62,7 @@ def trailing_spend(
             AiRequest.purpose,
             AiRequest.outcome,
             func.count(),
+            func.coalesce(func.sum(AiRequest.batch_size), 0),
             func.coalesce(func.sum(AiRequest.cost_usd), 0),
         )
         .where(AiRequest.requested_at >= since)
@@ -69,15 +74,17 @@ def trailing_spend(
         window_days=window_days,
         since=since,
         requests=total[0],
-        cost_usd=Decimal(str(total[1])).quantize(Decimal("0.000001")),
+        signals=total[1],
+        cost_usd=Decimal(str(total[2])).quantize(Decimal("0.000001")),
         breakdown=tuple(
             PurposeSpend(
                 model_id=model_id,
                 purpose=str(purpose),
                 outcome=str(outcome),
                 requests=count,
+                signals=signals_count,
                 cost_usd=Decimal(str(cost)).quantize(Decimal("0.000001")),
             )
-            for model_id, purpose, outcome, count, cost in rows
+            for model_id, purpose, outcome, count, signals_count, cost in rows
         ),
     )

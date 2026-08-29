@@ -49,12 +49,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     print(
-        f"window_days={summary.window_days} requests={summary.requests} cost_usd={summary.cost_usd}"
+        f"window_days={summary.window_days} requests={summary.requests} "
+        f"signals={summary.signals} cost_usd={summary.cost_usd}"
     )
     for row in summary.breakdown:
         print(
             f"{row.model_id} {row.purpose} {row.outcome} "
-            f"requests={row.requests} cost_usd={row.cost_usd}"
+            f"requests={row.requests} signals={row.signals} cost_usd={row.cost_usd}"
         )
     return 0
 

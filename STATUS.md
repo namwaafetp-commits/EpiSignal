@@ -147,7 +147,7 @@ purpose-specific model routing.
 - [x] 13. Read a story group as one extractable cluster.
 - [x] 14. Run cluster extraction with a per-article fallback.
 - [x] 15. Wire cluster extraction into the extract stage.
-- [ ] 16. Report what clustering bought in `spend:report`.
+- [x] 16. Report what clustering bought in `spend:report`.
 - [ ] 17. Update `CONTEXT.md` and write the ADR.
 - [ ] 18. Capture live proof against the recorded baseline.
 - [ ] 19. Review, verify, report, and hand back.
