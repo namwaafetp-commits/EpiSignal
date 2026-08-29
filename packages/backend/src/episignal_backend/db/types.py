@@ -30,6 +30,10 @@ class DiscoveryMethod(StrEnum):
 class FilterRuleGroup(StrEnum):
     TITLE_EXCLUSION = "title_exclusion"
     DOMAIN_BLOCKLIST = "domain_blocklist"
+    # Positive evidence, matched as case-folded substring rather than a
+    # pattern: rejection has to be precise, inclusion has to be generous.
+    TITLE_INCLUSION = "title_inclusion"
+
 
 
 class SignalType(StrEnum):

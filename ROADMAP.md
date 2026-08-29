@@ -92,7 +92,7 @@ Umbrella architecture and shared invariants:
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 | `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. | `C2`, `D2a`, `L` | `verified` |
-| `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `planned` |
+| `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `building` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·

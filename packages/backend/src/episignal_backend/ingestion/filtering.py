@@ -45,11 +45,14 @@ def compile_rules(rules: Sequence[FilterRule]) -> CompiledRules:
             # lookalikes the rule never named.
             domains.append((rule.pattern.strip().lower(), rule))
             continue
+        if rule.rule_group is not FilterRuleGroup.TITLE_EXCLUSION:
+            continue
         try:
             titles.append((re.compile(rule.pattern, re.IGNORECASE), rule))
         except re.error:
             invalid += 1
             logger.warning("Filter rule %s has an invalid pattern and was skipped", rule.label)
+
 
     return CompiledRules(titles=tuple(titles), domains=tuple(domains), invalid=invalid)
 

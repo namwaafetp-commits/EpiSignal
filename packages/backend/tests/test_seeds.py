@@ -334,3 +334,37 @@ def test_seeding_batches_its_upserts(tmp_path: Path) -> None:
     written = seed_gazetteer(session, target)
     assert written == GAZETTEER_BATCH_SIZE + 2
     assert len(session.executed) == 2
+
+
+def test_the_keyword_gate_seed_carries_title_inclusion_rules() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.seeds import load_filter_rules
+
+    rules = load_filter_rules()
+    inclusions = [rule for rule in rules if rule.rule_group is FilterRuleGroup.TITLE_INCLUSION]
+
+    assert len(inclusions) >= 20
+    patterns = {rule.pattern for rule in inclusions}
+    assert "outbreak" in patterns
+    assert "ministry of health" in patterns
+
+
+def test_no_inclusion_keyword_is_short_enough_to_match_by_accident() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.seeds import load_filter_rules
+
+    # Matching is case-folded substring, so a three-character keyword would
+    # pass every title containing it inside a longer, unrelated word.
+    for rule in load_filter_rules():
+        if rule.rule_group is FilterRuleGroup.TITLE_INCLUSION:
+            assert len(rule.pattern) >= 4, rule.label
+
+
+def test_every_inclusion_keyword_is_stored_case_folded() -> None:
+    from episignal_backend.db.types import FilterRuleGroup
+    from episignal_backend.seeds import load_filter_rules
+
+    for rule in load_filter_rules():
+        if rule.rule_group is FilterRuleGroup.TITLE_INCLUSION:
+            assert rule.pattern == rule.pattern.casefold(), rule.label
+

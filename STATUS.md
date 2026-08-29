@@ -132,7 +132,7 @@ purpose-specific model routing.
 
 ## Task ledger — `O2` (active)
 
-- [ ] 1. Seed the `title_inclusion` keyword rules.
+- [x] 1. Seed the `title_inclusion` keyword rules.
 - [ ] 2. Add the `filtered` processing status and its migration.
 - [ ] 3. Write the keyword gate function.
 - [ ] 4. Add the repository seams and fix the stub status filter.
