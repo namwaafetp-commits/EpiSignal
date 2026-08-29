@@ -111,7 +111,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [x] 11. Build the pre-group stage.
 - [x] 12. Store pre-groups and change selection.
 - [x] 13. Add the measurement gate.
-- [ ] 14. Review, gate, and report.
+- [x] 14. Review, gate, and report.
 
 ## Blockers
 
@@ -119,25 +119,27 @@ task; absent the key, that task records the blocker and the rest proceeds.
 
 ## Verified baseline
 
-Everything below was true at commit `2499e4e` on `main`, tree clean. Recorded
-from the extraction stall resolution run logged untruncated in
-[docs/reports/2026-08-28-extraction-stall-fix-report.md](docs/reports/2026-08-28-extraction-stall-fix-report.md).
+Everything below was true at commit `48da153` on `main`. Recorded from the
+`O` run logged untruncated in
+[docs/reports/2026-08-29-subproject-o-report.md](docs/reports/2026-08-29-subproject-o-report.md).
 
 | Fact | Value |
 | --- | --- |
 | Verification command | `corepack pnpm verify` — exit code 0 |
-| Python tests | 848 passed, 1 warning |
+| Python tests | 905 passed, 1 warning |
 | Web tests | 58 passed, 8 files |
 | Lint and format | `ruff check` and `eslint` clean, 190 files formatted |
-| Types | `tsc` and `mypy` clean across 97 source files |
-| Migration revision | `20260828_0009_quarantine_corrupted_signal` |
-| Live database | `db:check` passed — database=up, postgis=up |
+| Types | `tsc` and `mypy` clean across 107 source files |
+| Migration revision | `20260829_0013_story_groups` |
+| Live database | `db:migrate` and `db:seed` applied: query_rules=62 (English-only active), ai_models=5 |
 | Canonical diseases | 29 stable of 29 rows |
 | Canonical sources | 2 stable and inactive |
-| Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title, OpenRouter structured outputs (`json_schema`) |
-| Model ladder | `deepseek/deepseek-chat` (T1), `mistralai/mistral-small-24b-instruct-2501` (T2), `anthropic/claude-haiku-4.5` (T3) |
+| Extraction schema | `extraction_schema_version: 2`, 5-slot brief, English title, provider-routed structured outputs |
+| Model ladder | `google/gemini-3.5-flash-lite` (T1, gemini), `mistralai/mistral-small-24b-instruct-2501` (T2), `anthropic/claude-haiku-4.5` (T3); deepseek and gemini-2.5 inactive |
+| Trailing AI spend | `spend:report` — 30 days, 139 requests, $0.118554 |
+| Pre-group stage | Built, `pregroup_enabled=false`; measurement gate decided no flip |
 | Radar endpoints | `GET /api/v1/radar`, `GET /api/v1/admin/pipeline-runs` |
-| Live extraction & pipeline proof | 28 signals extracted in live run (0 shape rejections), 32 geocoded, 3 events created (EVT-EEA92838, EVT-1BAC05A1, EVT-F00791B8) |
+| Live extraction proof (O) | 20 classified, 13 extracted; Gemini accepted 4, Mistral tier-2 caught all 9 rejects; run cost $0.0390 |
 
 Reproduce with:
 
@@ -147,6 +149,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy apps/api/src packages/backend/src
 corepack pnpm verify
+corepack pnpm spend:report
 ```
 
 Update this table only from a run you actually performed, and record the commit
