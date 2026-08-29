@@ -21,11 +21,23 @@ EXPECTED_TABLES = {
     "pipeline_runs",
     "story_groups",
     "story_group_members",
+    "signal_review_cases",
+    "signal_review_candidates",
 }
 
 
 def test_metadata_contains_phase_one_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
+
+
+def test_review_tables_preserve_signal_and_candidate_provenance() -> None:
+    case = Base.metadata.tables["signal_review_cases"]
+    candidate = Base.metadata.tables["signal_review_candidates"]
+    assert next(iter(case.c.signal_id.foreign_keys)).ondelete == "RESTRICT"
+    assert [column.name for column in candidate.primary_key] == [
+        "review_case_id",
+        "event_id",
+    ]
 
 
 def test_observations_preserve_event_and_signal_provenance() -> None:
@@ -83,7 +95,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 22
+    assert len(enum_columns) == 25
 
     for column in enum_columns:
         enum_class = column.type.enum_class

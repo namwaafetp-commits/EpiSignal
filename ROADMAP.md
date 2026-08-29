@@ -185,7 +185,7 @@ Artifacts: `E`
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `verified` |
-| `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `planned` |
+| `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `building` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
 
 Artifacts:

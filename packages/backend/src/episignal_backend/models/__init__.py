@@ -13,6 +13,7 @@ from episignal_backend.models.event import (
 )
 from episignal_backend.models.geography import GazetteerPlace, SignalLocation
 from episignal_backend.models.pipeline import PipelineRun
+from episignal_backend.models.review import SignalReviewCandidate, SignalReviewCase
 from episignal_backend.models.signal import Signal
 from episignal_backend.models.story import StoryGroup, StoryGroupMember
 
@@ -32,6 +33,8 @@ __all__ = [
     "Signal",
     "SignalFilterRule",
     "SignalLocation",
+    "SignalReviewCandidate",
+    "SignalReviewCase",
     "Source",
     "StoryGroup",
     "StoryGroupMember",

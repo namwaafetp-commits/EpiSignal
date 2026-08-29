@@ -59,6 +59,9 @@ class ProcessingStatus(StrEnum):
     DUPLICATE = "duplicate"
     FAILED = "failed"
     NEEDS_REVIEW = "needs_review"
+    # Terminal, like FAILED/DUPLICATE: a dismissed signal is preserved for
+    # provenance and audit, but no automated stage selects it.
+    DISMISSED = "dismissed"
 
 
 class Precision(StrEnum):
@@ -175,6 +178,32 @@ class StoryGroupState(StrEnum):
 class StoryGroupRole(StrEnum):
     REPRESENTATIVE = "representative"
     DEFERRED = "deferred"
+
+
+class ReviewReason(StrEnum):
+    RETRIEVAL_FAILED = "retrieval_failed"
+    EXTRACTION_REJECTED = "extraction_rejected"
+    DISEASE_UNRESOLVED = "disease_unresolved"
+    LOCATION_UNRESOLVED = "location_unresolved"
+    EVENT_MATCH_AMBIGUOUS = "event_match_ambiguous"
+    CONTENT_INTEGRITY = "content_integrity"
+    LEGACY_UNCLASSIFIED = "legacy_unclassified"
+
+
+class ReviewStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
+class ReviewResolution(StrEnum):
+    RETRY_RETRIEVAL = "retry_retrieval"
+    RETRY_EXTRACTION = "retry_extraction"
+    ASSIGN_DISEASE = "assign_disease"
+    RETRY_GEOCODING = "retry_geocoding"
+    LINK_EVENT = "link_event"
+    CREATE_EVENT = "create_event"
+    DISMISS = "dismiss"
+    RECOVERED_AUTOMATICALLY = "recovered_automatically"
 
 
 def vocabulary(enum_class: type[StrEnum], name: str) -> Enum:

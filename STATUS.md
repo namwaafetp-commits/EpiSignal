@@ -12,7 +12,7 @@ rules for who edits this file are in
 | --- | --- |
 | Band | 4 — Operations |
 | Item | `M` — Manual review queue |
-| Status | `planned` |
+| Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [2026-08-29-manual-review-queue-design.md](docs/superpowers/specs/2026-08-29-manual-review-queue-design.md) |
 | Plan | [2026-08-29-manual-review-queue.md](docs/superpowers/plans/2026-08-29-manual-review-queue.md) |
@@ -102,7 +102,7 @@ purpose-specific model routing.
 
 ## Task ledger
 
-- [ ] 1. Define review vocabularies and ORM shape.
+- [x] 1. Define review vocabularies and ORM shape.
 - [ ] 2. Add reversible schema expansion and conservative backfill.
 - [ ] 3. Define review commands, read models, and storage interface.
 - [ ] 4. Persist typed case opening, queue reads, and automatic recovery.
