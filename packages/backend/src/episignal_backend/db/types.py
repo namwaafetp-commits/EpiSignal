@@ -35,7 +35,6 @@ class FilterRuleGroup(StrEnum):
     TITLE_INCLUSION = "title_inclusion"
 
 
-
 class SignalType(StrEnum):
     OUTBREAK_REPORT = "outbreak_report"
     SURVEILLANCE_UPDATE = "surveillance_update"

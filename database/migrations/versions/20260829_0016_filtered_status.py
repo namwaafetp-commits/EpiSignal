@@ -60,7 +60,9 @@ def downgrade() -> None:
     # Returned to the funnel rather than refused or deleted: a filtered row is
     # a kept article the gate declined, so the honest reverse of the gate is
     # the state the article had before it ran.
-    op.execute("UPDATE signals SET processing_status = 'fetched' WHERE processing_status = 'filtered'")
+    op.execute(
+        "UPDATE signals SET processing_status = 'fetched' WHERE processing_status = 'filtered'"
+    )
     op.drop_constraint("processing_status_values", "signals", type_="check")
     op.create_check_constraint(
         "processing_status_values",

@@ -145,7 +145,7 @@ def test_stub_for_a_failed_retrieval_is_built_by_the_connector() -> None:
 
 def test_a_deferred_discovery_carries_no_body_and_no_fetch() -> None:
     fetcher = FakeFetcher(FULL_PAGE)
-    c = GdeltConnector(search=FakeSearch(), fetcher=fetcher, now=lambda: NOW) # type: ignore[arg-type]
+    c = GdeltConnector(search=FakeSearch(), fetcher=fetcher, now=lambda: NOW)  # type: ignore[arg-type]
 
     signal = c.defer(article(), FIRST)
 
@@ -154,4 +154,3 @@ def test_a_deferred_discovery_carries_no_body_and_no_fetch() -> None:
     assert signal.processing_status is ProcessingStatus.FETCHED
     assert signal.title == article().title
     assert signal.published_at is None
-

@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
-import pytest
 
 from episignal_backend.db.types import FilterRuleGroup, ProcessingStatus
 from episignal_backend.ingestion.documents import (
@@ -68,7 +67,9 @@ class FakeRetrievalRepository:
         self.rollbacks = 0
         self.deleted: list[UUID] = []
 
-    def gated_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> tuple[StubRetrieval, ...]:
+    def gated_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int
+    ) -> tuple[StubRetrieval, ...]:
         return self.waiting[:limit]
 
     def keyword_rules(self) -> tuple[FilterRule, ...]:
@@ -122,8 +123,9 @@ class CountingConnector:
             gdelt_seen_at=article.gdelt_seen_at,
             language="en",
             content_hash="a" * 64,
-
-            publisher=Publisher(domain=article.domain, name=article.domain, language="en", country_code="VN"),
+            publisher=Publisher(
+                domain=article.domain, name=article.domain, language="en", country_code="VN"
+            ),
             processing_status=ProcessingStatus.FETCHED,
         )
 
@@ -132,7 +134,7 @@ def test_a_gated_title_is_filtered_and_never_fetched() -> None:
     repository = FakeRetrievalRepository(waiting=(STADIUM,), rules=(OUTBREAK,))
     connector = CountingConnector()
 
-    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10) # type: ignore[arg-type]
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert result.filtered == 1
     assert result.retrieved == 0
@@ -144,7 +146,7 @@ def test_a_passing_title_is_fetched_exactly_once() -> None:
     repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,))
     connector = CountingConnector()
 
-    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10) # type: ignore[arg-type]
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert result.retrieved == 1
     assert connector.retrieved == 1
@@ -155,7 +157,7 @@ def test_an_unfetchable_page_records_a_failed_attempt() -> None:
     repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,))
     connector = CountingConnector(failing=True)
 
-    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10) # type: ignore[arg-type]
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert result.still_failing == 1
     assert repository.failed_attempts == [MEASLES_STORY.signal_id]
@@ -163,10 +165,12 @@ def test_an_unfetchable_page_records_a_failed_attempt() -> None:
 
 
 def test_a_redundant_promotion_is_counted_not_failed() -> None:
-    repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,), promotable=False)
+    repository = FakeRetrievalRepository(
+        waiting=(MEASLES_STORY,), rules=(OUTBREAK,), promotable=False
+    )
     connector = CountingConnector()
 
-    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10) # type: ignore[arg-type]
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert result.redundant == 1
     assert result.retrieved == 0
@@ -174,11 +178,13 @@ def test_a_redundant_promotion_is_counted_not_failed() -> None:
 
 def test_a_storage_failure_rolls_back_and_keeps_going() -> None:
     repository = FakeRetrievalRepository(
-        waiting=(MEASLES_STORY, SECOND_STORY), rules=(OUTBREAK,), failing_ids={MEASLES_STORY.signal_id}
+        waiting=(MEASLES_STORY, SECOND_STORY),
+        rules=(OUTBREAK,),
+        failing_ids={MEASLES_STORY.signal_id},
     )
     connector = CountingConnector()
 
-    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10) # type: ignore[arg-type]
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert result.failed == 1
     assert result.retrieved == 1
@@ -189,6 +195,6 @@ def test_no_signal_is_ever_deleted() -> None:
     repository = FakeRetrievalRepository(waiting=(STADIUM, MEASLES_STORY), rules=(OUTBREAK,))
     connector = CountingConnector()
 
-    run_retrieval(repository, connector, max_attempts=3, batch_size=10) # type: ignore[arg-type]
+    run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert repository.deleted == []

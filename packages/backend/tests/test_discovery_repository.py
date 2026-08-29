@@ -465,9 +465,8 @@ def test_a_filtered_signal_is_never_selected_for_retrieval() -> None:
 
 
 def test_recording_filtered_preserves_the_row() -> None:
-    from sqlalchemy import Update
-
     from episignal_backend.models import Signal
+    from sqlalchemy import Update
 
     class UpdatingFakeSession(FakeSession):
         def execute(self, statement: Any) -> Any:
@@ -489,7 +488,6 @@ def test_recording_filtered_preserves_the_row() -> None:
     assert res.url == "https://example.vn/deferred"
 
 
-
 def test_the_retry_pass_only_sees_needs_review_stubs() -> None:
     from sqlalchemy import Select
 
@@ -502,4 +500,3 @@ def test_the_retry_pass_only_sees_needs_review_stubs() -> None:
     assert isinstance(statement, Select)
     rendered = str(statement.compile(compile_kwargs={"literal_binds": True}))
     assert f"signals.processing_status = '{ProcessingStatus.NEEDS_REVIEW.value}'" in rendered
-

@@ -25,7 +25,6 @@ class StageName(StrEnum):
     MATCH = "match"
 
 
-
 @dataclass(frozen=True)
 class DiscoveryWindow:
     """The span of publication time a discovery pass asks GDELT for."""

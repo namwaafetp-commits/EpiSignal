@@ -129,7 +129,6 @@ class GdeltConnector:
             processing_status=ProcessingStatus.FETCHED,
         )
 
-
     def _publisher(self, article: DiscoveredArticle, site_name: str | None) -> Publisher:
         return Publisher(
             domain=article.domain,

@@ -27,7 +27,6 @@ def test_grouping_precedes_extraction() -> None:
     assert DAILY_CHAIN.index(StageName.PREGROUP) < DAILY_CHAIN.index(StageName.EXTRACT)
 
 
-
 def test_every_stage_appears_exactly_once() -> None:
     assert len(set(DAILY_CHAIN)) == len(DAILY_CHAIN)
     assert set(DAILY_CHAIN) == set(StageName)

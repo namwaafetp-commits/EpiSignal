@@ -367,4 +367,3 @@ def test_every_inclusion_keyword_is_stored_case_folded() -> None:
     for rule in load_filter_rules():
         if rule.rule_group is FilterRuleGroup.TITLE_INCLUSION:
             assert rule.pattern == rule.pattern.casefold(), rule.label
-

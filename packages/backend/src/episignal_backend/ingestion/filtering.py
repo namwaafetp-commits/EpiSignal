@@ -53,7 +53,6 @@ def compile_rules(rules: Sequence[FilterRule]) -> CompiledRules:
             invalid += 1
             logger.warning("Filter rule %s has an invalid pattern and was skipped", rule.label)
 
-
     return CompiledRules(titles=tuple(titles), domains=tuple(domains), invalid=invalid)
 
 

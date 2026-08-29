@@ -1,8 +1,5 @@
 from uuid import uuid4
 
-import pytest
-from pydantic import ValidationError
-
 from episignal_backend.db.types import FilterRuleGroup
 from episignal_backend.ingestion.documents import FilterRule
 from episignal_backend.ingestion.keyword_gate import classify_title

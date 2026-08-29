@@ -10,6 +10,7 @@ on a different connection for the whole run.
 """
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 
 from episignal_backend.ai.classify import run_classification
 from episignal_backend.ai.extract import run_extraction
@@ -34,8 +35,6 @@ from episignal_backend.ingestion.ecdc_epi import EcdcEpiConnector
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
 from episignal_backend.ingestion.gdelt.connector import GdeltConnector
-from datetime import UTC, datetime
-
 from episignal_backend.ingestion.pipeline import run_ingestion
 from episignal_backend.ingestion.pregroup import group_signals
 from episignal_backend.ingestion.pregroup_store import SqlAlchemyPreGroupStore
@@ -185,7 +184,6 @@ def _pregroup() -> Mapping[str, int]:
         "resolved": resolved,
         "expired": expired,
     }
-
 
 
 def _extract() -> Mapping[str, int]:

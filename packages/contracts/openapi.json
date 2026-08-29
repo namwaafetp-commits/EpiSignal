@@ -478,6 +478,7 @@
           "duplicate",
           "failed",
           "needs_review",
+          "filtered",
           "dismissed"
         ],
         "title": "ProcessingStatus",
@@ -1381,7 +1382,9 @@
           "ingest_who",
           "ingest_ecdc",
           "discover",
+          "retrieve",
           "dedupe",
+          "pregroup",
           "extract",
           "geocode",
           "match"

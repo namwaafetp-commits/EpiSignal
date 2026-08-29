@@ -355,7 +355,7 @@ export interface components {
          * ProcessingStatus
          * @enum {string}
          */
-        ProcessingStatus: "fetched" | "normalized" | "classified" | "extracted" | "geocoded" | "matched" | "published" | "duplicate" | "failed" | "needs_review" | "dismissed";
+        ProcessingStatus: "fetched" | "normalized" | "classified" | "extracted" | "geocoded" | "matched" | "published" | "duplicate" | "failed" | "needs_review" | "filtered" | "dismissed";
         /** RadarEventContextResponse */
         RadarEventContextResponse: {
             /** Early Signal Score */
@@ -674,7 +674,7 @@ export interface components {
          * @description One step of the pipeline. Never a rung of the model ladder: that is a tier.
          * @enum {string}
          */
-        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "dedupe" | "extract" | "geocode" | "match";
+        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "dedupe" | "pregroup" | "extract" | "geocode" | "match";
         /** ValidationError */
         ValidationError: {
             /** Context */

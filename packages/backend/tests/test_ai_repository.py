@@ -12,7 +12,7 @@ from episignal_backend.ai.schema import (
     Extraction,
 )
 from episignal_backend.db.types import AiOutcome, AiPurpose, ProcessingStatus, SignalType
-from sqlalchemy import Select, Update
+from sqlalchemy import Update
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 
@@ -106,9 +106,6 @@ def test_only_normalized_non_deferred_signals_are_offered_for_extraction() -> No
     where_part = rendered.split("WHERE")[1]
     assert "public_health_relevant" not in where_part
     assert "story_group_members" in where_part
-
-
-
 
 
 def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:
@@ -341,5 +338,3 @@ def test_awaiting_backfill_scans_past_mismatched_content_hash_honoring_limit(
     assert results[1].id == valid2.id
     assert str(corrupted.id) in caplog.text
     assert "failed content hash integrity" in caplog.text
-
-

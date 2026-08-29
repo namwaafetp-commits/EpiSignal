@@ -29,7 +29,6 @@ def test_migrations_have_one_linear_head() -> None:
     assert scripts.get_heads() == ["20260829_0016"]
 
 
-
 def render_offline(*arguments: str) -> str:
     root = Path(__file__).parents[3]
     result = subprocess.run(
@@ -273,4 +272,3 @@ def test_the_filtered_downgrade_returns_rows_to_fetched() -> None:
     source = _revision_source("20260829_0016_filtered_status")
     assert "processing_status = 'fetched'" in source
     assert "processing_status = 'filtered'" in source
-

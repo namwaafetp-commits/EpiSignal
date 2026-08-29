@@ -22,7 +22,6 @@ from episignal_backend.ingestion.protocol import (
     RetrievalFailed,
 )
 
-
 DEFAULT_WINDOW_MINUTES = 20
 DEFAULT_MAX_ARTICLES = 200
 DEFAULT_MAX_ATTEMPTS = 3
@@ -168,7 +167,6 @@ def run_discovery(
             needs_review += 1
         else:
             stored += 1
-
 
     return DiscoveryResult(
         rules_run=len(rules),

@@ -76,7 +76,6 @@ const PROCESSING_STATUSES = new Set([
   "needs_review",
 ]);
 
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

@@ -115,7 +115,6 @@ class FakeConnector:
         self.deferred.append(article.canonical_url)
         return self._signal(article, first_seen_at, ProcessingStatus.FETCHED, None)
 
-
     def _signal(
         self,
         article: DiscoveredArticle,
@@ -184,7 +183,6 @@ def test_the_cap_takes_the_oldest_sightings_first() -> None:
     connector = FakeConnector((article("/new"), older))
     run(connector, repository, max_articles=1)
     assert connector.deferred == ["https://example.vn/old"]
-
 
 
 def test_publisher_registration_is_reused_within_a_run() -> None:
@@ -371,4 +369,3 @@ def test_discovery_defers_every_retrieval() -> None:
     assert result.needs_review == 0
     assert repository.added[0][0].processing_status is ProcessingStatus.FETCHED
     assert repository.added[0][0].raw_text is None
-

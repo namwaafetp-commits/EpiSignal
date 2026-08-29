@@ -44,7 +44,6 @@ from episignal_backend.models import (
 from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
 
-
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
     return Signal(
         source_id=source_id,
@@ -211,17 +210,13 @@ class SqlAlchemyDiscoveryRepository:
                 )
         return tuple(rules)
 
-    def gated_awaiting_retrieval(
-        self, *, max_attempts: int, limit: int
-    ) -> Sequence[StubRetrieval]:
+    def gated_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
         """Discoveries stored without a body, waiting for the gate.
 
         Distinct from `stubs_awaiting_retrieval`, which serves articles whose
         page already failed. These have never been asked for.
         """
-        return self._retrievals(
-            ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit
-        )
+        return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
 
     def record_filtered(self, signal_id: UUID) -> None:
         self._session.execute(
@@ -229,7 +224,6 @@ class SqlAlchemyDiscoveryRepository:
             .where(Signal.id == signal_id)
             .values(processing_status=ProcessingStatus.FILTERED)
         )
-
 
     def record_rejection(self, rejection: Rejection) -> None:
         # Conflict-do-nothing: the same article is sighted in several
@@ -359,7 +353,6 @@ class SqlAlchemyDiscoveryRepository:
                 )
             )
         return tuple(stubs)
-
 
     def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
         stub = self._session.get(Signal, signal_id)
