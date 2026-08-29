@@ -47,7 +47,8 @@ def native_model_id(model_id: str) -> str:
 
 def sanitize_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Rewrite a JSON Schema into the subset the Gemini dialect accepts."""
-    return _sanitize(schema, schema.get("$defs", {}))
+    sanitized = _sanitize(schema, schema.get("$defs", {}))
+    return sanitized if isinstance(sanitized, dict) else {}
 
 
 def _sanitize(node: Any, defs: dict[str, Any]) -> Any:
