@@ -9,6 +9,7 @@ There is no publication date and no body text, which is why `article.py` exists.
 saw the article. It is stored as `gdelt_seen_at` and never as `published_at`.
 """
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from time import sleep as default_sleep
@@ -20,6 +21,8 @@ from episignal_backend.ingestion.documents import DiscoveredArticle, QueryRule, 
 from episignal_backend.ingestion.gdelt.locale import country_code, language_code
 from episignal_backend.ingestion.urls import canonicalize_url
 
+logger = logging.getLogger("episignal_backend.ingestion.gdelt.api")
+
 API_URL = "http://api.gdeltproject.org/api/v2/doc/doc"
 MAX_RECORDS = 250
 TIMEOUT_SECONDS = 30.0
@@ -27,6 +30,13 @@ MAX_ATTEMPTS = 3
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 SEEN_FORMAT = "%Y%m%dT%H%M%SZ"
 WINDOW_FORMAT = "%Y%m%d%H%M%S"
+# The `sourcelang:` operator wants GDELT's three-letter codes, while query
+# rules carry the two-letter codes the rest of the pipeline stores. A rule
+# language without an entry here still gets the result-side guard below; it
+# just does not also narrow the search at the API.
+LANGUAGE_OPERATOR_CODES: dict[str, str] = {
+    "en": "eng",
+}
 
 
 class GdeltUnavailable(Exception):
@@ -56,8 +66,12 @@ class GdeltDocClient:
         self._sleep = sleep
 
     def search(self, rule: QueryRule, window: TimeWindow) -> tuple[DiscoveredArticle, ...]:
+        query = rule.query
+        operator = LANGUAGE_OPERATOR_CODES.get(rule.language)
+        if operator is not None:
+            query = f"{query} sourcelang:{operator}"
         parameters = {
-            "query": rule.query,
+            "query": query,
             "mode": "ArtList",
             "format": "json",
             "maxrecords": str(MAX_RECORDS),
@@ -71,10 +85,23 @@ class GdeltDocClient:
             return ()
 
         articles: list[DiscoveredArticle] = []
+        dropped_by_language = 0
         for entry in entries:
             article = self._article(entry, rule)
-            if article is not None:
-                articles.append(article)
+            if article is None:
+                continue
+            # The second half of language enforcement: the operator narrows the
+            # search, this guard keeps a misreporting entry out regardless. An
+            # unmapped name cannot be confirmed as the rule's language, so a
+            # rule that pins one drops it rather than trusting it.
+            if rule.language != "any" and article.language != rule.language:
+                dropped_by_language += 1
+                continue
+            articles.append(article)
+        if dropped_by_language:
+            logger.debug(
+                "Dropped %d entries not reporting the rule language", dropped_by_language
+            )
         return tuple(articles)
 
     def _article(self, entry: object, rule: QueryRule) -> DiscoveredArticle | None:

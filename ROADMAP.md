@@ -91,7 +91,7 @@ Umbrella architecture and shared invariants:
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
-| `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, Gemini 2.5 Flash-Lite is the tier-1 roster rung with the OpenRouter ladder as fallback, event follow-ups carry a recorded delta, scheduled extraction runs batch mode, and trailing 30-day spend read from `ai_requests` is below one US dollar — or every lever is built and the measured figure is reported honestly. | `C2`, `D2a`, `L` | `planned` |
+| `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, Gemini 2.5 Flash-Lite is the tier-1 roster rung with the OpenRouter ladder as fallback, event follow-ups carry a recorded delta, scheduled extraction runs batch mode, and trailing 30-day spend read from `ai_requests` is below one US dollar — or every lever is built and the measured figure is reported honestly. | `C2`, `D2a`, `L` | `building` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·

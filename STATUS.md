@@ -97,6 +97,23 @@ task; absent the key, that task records the blocker and the rest proceeds.
 - [ ] 14. Apply the surveillance-console visual direction across web surfaces.
 - [ ] 15. Review, verify, capture safe live proof, and report.
 
+## Task ledger — `O` (parallel track)
+
+- [x] 1. Enforce the query-rule language in the GDELT client.
+- [ ] 2. Pin the seed library to English.
+- [ ] 3. Make provider a roster fact.
+- [ ] 4. Build `GeminiChatModel`.
+- [ ] 5. Resolve rungs through provider adapters.
+- [ ] 6. Validate Gemini live on ten to twenty real signals.
+- [ ] 7. Add the delta pass.
+- [ ] 8. Wire the delta pass after attach.
+- [ ] 9. Build the Gemini batch client.
+- [ ] 10. Wire batch mode into scheduled extraction.
+- [ ] 11. Build the pre-group stage.
+- [ ] 12. Store pre-groups and change selection.
+- [ ] 13. Add the measurement gate.
+- [ ] 14. Review, gate, and report.
+
 ## Blockers
 
 **None.** `M` is planned and dependency-ready. Implementation has not started.

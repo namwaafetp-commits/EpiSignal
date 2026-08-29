@@ -147,3 +147,77 @@ def test_window_longer_than_a_day_is_accepted() -> None:
     )
     assert len(client_returning(artlist_response()).search(RULE, window)) == 3
     assert window.end - window.start == timedelta(days=6)
+
+
+ENGLISH_RULE = QueryRule(
+    rule_group="known_disease", query="measles", label="Measles", language="en"
+)
+
+
+def test_a_rule_with_a_language_sends_the_sourcelang_operator() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    client = GdeltDocClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda _: None
+    )
+    client.search(ENGLISH_RULE, WINDOW)
+
+    assert captured[0].url.params["query"] == "measles sourcelang:eng"
+
+
+def test_an_any_language_rule_sends_no_operator() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    client = GdeltDocClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda _: None
+    )
+    client.search(RULE, WINDOW)
+
+    assert captured[0].url.params["query"] == "measles"
+
+
+def test_a_rule_with_a_language_drops_mismatched_entries() -> None:
+    # The fixture's three articles are two Spanish and one English.
+    articles = client_returning(artlist_response()).search(ENGLISH_RULE, WINDOW)
+    assert [article.language for article in articles] == ["en"]
+
+
+def test_a_rule_with_a_language_keeps_matching_entries() -> None:
+    response = httpx.Response(
+        200,
+        json={
+            "articles": [
+                {
+                    "url": "https://a.test/1",
+                    "title": "Measles cases rise",
+                    "seendate": "20260825T190000Z",
+                    "domain": "a.test",
+                    "language": "English",
+                    "sourcecountry": "United Kingdom",
+                },
+                {
+                    "url": "https://a.test/2",
+                    "title": "Measles cases rise again",
+                    "seendate": "20260825T191500Z",
+                    "domain": "a.test",
+                    "language": "Spanish",
+                    "sourcecountry": "Spain",
+                },
+            ]
+        },
+    )
+    articles = client_returning(response).search(ENGLISH_RULE, WINDOW)
+    assert [article.url for article in articles] == ["https://a.test/1"]
+
+
+def test_an_any_language_rule_keeps_mismatched_entries() -> None:
+    articles = client_returning(artlist_response()).search(RULE, WINDOW)
+    assert len(articles) == 3
