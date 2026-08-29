@@ -287,12 +287,20 @@ class SqlAlchemyReviewRepository:
 
 
 def query_review_queue(
-    session: Session, *, limit: int = 50, offset: int = 0
+    session: Session,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    reason: ReviewReason | None = None,
+    status: ReviewStatus | None = None,
 ) -> ReviewQueuePage:
     """Query open review cases with safe facts and resolution metadata."""
-    count_stmt = select(func.count(SignalReviewCase.id)).where(
-        SignalReviewCase.status == ReviewStatus.OPEN
-    )
+    target_status = status or ReviewStatus.OPEN
+    filters = [SignalReviewCase.status == target_status]
+    if reason is not None:
+        filters.append(SignalReviewCase.reason == reason)
+
+    count_stmt = select(func.count(SignalReviewCase.id)).where(*filters)
     total_cases = session.execute(count_stmt).scalar_one()
 
     cases_stmt = (
@@ -313,7 +321,7 @@ def query_review_queue(
         .join(Signal, Signal.id == SignalReviewCase.signal_id)
         .join(Source, Source.id == Signal.source_id)
         .outerjoin(Disease, Disease.id == Signal.disease_id)
-        .where(SignalReviewCase.status == ReviewStatus.OPEN)
+        .where(*filters)
         .order_by(SignalReviewCase.opened_at.asc(), SignalReviewCase.id.asc())
         .limit(limit)
         .offset(offset)

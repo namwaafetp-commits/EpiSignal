@@ -15,4 +15,5 @@ def test_openapi_exposes_public_routes() -> None:
         "/api/v1/signals",
         "/api/v1/radar",
         "/api/v1/admin/pipeline-runs",
+        "/api/v1/admin/reviews",
     }

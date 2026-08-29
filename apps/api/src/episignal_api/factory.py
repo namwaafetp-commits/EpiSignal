@@ -19,7 +19,7 @@ from starlette.requests import Request
 
 from episignal_api import API_NAME, API_VERSION
 from episignal_api.middleware import REQUEST_ID_HEADER, RequestIDMiddleware
-from episignal_api.routes import admin, health, radar, signals, version
+from episignal_api.routes import admin, health, radar, reviews, signals, version
 
 logger = logging.getLogger("episignal_api")
 
@@ -40,12 +40,13 @@ async def handle_unexpected_error(request: Request, exception: Exception) -> JSO
 
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title=API_NAME, version=API_VERSION)
+    app.state.settings = settings
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
         allow_credentials=True,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
         expose_headers=[REQUEST_ID_HEADER],
     )
@@ -56,6 +57,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(signals.router)
     app.include_router(radar.router)
     app.include_router(admin.router)
+    app.include_router(reviews.router)
 
     app.add_exception_handler(Exception, handle_unexpected_error)
     return app
