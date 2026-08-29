@@ -54,6 +54,15 @@ def test_no_query_rule_is_a_bare_generic_term() -> None:
     assert all(rule.query.strip().casefold() not in banned for rule in load_query_rules())
 
 
+def test_every_query_rule_is_pinned_to_english() -> None:
+    from episignal_backend.seeds import load_query_rules
+
+    # Phase 1 restriction: the pinned language plus the deactivation revision
+    # means each query is served by exactly one active row. Phase 2 multilingual
+    # work changes this seed and reactivates, never both at once.
+    assert all(rule.language == "en" for rule in load_query_rules())
+
+
 def test_filter_rules_load_and_are_all_negative() -> None:
     from episignal_backend.db.types import FilterRuleGroup
     from episignal_backend.seeds import load_filter_rules

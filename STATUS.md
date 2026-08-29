@@ -100,7 +100,7 @@ task; absent the key, that task records the blocker and the rest proceeds.
 ## Task ledger — `O` (parallel track)
 
 - [x] 1. Enforce the query-rule language in the GDELT client.
-- [ ] 2. Pin the seed library to English.
+- [x] 2. Pin the seed library to English.
 - [ ] 3. Make provider a roster fact.
 - [ ] 4. Build `GeminiChatModel`.
 - [ ] 5. Resolve rungs through provider adapters.
