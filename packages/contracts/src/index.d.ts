@@ -38,6 +38,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Review Queue
+         * @description Retrieve filtered review cases awaiting administrator action.
+         */
+        get: operations["list_review_queue_api_v1_admin_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reviews/{case_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Case
+         * @description Resolve an open review case with a valid action and transition signal state.
+         */
+        post: operations["resolve_case_api_v1_admin_reviews__case_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/radar": {
         parameters: {
             query?: never;
@@ -110,6 +150,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AssignDiseaseRequest */
+        AssignDiseaseRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "assign_disease";
+            /**
+             * Disease Id
+             * Format: uuid
+             */
+            disease_id: string;
+            /** Note */
+            note?: string | null;
+        };
         /**
          * BriefPoint
          * @description One bullet of a brief.
@@ -144,11 +199,33 @@ export interface components {
              */
             postgis: "up" | "down" | "unknown";
         };
+        /** CreateEventRequest */
+        CreateEventRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "create_event";
+            /** Note */
+            note?: string | null;
+            /** @default unverified */
+            verification_status: components["schemas"]["VerificationStatus"];
+        };
         /**
          * CredibilityTier
          * @enum {string}
          */
         CredibilityTier: "official" | "high" | "medium" | "unknown";
+        /** DismissRequest */
+        DismissRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "dismiss";
+            /** Note */
+            note: string;
+        };
         /**
          * EventContextStatus
          * @enum {string}
@@ -158,6 +235,20 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LinkEventRequest */
+        LinkEventRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "link_event";
+            /** Event Id */
+            event_id?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Target Event Id */
+            target_event_id?: string | null;
         };
         /** LivenessResponse */
         LivenessResponse: {
@@ -264,7 +355,7 @@ export interface components {
          * ProcessingStatus
          * @enum {string}
          */
-        ProcessingStatus: "fetched" | "normalized" | "classified" | "extracted" | "geocoded" | "matched" | "published" | "duplicate" | "failed" | "needs_review";
+        ProcessingStatus: "fetched" | "normalized" | "classified" | "extracted" | "geocoded" | "matched" | "published" | "duplicate" | "failed" | "needs_review" | "dismissed";
         /** RadarEventContextResponse */
         RadarEventContextResponse: {
             /** Early Signal Score */
@@ -352,6 +443,163 @@ export interface components {
              * @constant
              */
             status: "ready";
+        };
+        /** RetryExtractionRequest */
+        RetryExtractionRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "retry_extraction";
+            /** Note */
+            note?: string | null;
+        };
+        /** RetryGeocodingRequest */
+        RetryGeocodingRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "retry_geocoding";
+            /** Note */
+            note?: string | null;
+        };
+        /** RetryRetrievalRequest */
+        RetryRetrievalRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "retry_retrieval";
+            /** Note */
+            note?: string | null;
+        };
+        /** ReviewCandidateEvent */
+        ReviewCandidateEvent: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Match Score */
+            match_score: number;
+            /** Public Id */
+            public_id: string;
+            /** Title */
+            title: string;
+            verification_status: components["schemas"]["VerificationStatus"];
+        };
+        /** ReviewCaseResult */
+        ReviewCaseResult: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            processing_status: components["schemas"]["ProcessingStatus"];
+            resolution: components["schemas"]["ReviewResolution"];
+            /**
+             * Resolved At
+             * Format: date-time
+             */
+            resolved_at: string;
+            /** Selected Disease Id */
+            selected_disease_id?: string | null;
+            /** Selected Event Id */
+            selected_event_id?: string | null;
+            /**
+             * Signal Id
+             * Format: uuid
+             */
+            signal_id: string;
+        };
+        /** ReviewDiseaseOption */
+        ReviewDiseaseOption: {
+            /** Canonical Name */
+            canonical_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** ReviewQueueItem */
+        ReviewQueueItem: {
+            /** Allowed Resolutions */
+            allowed_resolutions?: components["schemas"]["ReviewResolution"][];
+            /** Candidate Events */
+            candidate_events?: components["schemas"]["ReviewCandidateEvent"][];
+            /** Canonical Disease */
+            canonical_disease?: string | null;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Extracted Disease Text */
+            extracted_disease_text?: string | null;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /** Locations */
+            locations?: components["schemas"]["ReviewSignalLocation"][];
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            reason: components["schemas"]["ReviewReason"];
+            /** Retrieval Attempts */
+            retrieval_attempts: number;
+            /**
+             * Signal Id
+             * Format: uuid
+             */
+            signal_id: string;
+            /** Source Name */
+            source_name: string;
+            /** Source Url */
+            source_url: string;
+            /** Title */
+            title: string;
+        };
+        /** ReviewQueuePage */
+        ReviewQueuePage: {
+            /** Disease Options */
+            disease_options: components["schemas"]["ReviewDiseaseOption"][];
+            /** Items */
+            items: components["schemas"]["ReviewQueueItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total Open Cases */
+            total_open_cases: number;
+        };
+        /**
+         * ReviewReason
+         * @enum {string}
+         */
+        ReviewReason: "retrieval_failed" | "extraction_rejected" | "disease_unresolved" | "location_unresolved" | "event_match_ambiguous" | "content_integrity" | "legacy_unclassified";
+        /**
+         * ReviewResolution
+         * @enum {string}
+         */
+        ReviewResolution: "retry_retrieval" | "retry_extraction" | "assign_disease" | "retry_geocoding" | "link_event" | "create_event" | "dismiss" | "recovered_automatically";
+        /** ReviewSignalLocation */
+        ReviewSignalLocation: {
+            /** Admin1 Name */
+            admin1_name?: string | null;
+            /** Country Name */
+            country_name?: string | null;
+            location_role: components["schemas"]["LocationRole"];
+            /** Place Name */
+            place_name?: string | null;
+            precision: components["schemas"]["Precision"];
+            /** Resolved Name */
+            resolved_name?: string | null;
         };
         /** SignalEvidenceResponse */
         SignalEvidenceResponse: {
@@ -472,6 +720,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipelineRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_review_queue_api_v1_admin_reviews_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                reason?: string | null;
+                status?: string | null;
+            };
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueuePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_case_api_v1_admin_reviews__case_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryRetrievalRequest"] | components["schemas"]["RetryExtractionRequest"] | components["schemas"]["AssignDiseaseRequest"] | components["schemas"]["RetryGeocodingRequest"] | components["schemas"]["LinkEventRequest"] | components["schemas"]["CreateEventRequest"] | components["schemas"]["DismissRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewCaseResult"];
                 };
             };
             /** @description Validation Error */

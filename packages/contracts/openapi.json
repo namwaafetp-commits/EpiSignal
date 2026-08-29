@@ -1,6 +1,39 @@
 {
   "components": {
     "schemas": {
+      "AssignDiseaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "assign_disease",
+            "default": "assign_disease",
+            "title": "Action",
+            "type": "string"
+          },
+          "disease_id": {
+            "format": "uuid",
+            "title": "Disease Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "disease_id"
+        ],
+        "title": "AssignDiseaseRequest",
+        "type": "object"
+      },
       "BriefPoint": {
         "additionalProperties": false,
         "description": "One bullet of a brief.\n\n`reported` is false when the article never addressed this slot. The text\nstill has to say something \u2014 it says what is missing \u2014 because an empty\nbullet and an unreported fact would look identical to a reader.",
@@ -67,6 +100,35 @@
         "title": "Components",
         "type": "object"
       },
+      "CreateEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "create_event",
+            "default": "create_event",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "default": "unverified"
+          }
+        },
+        "title": "CreateEventRequest",
+        "type": "object"
+      },
       "CredibilityTier": {
         "enum": [
           "official",
@@ -76,6 +138,28 @@
         ],
         "title": "CredibilityTier",
         "type": "string"
+      },
+      "DismissRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "dismiss",
+            "default": "dismiss",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "DismissRequest",
+        "type": "object"
       },
       "EventContextStatus": {
         "enum": [
@@ -97,6 +181,55 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LinkEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "link_event",
+            "default": "link_event",
+            "title": "Action",
+            "type": "string"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "target_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Event Id"
+          }
+        },
+        "title": "LinkEventRequest",
         "type": "object"
       },
       "LivenessResponse": {
@@ -344,7 +477,8 @@
           "published",
           "duplicate",
           "failed",
-          "needs_review"
+          "needs_review",
+          "dismissed"
         ],
         "title": "ProcessingStatus",
         "type": "string"
@@ -619,6 +753,424 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RetryExtractionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "retry_extraction",
+            "default": "retry_extraction",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RetryExtractionRequest",
+        "type": "object"
+      },
+      "RetryGeocodingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "retry_geocoding",
+            "default": "retry_geocoding",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RetryGeocodingRequest",
+        "type": "object"
+      },
+      "RetryRetrievalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "retry_retrieval",
+            "default": "retry_retrieval",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RetryRetrievalRequest",
+        "type": "object"
+      },
+      "ReviewCandidateEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "match_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Match Score",
+            "type": "number"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus"
+          }
+        },
+        "required": [
+          "event_id",
+          "public_id",
+          "title",
+          "verification_status",
+          "match_score"
+        ],
+        "title": "ReviewCandidateEvent",
+        "type": "object"
+      },
+      "ReviewCaseResult": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/ProcessingStatus"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/ReviewResolution"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "selected_disease_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Disease Id"
+          },
+          "selected_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Id"
+          },
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "signal_id",
+          "resolution",
+          "processing_status",
+          "resolved_at"
+        ],
+        "title": "ReviewCaseResult",
+        "type": "object"
+      },
+      "ReviewDiseaseOption": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name"
+        ],
+        "title": "ReviewDiseaseOption",
+        "type": "object"
+      },
+      "ReviewQueueItem": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewResolution"
+            },
+            "title": "Allowed Resolutions",
+            "type": "array"
+          },
+          "candidate_events": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewCandidateEvent"
+            },
+            "title": "Candidate Events",
+            "type": "array"
+          },
+          "canonical_disease": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Disease"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "extracted_disease_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Disease Text"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewSignalLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReviewReason"
+          },
+          "retrieval_attempts": {
+            "title": "Retrieval Attempts",
+            "type": "integer"
+          },
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "signal_id",
+          "reason",
+          "opened_at",
+          "title",
+          "source_name",
+          "source_url",
+          "first_seen_at",
+          "retrieval_attempts"
+        ],
+        "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "ReviewQueuePage": {
+        "additionalProperties": false,
+        "properties": {
+          "disease_options": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDiseaseOption"
+            },
+            "title": "Disease Options",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total_open_cases": {
+            "title": "Total Open Cases",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_open_cases",
+          "disease_options",
+          "limit",
+          "offset"
+        ],
+        "title": "ReviewQueuePage",
+        "type": "object"
+      },
+      "ReviewReason": {
+        "enum": [
+          "retrieval_failed",
+          "extraction_rejected",
+          "disease_unresolved",
+          "location_unresolved",
+          "event_match_ambiguous",
+          "content_integrity",
+          "legacy_unclassified"
+        ],
+        "title": "ReviewReason",
+        "type": "string"
+      },
+      "ReviewResolution": {
+        "enum": [
+          "retry_retrieval",
+          "retry_extraction",
+          "assign_disease",
+          "retry_geocoding",
+          "link_event",
+          "create_event",
+          "dismiss",
+          "recovered_automatically"
+        ],
+        "title": "ReviewResolution",
+        "type": "string"
+      },
+      "ReviewSignalLocation": {
+        "additionalProperties": false,
+        "properties": {
+          "admin1_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin1 Name"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Name"
+          },
+          "location_role": {
+            "$ref": "#/components/schemas/LocationRole"
+          },
+          "place_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Name"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/Precision"
+          },
+          "resolved_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Name"
+          }
+        },
+        "required": [
+          "location_role",
+          "precision"
+        ],
+        "title": "ReviewSignalLocation",
+        "type": "object"
+      },
       "SignalEvidenceResponse": {
         "properties": {
           "id": {
@@ -808,6 +1360,12 @@
         "title": "VersionResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -879,6 +1437,226 @@
         "summary": "List Pipeline Runs",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews": {
+      "get": {
+        "description": "Retrieve filtered review cases awaiting administrator action.",
+        "operationId": "list_review_queue_api_v1_admin_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueuePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Review Queue",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{case_id}/resolve": {
+      "post": {
+        "description": "Resolve an open review case with a valid action and transition signal state.",
+        "operationId": "resolve_case_api_v1_admin_reviews__case_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "assign_disease": "#/components/schemas/AssignDiseaseRequest",
+                    "create_event": "#/components/schemas/CreateEventRequest",
+                    "dismiss": "#/components/schemas/DismissRequest",
+                    "link_event": "#/components/schemas/LinkEventRequest",
+                    "retry_extraction": "#/components/schemas/RetryExtractionRequest",
+                    "retry_geocoding": "#/components/schemas/RetryGeocodingRequest",
+                    "retry_retrieval": "#/components/schemas/RetryRetrievalRequest"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RetryRetrievalRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RetryExtractionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AssignDiseaseRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RetryGeocodingRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinkEventRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreateEventRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissRequest"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewCaseResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Case",
+        "tags": [
+          "admin-reviews"
         ]
       }
     },

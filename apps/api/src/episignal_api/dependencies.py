@@ -7,9 +7,14 @@ from episignal_backend.db.session import connection_scope, session_scope
 from episignal_backend.evidence import EvidencePage, query_evidence_page
 from episignal_backend.health import DatabaseHealth, check_database
 from episignal_backend.radar import PipelineRunPage, RadarPage, query_pipeline_runs, query_radar
-from episignal_backend.review.documents import ReviewQueuePage
+from episignal_backend.review.documents import (
+    ResolveReviewCommand,
+    ReviewCaseResult,
+    ReviewQueuePage,
+)
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from uuid import UUID
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -113,3 +118,18 @@ def get_review_queue_page(
             reason=parsed_reason,
             status=parsed_status,
         )
+
+
+def resolve_review_case(
+    case_id: UUID,
+    command: ResolveReviewCommand,
+) -> ReviewCaseResult:
+    from episignal_backend.review.repository import SqlAlchemyReviewRepository
+
+    with session_scope() as session:
+        repo = SqlAlchemyReviewRepository(session)
+        return repo.resolve_review(case_id=case_id, command=command)
+
+
+def get_review_resolver() -> Any:
+    return resolve_review_case
