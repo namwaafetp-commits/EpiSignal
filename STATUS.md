@@ -108,7 +108,7 @@ purpose-specific model routing.
 - [x] 4. Persist typed case opening, queue reads, and automatic recovery.
 - [x] 5. Make every `needs_review` writer record a typed cause.
 - [x] 6. Extract one event-finalization implementation.
-- [ ] 7. Resolve retry, disease, and dismissal cases transactionally.
+- [x] 7. Resolve retry, disease, and dismissal cases transactionally.
 - [ ] 8. Resolve ambiguous event cases through shared finalization.
 - [ ] 9. Add secret admin authentication and safe configuration.
 - [ ] 10. Expose authenticated queue reads.

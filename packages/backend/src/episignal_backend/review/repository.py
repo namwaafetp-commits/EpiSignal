@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import (
+    ProcessingStatus,
     ReviewReason,
     ReviewResolution,
     ReviewStatus,
@@ -27,12 +28,27 @@ from episignal_backend.models.review import (
 )
 from episignal_backend.review.documents import (
     ALLOWED_RESOLUTIONS,
+    AssignDiseaseCommand,
+    CreateEventCommand,
+    DiseaseNotFound,
+    DismissCommand,
+    LinkEventCommand,
+    ResolveReviewCommand,
+    RetryExtractionCommand,
+    RetryGeocodingCommand,
+    RetryRetrievalCommand,
+    ReviewActionNotAllowed,
+    ReviewAlreadyResolved,
     ReviewCandidateEvent,
+    ReviewCaseNotFound,
+    ReviewCaseResult,
     ReviewDiseaseOption,
     ReviewQueueItem,
     ReviewQueuePage,
     ReviewSignalLocation,
+    ReviewTargetStale,
 )
+from episignal_backend.review.protocol import LockedReviewCase
 
 
 class SqlAlchemyReviewRepository:
@@ -78,6 +94,98 @@ class SqlAlchemyReviewRepository:
                 self._session.add(cand)
 
         return case.id
+
+    def lock_review_case(self, case_id: UUID) -> LockedReviewCase:
+        """Lock and return the review case, underlying signal, and candidate snapshot."""
+        stmt = (
+            select(SignalReviewCase)
+            .where(SignalReviewCase.id == case_id)
+            .with_for_update()
+        )
+        case = self._session.execute(stmt).scalar_one_or_none()
+        if case is None:
+            raise ReviewCaseNotFound(case_id)
+        if case.status is not ReviewStatus.OPEN:
+            raise ReviewAlreadyResolved(case_id)
+
+        sig_stmt = select(Signal).where(Signal.id == case.signal_id).with_for_update()
+        signal = self._session.execute(sig_stmt).scalar_one_or_none()
+        if signal is None:
+            raise ReviewCaseNotFound(case_id)
+
+        return LockedReviewCase(
+            id=case.id,
+            signal_id=case.signal_id,
+            reason=case.reason,
+            status=case.status,
+        )
+
+    def resolve_review(
+        self, case_id: UUID, command: ResolveReviewCommand
+    ) -> ReviewCaseResult:
+        """Resolve a review case transactionally according to domain rules."""
+        stmt = (
+            select(SignalReviewCase)
+            .where(SignalReviewCase.id == case_id)
+            .with_for_update()
+        )
+        case = self._session.execute(stmt).scalar_one_or_none()
+        if case is None:
+            raise ReviewCaseNotFound(case_id)
+        if case.status is not ReviewStatus.OPEN:
+            raise ReviewAlreadyResolved(case_id)
+
+        sig_stmt = select(Signal).where(Signal.id == case.signal_id).with_for_update()
+        signal = self._session.execute(sig_stmt).scalar_one_or_none()
+        if signal is None:
+            raise ReviewCaseNotFound(case_id)
+
+        allowed = ALLOWED_RESOLUTIONS.get(case.reason, frozenset())
+        if command.action not in allowed:
+            raise ReviewActionNotAllowed(case.reason, command.action)
+
+        selected_disease_id: UUID | None = None
+        selected_event_id: UUID | None = None
+
+        if command.action is ReviewResolution.RETRY_RETRIEVAL:
+            signal.retrieval_attempts = 0
+            signal.processing_status = ProcessingStatus.FETCHED
+        elif command.action is ReviewResolution.RETRY_EXTRACTION:
+            signal.processing_status = ProcessingStatus.CLASSIFIED
+        elif command.action is ReviewResolution.ASSIGN_DISEASE:
+            assert isinstance(command, AssignDiseaseCommand)
+            disease_stmt = select(Disease).where(Disease.id == command.disease_id)
+            disease = self._session.execute(disease_stmt).scalar_one_or_none()
+            if disease is None:
+                raise DiseaseNotFound(command.disease_id)
+            signal.disease_id = command.disease_id
+            signal.processing_status = ProcessingStatus.EXTRACTED
+            selected_disease_id = command.disease_id
+        elif command.action is ReviewResolution.RETRY_GEOCODING:
+            signal.processing_status = ProcessingStatus.EXTRACTED
+        elif command.action is ReviewResolution.DISMISS:
+            signal.processing_status = ProcessingStatus.DISMISSED
+        elif command.action is ReviewResolution.LINK_EVENT:
+            pass
+        elif command.action is ReviewResolution.CREATE_EVENT:
+            pass
+
+        now = datetime.now(UTC)
+        case.status = ReviewStatus.RESOLVED
+        case.resolution = command.action
+        case.reviewed_by = command.reviewed_by
+        case.resolved_at = now
+        self._session.commit()
+
+        return ReviewCaseResult(
+            case_id=case.id,
+            signal_id=signal.id,
+            resolution=command.action,
+            processing_status=signal.processing_status,
+            selected_disease_id=selected_disease_id,
+            selected_event_id=selected_event_id,
+            resolved_at=now,
+        )
 
     def recover_retrieval_automatically(self, signal_id: UUID) -> None:
         """Close only the open retrieval_failed case when discovery succeeds."""
