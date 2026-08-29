@@ -19,6 +19,7 @@ from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import run_event_assembly
+from episignal_backend.events.delta import configure_delta
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.geocode.locate import run_geocoding
 from episignal_backend.geocode.repository import (
@@ -184,10 +185,7 @@ def _match() -> Mapping[str, int]:
         specs = list(SqlAlchemyAiRepository(session).models())
         # The delta pass is enrichment: without a provider key the assembly
         # still runs, it simply never records what changed.
-        try:
-            model = routed_from_settings(settings, specs)
-        except NoProviderKey:
-            model = None
+        wiring = configure_delta(settings, specs)
         summary = run_event_assembly(
             event_repository,
             limit=settings.event_match_batch_size,
@@ -197,9 +195,9 @@ def _match() -> Mapping[str, int]:
             match_threshold=settings.event_match_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
-            delta_model=model,
-            delta_spec=next((spec for spec in specs if spec.tier == 1), None),
-            followup_window_days=settings.event_followup_window_days,
+            delta_model=wiring.model,
+            delta_spec=wiring.spec,
+            followup_window_days=wiring.window_days,
         )
     return {
         "seen": summary.signals_seen,

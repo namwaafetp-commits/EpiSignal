@@ -80,7 +80,26 @@ def _run(arguments: Arguments) -> PreGroupResult:
 def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     if not settings.pregroup_enabled:
-        print("pregroup=disabled")
+        # Disabled stops new deferrals; it never strands old ones. Closing
+        # open groups is two UPDATEs, so it runs even now — otherwise a flag
+        # flipped mid-flight would leave deferred signals unselectable
+        # forever, and "nothing is permanently unseen" is the stage's
+        # binding promise.
+        try:
+            with session_scope() as session:
+                resolved, expired = SqlAlchemyPreGroupStore(session).resolve_and_expire(
+                    expiry_hours=settings.pregroup_expiry_hours,
+                    now=datetime.now(UTC),
+                )
+                session.commit()
+        except Exception as error:
+            print(
+                f"Pre-group close-out failed ({type(error).__name__}). "
+                "Check the database and migration state.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"pregroup=disabled resolved={resolved} expired={expired}")
         return 0
 
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)

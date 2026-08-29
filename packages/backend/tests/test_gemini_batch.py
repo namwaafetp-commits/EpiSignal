@@ -109,13 +109,15 @@ def test_a_failed_job_is_unavailable() -> None:
         client(router).poll(name, REQUESTS)
 
 
-def test_a_missing_entry_is_unavailable_rather_than_misplaced() -> None:
+def test_a_missing_entry_keeps_the_answers_the_job_did_give() -> None:
     router = Router()
     name = client(router).submit(REQUESTS)
     router.results[name][1] = {"error": {"code": 500}}
 
-    with pytest.raises(ModelUnavailable):
-        client(router).poll(name, REQUESTS)
+    answers = client(router).poll(name, REQUESTS)
+
+    assert answers[0] is not None and answers[0].content == '{"index": 0}'
+    assert answers[1] is None
 
 
 def test_an_empty_submission_is_refused() -> None:

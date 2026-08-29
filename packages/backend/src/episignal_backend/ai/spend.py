@@ -7,7 +7,7 @@ the ground truth the efficiency target is measured against.
 This module imports SQLAlchemy; it reads `ai_requests` and nothing else.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -42,7 +42,9 @@ class SpendSummary(BaseModel):
 def trailing_spend(
     session: Session, *, window_days: int = DEFAULT_WINDOW_DAYS, now: datetime | None = None
 ) -> SpendSummary:
-    reference = now or datetime.now(tz=None)
+    # The ledger stores timestamptz, so the window is cut on the UTC clock; a
+    # naive local clock would skew the trailing month by the host's offset.
+    reference = now or datetime.now(UTC)
     since = reference - timedelta(days=window_days)
 
     total = session.execute(

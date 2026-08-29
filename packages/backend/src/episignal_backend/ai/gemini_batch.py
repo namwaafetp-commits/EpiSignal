@@ -60,12 +60,15 @@ class GeminiBatchClient:
         requests: Sequence[ChatRequest],
         *,
         wait_seconds: float = 0.0,
-    ) -> list[ChatResponse]:
+    ) -> list[ChatResponse | None]:
         """Wait for the job, then return one answer per submitted request.
 
-        Answers arrive in submission order. An entry the job never answered is
-        `None` in the raw list and becomes `ModelUnavailable` here, so a partial
-        batch costs its caller nothing but a real-time retry of the gap.
+        Answers arrive in submission order, and an entry the job never
+        answered is `None` in its position — a partial batch keeps every
+        answer it earned, and the caller re-selects only the gaps for
+        real-time. Job-level failures (rejected, cancelled, still pending
+        after the wait budget) raise `ModelUnavailable`, because there are no
+        answers to keep.
         """
         deadline = time.monotonic() + wait_seconds
         while True:
@@ -85,10 +88,7 @@ class GeminiBatchClient:
             response = _answer(entry)
             if response is not None:
                 answers[index] = response
-        missing = [i for i, answer in enumerate(answers) if answer is None]
-        if missing:
-            raise ModelUnavailable(f"batch answers missing for {len(missing)} requests")
-        return [answer for answer in answers if answer is not None]
+        return answers
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         try:

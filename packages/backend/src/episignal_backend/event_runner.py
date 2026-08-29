@@ -13,10 +13,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
-from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import AssemblySummary, run_event_assembly
+from episignal_backend.events.delta import configure_delta
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 
 
@@ -53,13 +53,7 @@ def _run(arguments: Arguments) -> AssemblySummary:
     stale = arguments.stale or settings.event_match_stale
     with session_scope() as session:
         specs = list(SqlAlchemyAiRepository(session).models())
-        try:
-            model = routed_from_settings(settings, specs)
-        except NoProviderKey:
-            # The delta pass is enrichment; an assembly without it is still a
-            # complete assembly. No key, no delta, and the run proceeds.
-            model = None
-        delta_spec = next((spec for spec in specs if spec.tier == 1), None)
+        wiring = configure_delta(settings, specs)
         return run_event_assembly(
             SqlAlchemyEventRepository(session),
             limit=limit,
@@ -69,9 +63,9 @@ def _run(arguments: Arguments) -> AssemblySummary:
             match_threshold=settings.event_match_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
-            delta_model=model,
-            delta_spec=delta_spec,
-            followup_window_days=settings.event_followup_window_days,
+            delta_model=wiring.model,
+            delta_spec=wiring.spec,
+            followup_window_days=wiring.window_days,
         )
 
 

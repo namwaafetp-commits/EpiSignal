@@ -15,7 +15,6 @@ This module imports neither SQLAlchemy nor httpx.
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,13 +29,6 @@ _CREDIBILITY_RANK: dict[CredibilityTier, int] = {
     CredibilityTier.MEDIUM: 1,
     CredibilityTier.UNKNOWN: 0,
 }
-
-
-class GroupRole(StrEnum):
-    """What a member owes its group. `representative` proceeds; `deferred` waits."""
-
-    REPRESENTATIVE = "representative"
-    DEFERRED = "deferred"
 
 
 class PreGroupSignal(BaseModel):

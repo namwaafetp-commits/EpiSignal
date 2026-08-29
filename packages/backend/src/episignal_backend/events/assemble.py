@@ -71,21 +71,18 @@ def _maybe_run_delta(
     reference = now or datetime.now(UTC)
     if reference - chosen.last_updated_at > timedelta(days=followup_window_days):
         return 0
-    new_brief = next(
-        (
-            sig.extraction.brief
-            for sig in cluster.signals
-            if sig.extraction is not None and sig.extraction.brief
-        ),
-        None,
-    )
-    if new_brief is None:
+    briefed = [
+        sig for sig in cluster.signals if sig.extraction is not None and sig.extraction.brief
+    ]
+    if not briefed:
         return 0
 
-    target = next(
-        sig for sig in cluster.signals if sig.extraction is not None and sig.extraction.brief
-    )
-    result = run_delta(delta_model, delta_spec, previous=previous_brief, new=tuple(new_brief))
+    # The delta lands on this attach's newest report, so a reader comparing
+    # the row with its neighbours sees the change where the change was
+    # reported, not on an arbitrary member of the cluster.
+    target = max(briefed, key=lambda sig: sig.published_at or sig.first_seen_at)
+    target_brief = target.extraction.brief if target.extraction is not None else ()
+    result = run_delta(delta_model, delta_spec, previous=previous_brief, new=target_brief)
     if result.attempt is not None:
         repo.record_ai_request(
             cost_row(

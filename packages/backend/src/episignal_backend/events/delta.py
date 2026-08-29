@@ -7,7 +7,9 @@ updated five-slot brief plus an explicit what-changed note, written onto the
 newest observation row. The pass is enrichment: it never gates the attach, and
 a pass that cannot run leaves the attach exactly as it was.
 
-This module imports neither SQLAlchemy nor httpx.
+The pass itself is pure: `run_delta` imports neither SQLAlchemy nor httpx.
+`configure_delta` is the one wiring function, and it is the only import of
+the routing layer here.
 """
 
 import json
@@ -21,6 +23,7 @@ from episignal_backend.ai.ladder import Attempt, cost_usd
 from episignal_backend.ai.protocol import ChatModel, ModelUnavailable
 from episignal_backend.ai.schema import BRIEF_SLOTS, BriefPoint
 from episignal_backend.ai.validate import Rejected, RejectionReason
+from episignal_backend.config import Settings
 from episignal_backend.db.types import AiOutcome
 
 DELTA_SCHEMA_NAME = "event_delta"
@@ -177,3 +180,29 @@ def delta_payload(delta: DeltaBrief) -> dict[str, object]:
         "what_changed": delta.what_changed,
         "brief": [point.model_dump(mode="json") for point in delta.brief],
     }
+
+
+@dataclass(frozen=True)
+class DeltaWiring:
+    """Everything the assembly needs to run the delta pass, resolved once.
+
+    `model` is None when no provider key is configured: the assembly then
+    runs without the pass rather than failing, because a delta is enrichment
+    and never a gate.
+    """
+
+    model: ChatModel | None
+    spec: ModelSpec | None
+    window_days: float
+
+
+def configure_delta(settings: Settings, specs: list[ModelSpec]) -> DeltaWiring:
+    """One resolution shared by the manual runner and the scheduled stage."""
+    from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
+
+    try:
+        model = routed_from_settings(settings, specs)
+    except NoProviderKey:
+        return DeltaWiring(model=None, spec=None, window_days=settings.event_followup_window_days)
+    spec = next((candidate for candidate in specs if candidate.tier == 1), None)
+    return DeltaWiring(model=model, spec=spec, window_days=settings.event_followup_window_days)

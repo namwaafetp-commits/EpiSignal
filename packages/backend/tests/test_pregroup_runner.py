@@ -80,20 +80,28 @@ def test_parse_arguments_reads_the_limit_and_ignores_the_separator() -> None:
     assert parse_arguments([]).limit is None
 
 
-def test_a_disabled_stage_reports_and_succeeds(
+def test_a_disabled_stage_still_closes_open_groups(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from episignal_backend import pregroup_runner
 
     class DisabledSettings:
         pregroup_enabled = False
+        pregroup_expiry_hours = 72
+
+    class FakeStore:
+        def __init__(self, session) -> None:
+            pass
+
+        def resolve_and_expire(self, *, expiry_hours, now):
+            return 2, 1
 
     monkeypatch.setattr(pregroup_runner, "get_settings", lambda: DisabledSettings())
+    monkeypatch.setattr(pregroup_runner, "SqlAlchemyPreGroupStore", FakeStore)
 
-    from episignal_backend.pregroup_runner import main
-
-    assert main([]) == 0
-    assert "disabled" in capsys.readouterr().out
+    assert pregroup_runner.main([]) == 0
+    out = capsys.readouterr().out
+    assert "disabled" in out and "resolved=2" in out and "expired=1" in out
 
 
 def test_an_enabled_stage_prints_its_counts(
