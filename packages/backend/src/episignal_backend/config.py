@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     event_match_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
     event_match_batch_size: int = Field(default=100, ge=1, le=5000)
     event_match_stale: bool = False
+    # How recent an event's latest report must be for a follow-up attach to
+    # run the delta pass. Ten days: the operator's window for stateful
+    # follow-up, kept configurable like every other matching bound.
+    event_followup_window_days: float = Field(default=10.0, ge=0.0, le=3650.0)
 
     # Seven days. Bounds the query issued after a long gap: a laptop closed for
     # a month asks for a week, not a month GDELT would refuse.

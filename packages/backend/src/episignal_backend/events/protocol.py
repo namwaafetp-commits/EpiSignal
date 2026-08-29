@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+from episignal_backend.ai.documents import AiRequestRecord
+from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import RelationshipType, VerificationStatus
 from episignal_backend.events.documents import (
     CandidateEvent,
@@ -82,6 +84,22 @@ class EventRepository(Protocol):
 
     def mark_needs_review(self, signal_id: UUID) -> None:
         """Route an unclusterable or refused signal to processing_status = 'needs_review'."""
+        ...
+
+    def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:
+        """The most recently reported brief already attached to an event.
+
+        Read before the new attach lands, so the delta pass compares against
+        what the event was, not what this run just made it.
+        """
+        ...
+
+    def apply_delta(self, event_id: UUID, signal_id: UUID, delta: dict[str, object]) -> None:
+        """Write the delta pass output onto one observation row. Nothing else moves."""
+        ...
+
+    def record_ai_request(self, record: AiRequestRecord) -> None:
+        """Write one cost row. The delta pass is costed like every other request."""
         ...
 
     def commit(self) -> None:

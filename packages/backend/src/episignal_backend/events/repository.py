@@ -17,7 +17,8 @@ from pydantic import ValidationError
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.orm import Session
 
-from episignal_backend.ai.schema import Extraction, StoredExtractionPayload
+from episignal_backend.ai.documents import AiRequestRecord
+from episignal_backend.ai.schema import BriefPoint, Extraction, StoredExtractionPayload
 from episignal_backend.db.types import (
     EventStatus,
     EventType,
@@ -33,6 +34,7 @@ from episignal_backend.events.documents import (
     StoryCluster,
 )
 from episignal_backend.models import (
+    AiRequest,
     Event,
     EventLocation,
     EventObservation,
@@ -411,6 +413,59 @@ class SqlAlchemyEventRepository:
             update(Signal)
             .where(Signal.id == signal_id)
             .values(processing_status=ProcessingStatus.NEEDS_REVIEW)
+        )
+
+    def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:
+        row = self._session.execute(
+            select(EventObservation.signal_id, Signal.ai_extraction)
+            .join(Signal, EventObservation.signal_id == Signal.id)
+            .where(EventObservation.event_id == event_id)
+            # The newest report wins: `reported_at` is the publisher's clock,
+            # `created_at` the pipeline's, and an observation with neither is
+            # older than one with either.
+            .order_by(
+                func.coalesce(EventObservation.reported_at, EventObservation.created_at).desc(),
+                EventObservation.created_at.desc(),
+            )
+            .limit(1)
+        ).first()
+        if row is None:
+            return None
+        extraction = read_stored_extraction(row.ai_extraction)
+        if extraction is None or not extraction.brief:
+            return None
+        return tuple(extraction.brief)
+
+    def apply_delta(self, event_id: UUID, signal_id: UUID, delta: dict[str, object]) -> None:
+        self._session.execute(
+            update(EventObservation)
+            .where(
+                EventObservation.event_id == event_id,
+                EventObservation.signal_id == signal_id,
+            )
+            .values(delta=delta)
+        )
+
+    def record_ai_request(self, record: AiRequestRecord) -> None:
+        self._session.add(
+            AiRequest(
+                ai_model_id=record.ai_model_id,
+                model_id=record.model_id,
+                tier=record.tier,
+                purpose=record.purpose,
+                signal_id=record.signal_id,
+                batch_size=record.batch_size,
+                prompt_tokens=record.prompt_tokens,
+                completion_tokens=record.completion_tokens,
+                latency_ms=record.latency_ms,
+                http_status=record.http_status,
+                outcome=record.outcome,
+                rejection_reason=record.rejection_reason,
+                prompt_price_per_million=record.prompt_price_per_million,
+                completion_price_per_million=record.completion_price_per_million,
+                cost_usd=record.cost_usd,
+                requested_at=record.requested_at,
+            )
         )
 
     def commit(self) -> None:

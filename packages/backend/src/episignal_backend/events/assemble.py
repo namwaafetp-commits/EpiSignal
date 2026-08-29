@@ -8,13 +8,19 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from episignal_backend.db.types import RelationshipType
+from episignal_backend.ai.documents import ModelSpec
+from episignal_backend.ai.ladder import cost_row
+from episignal_backend.ai.protocol import ChatModel
+from episignal_backend.ai.schema import BriefPoint
+from episignal_backend.db.types import AiPurpose, RelationshipType
 from episignal_backend.events.cluster import build_clusters
-from episignal_backend.events.documents import MatchAction
+from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
+from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
 from episignal_backend.events.match import DEFAULT_MATCH_WEIGHTS, decide
 from episignal_backend.events.protocol import EventRepository
 from episignal_backend.events.score import (
@@ -37,6 +43,63 @@ class AssemblySummary(BaseModel):
     signals_attached: int
     signals_refused: int
     unclusterable: int
+    deltas_applied: int = 0
+
+
+def _maybe_run_delta(
+    repo: EventRepository,
+    delta_model: ChatModel | None,
+    delta_spec: ModelSpec | None,
+    followup_window_days: float | None,
+    *,
+    event_id: UUID,
+    chosen: CandidateEvent | None,
+    previous_brief: tuple[BriefPoint, ...] | None,
+    cluster: StoryCluster,
+    now: datetime | None,
+) -> int:
+    """Run the delta pass when this attach followed a recent report.
+
+    Returns 1 when a delta landed, 0 otherwise. Every early return is a
+    no-op: the attach has already happened and must stand whether or not the
+    pass runs, succeeds, or fails.
+    """
+    if delta_model is None or delta_spec is None or followup_window_days is None:
+        return 0
+    if chosen is None or previous_brief is None:
+        return 0
+    reference = now or datetime.now(UTC)
+    if reference - chosen.last_updated_at > timedelta(days=followup_window_days):
+        return 0
+    new_brief = next(
+        (
+            sig.extraction.brief
+            for sig in cluster.signals
+            if sig.extraction is not None and sig.extraction.brief
+        ),
+        None,
+    )
+    if new_brief is None:
+        return 0
+
+    target = next(
+        sig for sig in cluster.signals if sig.extraction is not None and sig.extraction.brief
+    )
+    result = run_delta(delta_model, delta_spec, previous=previous_brief, new=tuple(new_brief))
+    if result.attempt is not None:
+        repo.record_ai_request(
+            cost_row(
+                result.attempt,
+                purpose=AiPurpose.FOLLOW_UP,
+                signal_id=target.signal_id,
+                batch_size=1,
+                at=reference,
+            )
+        )
+    if result.outcome is DeltaOutcome.ACCEPTED and result.delta is not None:
+        repo.apply_delta(event_id, target.signal_id, delta_payload(result.delta))
+        return 1
+    return 0
 
 
 def run_event_assembly(
@@ -53,8 +116,17 @@ def run_event_assembly(
     early_signal_weights: Mapping[str, float] = DEFAULT_EARLY_SIGNAL_WEIGHTS,
     evidence_weights: Mapping[str, float] = DEFAULT_EVIDENCE_WEIGHTS,
     now: datetime | None = None,
+    delta_model: ChatModel | None = None,
+    delta_spec: ModelSpec | None = None,
+    followup_window_days: float | None = None,
 ) -> AssemblySummary:
-    """Run the end-to-end event assembly pass."""
+    """Run the end-to-end event assembly pass.
+
+    When `delta_model` and `delta_spec` are given, an attach to an event whose
+    latest report is older than `followup_window_days` runs the delta pass and
+    writes what changed onto the newest observation. The pass enriches; it
+    never gates the attach, and a pass that cannot run changes nothing.
+    """
     signals = repo.signals_to_match(limit=limit, stale=stale)
     if not signals:
         repo.commit()
@@ -76,6 +148,7 @@ def run_event_assembly(
     events_created = 0
     signals_attached = 0
     signals_refused = 0
+    deltas_applied = 0
 
     for cluster in clusters:
         candidates = repo.candidate_events(
@@ -96,6 +169,10 @@ def run_event_assembly(
             assert decision.event_id is not None
             event_id = decision.event_id
             match_score = decision.match_score if decision.match_score is not None else 1.0
+            chosen = next((cand for cand in candidates if cand.event_id == event_id), None)
+            # Read before the attach lands: the delta compares against what the
+            # event was, not what this run is about to make it.
+            previous_brief = repo.latest_brief(event_id)
             for sig in cluster.signals:
                 repo.attach_signal(
                     event_id,
@@ -114,6 +191,18 @@ def run_event_assembly(
             evid = evidence_score(cluster.signals, weights=evidence_weights)
             v_status = verification_status(cluster.signals)
             repo.apply_scores(event_id, early.total, evid.total, v_status)
+
+            deltas_applied += _maybe_run_delta(
+                repo,
+                delta_model,
+                delta_spec,
+                followup_window_days,
+                event_id=event_id,
+                chosen=chosen,
+                previous_brief=previous_brief,
+                cluster=cluster,
+                now=now,
+            )
 
         elif decision.action is MatchAction.CREATE:
             created = repo.create_event(cluster)
@@ -162,4 +251,5 @@ def run_event_assembly(
         signals_attached=signals_attached,
         signals_refused=signals_refused,
         unclusterable=len(unclusterable),
+        deltas_applied=deltas_applied,
     )
