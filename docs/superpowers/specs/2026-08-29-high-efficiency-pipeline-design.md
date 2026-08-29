@@ -174,6 +174,24 @@ re-selects for real-time.
 
 Real-time stays the path for manual and high-priority single-article runs.
 
+### Measurement amendment, 2026-08-29
+
+Task 10 proved that a safe scheduled batch path needs durable batch-job state:
+one scheduler cycle submits work and a later cycle polls it. This design had not
+specified that persistence seam, so adding it during implementation would have
+been an unreviewed schema expansion. The worker delivered and tested the batch
+client, then deferred scheduler wiring to the measurement gate recorded in
+Task 13 and the completion report.
+
+The operator set the current target at `$0.50/month`. Measured trailing spend
+was `$0.118554` at the worker gate and `$0.174529` after the planner's reordered
+roster proof, both below target with pre-group disabled and batch unwired.
+Therefore Decision 5's scheduler wiring is conditional future work, not an `O`
+completion requirement: it begins only after measured spend exceeds target and
+after a separate design defines batch-job persistence, recovery, and replay.
+The built/tested client remains the reusable transport seam. This amendment
+also preserves the original real-time floor and never strands signals.
+
 ## Invariants preserved
 
 - Evidence provenance, conservative matching, observation history, source
