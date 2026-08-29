@@ -10,7 +10,11 @@ This module imports neither SQLAlchemy nor httpx.
 import json
 from collections.abc import Sequence
 
-from episignal_backend.ai.documents import ClassifiableSignal, ExtractableSignal
+from episignal_backend.ai.documents import (
+    ClassifiableSignal,
+    ClusterMemberSignal,
+    ExtractableSignal,
+)
 from episignal_backend.ai.schema import classification_json_schema, extraction_json_schema
 
 EXTRACTION_RULES = """You read one news article and return epidemiological facts as JSON.
@@ -79,3 +83,50 @@ def classification_prompt(batch: Sequence[ClassifiableSignal]) -> tuple[str, str
     system = CLASSIFICATION_RULES + json.dumps(classification_json_schema(), sort_keys=True)
     items = "\n\n".join(f"id: {signal.id}\ntitle: {signal.title}" for signal in batch)
     return system, items
+
+
+MAX_CLUSTER_MEMBERS = 4
+CLUSTER_MEMBER_CHARACTERS = 4000
+
+CLUSTER_EXTRACTION_RULES = """You read several news articles about the SAME event
+and return one set of epidemiological facts as JSON.
+
+Rules:
+- Return one JSON object and nothing else. No prose, no code fence.
+- The articles are numbered. Each begins with a line reading SOURCE n.
+- Every count and every transmission flag must include source_index: the number
+  of the single article you read it from, and source_span: a short phrase
+  copied word for word from THAT article.
+- Never combine two articles into one number. If they disagree, report the
+  figure from the article you judge most authoritative and cite that article.
+- Copy every source_span in its own article's language. Do not translate a span.
+- Write title_english and every brief point in English. Translate rather than
+  transliterate.
+- Return exactly five brief points, one for each slot, in the order the schema
+  lists them: what_where, counts, timing, spread, reporting.
+- A slot no article addresses gets reported: false and one short line saying
+  what is not reported. Never fill a slot from outside the articles.
+- If no article states something, return null. Never infer, never estimate,
+  never carry a number over from general knowledge.
+- Do not state that an outbreak is confirmed. Report what the articles report.
+- Do not include any person's name, telephone number, or address.
+
+The object must match this JSON Schema exactly:
+"""
+
+
+def cluster_extraction_prompt(
+    members: Sequence[ClusterMemberSignal], *, max_characters: int
+) -> tuple[str, str]:
+    """One request for one story, with every member kept separately addressable.
+
+    The members are laid out with their index in the text rather than only in
+    the schema, because the model has to cite an index it can see.
+    """
+    system = CLUSTER_EXTRACTION_RULES + json.dumps(extraction_json_schema(), sort_keys=True)
+    blocks = [
+        f"SOURCE {member.source_index}\nTITLE: {member.title}\n"
+        f"ARTICLE:\n{truncate(member.raw_text, max_characters)}"
+        for member in members
+    ]
+    return system, "\n\n---\n\n".join(blocks)

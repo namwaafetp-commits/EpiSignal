@@ -185,3 +185,37 @@ class AiRequestRecord(BaseModel):
     @classmethod
     def requested_at_is_aware(cls, value: datetime) -> datetime:
         return _require_aware(value)
+
+
+class ClusterMemberSignal(BaseModel):
+    """One article of a story, with the index its claims will cite."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    source_index: int = Field(ge=0)
+    title: str = Field(min_length=1)
+    raw_text: str = Field(min_length=1)
+
+    @field_validator("title", "raw_text")
+    @classmethod
+    def text_is_not_blank(cls, value: str) -> str:
+        return _require_text(value)
+
+
+class ExtractableCluster(BaseModel):
+    """One open story group, ready to be extracted once.
+
+    The representative is always member zero, so the index a claim cites is
+    stable between the prompt, the validator, and the stored payload.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    group_id: UUID
+    representative_id: UUID
+    members: tuple[ClusterMemberSignal, ...] = Field(min_length=1)
+
+    @property
+    def bodies(self) -> tuple[str, ...]:
+        return tuple(member.raw_text for member in self.members)

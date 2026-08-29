@@ -1,9 +1,15 @@
 import json
 from uuid import UUID, uuid4
 
-from episignal_backend.ai.documents import ClassifiableSignal, ExtractableSignal
+from episignal_backend.ai.documents import (
+    ClassifiableSignal,
+    ClusterMemberSignal,
+    ExtractableSignal,
+)
 from episignal_backend.ai.prompts import (
+    MAX_CLUSTER_MEMBERS,
     classification_prompt,
+    cluster_extraction_prompt,
     extraction_prompt,
     truncate,
 )
@@ -107,3 +113,44 @@ def test_the_extraction_prompt_carries_the_five_slots() -> None:
 
     for slot in ("what_where", "counts", "timing", "spread", "reporting"):
         assert slot in system
+
+
+MEMBERS = (
+    ClusterMemberSignal(
+        id=uuid4(),
+        source_index=0,
+        title="Title 1",
+        raw_text="Health officials confirmed 12 cases in Hanoi.",
+    ),
+    ClusterMemberSignal(
+        id=uuid4(),
+        source_index=1,
+        title="Title 2",
+        raw_text="The ministry reported 3 deaths on Tuesday.",
+    ),
+)
+
+LONG_MEMBERS = (
+    ClusterMemberSignal(id=uuid4(), source_index=0, title="T1", raw_text="word " * 100),
+    ClusterMemberSignal(id=uuid4(), source_index=1, title="T2", raw_text="word " * 100),
+)
+
+
+def test_a_cluster_prompt_labels_every_member() -> None:
+    system, user = cluster_extraction_prompt(MEMBERS, max_characters=4000)
+
+    assert "SOURCE 0" in user
+    assert "SOURCE 1" in user
+    assert "source_index" in system
+
+
+def test_a_cluster_prompt_truncates_each_member_separately() -> None:
+    _, user = cluster_extraction_prompt(LONG_MEMBERS, max_characters=100)
+
+    for member in LONG_MEMBERS:
+        assert member.raw_text not in user
+    assert "SOURCE 1" in user
+
+
+def test_a_cluster_prompt_carries_no_more_than_four_members() -> None:
+    assert MAX_CLUSTER_MEMBERS == 4
