@@ -76,9 +76,11 @@ improve future model choice, but neither resolves the other 36 stopped signals.
 - Queue reads never expose raw text, source spans, prompts, credentials,
   exception messages, or patient-level data.
 - The supplied UI image is visual direction only: dark navy structure, cyan
-  selection, dense work-area-plus-rail layouts, Geist/Geist Mono, and Phosphor
-  icons. Do not copy its invented severity, counts, locations, publishers, or
-  reviewed-state claims, and never collapse EpiSignal's two scores.
+  selection, and dense work-area-plus-rail layouts. Adapt the current
+  Fraunces/Inter, semantic CSS, Tailwind, and MapLibre infrastructure; add no UI
+  dependency. Do not copy the reference's invented severity, counts, locations,
+  publishers, or reviewed-state claims, and never collapse EpiSignal's two
+  scores.
 - The migration expands, backfills conservatively, verifies exact case/signal
   reconciliation, and refuses destructive downgrade after live review history
   exists.

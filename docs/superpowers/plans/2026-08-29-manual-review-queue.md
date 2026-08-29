@@ -1035,23 +1035,8 @@ git commit -m "feat(web): validate admin review contracts"
 
 - Create: `apps/web/src/components/admin-review-queue.tsx`
 - Create: `apps/web/src/components/admin-review-queue.test.tsx`
-- Modify: `apps/web/package.json`
-- Modify: `pnpm-lock.yaml`
 
-- [ ] **Step 1: Verify and add the one icon dependency**
-
-`@phosphor-icons/react` is not present at planning time. Verify before install:
-
-```powershell
-corepack pnpm --filter @episignal/web why @phosphor-icons/react
-corepack pnpm --filter @episignal/web add @phosphor-icons/react
-```
-
-Expected: the first command reports no installed dependency; the second adds
-the package to `apps/web/package.json` and `pnpm-lock.yaml`. Add no motion,
-state, form, or component library.
-
-- [ ] **Step 2: Write failing behavior and layout tests**
+- [ ] **Step 1: Write failing behavior and layout tests**
 
 Use Testing Library and `userEvent` to prove:
 
@@ -1069,7 +1054,7 @@ Use Testing Library and `userEvent` to prove:
 - icon-only buttons have accessible names and rendered text contains none of
   the emoji glyphs `📍`, `✕`, `⚠`, or `✓`.
 
-- [ ] **Step 3: Run component test and confirm red**
+- [ ] **Step 2: Run component test and confirm red**
 
 ```powershell
 corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.test.tsx
@@ -1077,7 +1062,7 @@ corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.
 
 Expected: component missing.
 
-- [ ] **Step 4: Implement one isolated client component**
+- [ ] **Step 3: Implement one isolated client component**
 
 Credential and selection state stays local:
 
@@ -1098,12 +1083,13 @@ conflict, and unavailable branches. Use a
 desktop `case-rail` plus `decision-workspace`; DOM order remains rail then
 workspace and CSS collapses it to one column below `768px`. Use semantic
 headings, `<form>`, `<fieldset>`, `<legend>`, `<label>`, native `<select>`, and
-buttons. Use Phosphor icons at weight `regular`; decorative icons are
-`aria-hidden`, and icon-only controls have labels. Keep one pending action per
-case. Require explicit confirmation for dismissal. Render safe facts only. No
-token persistence, animation library, or generic form system.
+buttons. Reuse existing text controls and CSS status marks; add no UI or icon
+package. Decorative marks are `aria-hidden`, and icon-only controls have labels.
+Keep one pending action per case. Require explicit confirmation for dismissal.
+Render safe facts only. No token persistence, animation library, or generic form
+system.
 
-- [ ] **Step 5: Run component and client tests**
+- [ ] **Step 4: Run component and client tests**
 
 ```powershell
 corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.test.tsx src/lib/api-reviews.test.ts
@@ -1111,10 +1097,10 @@ corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```powershell
-git add apps/web/package.json pnpm-lock.yaml apps/web/src/components/admin-review-queue.tsx apps/web/src/components/admin-review-queue.test.tsx
+git add apps/web/src/components/admin-review-queue.tsx apps/web/src/components/admin-review-queue.test.tsx
 git commit -m "feat(web): add manual review queue"
 ```
 
@@ -1125,7 +1111,6 @@ git commit -m "feat(web): add manual review queue"
 - Create: `apps/web/src/components/console-masthead.tsx`
 - Create: `apps/web/src/components/console-masthead.test.tsx`
 - Create: `apps/web/src/app/admin/reviews/page.tsx`
-- Modify: `apps/web/src/app/layout.tsx`
 - Modify: `apps/web/src/app/globals.css`
 - Modify: `apps/web/src/components/home-shell.tsx`
 - Modify: `apps/web/src/components/home-shell.test.tsx`
@@ -1146,7 +1131,8 @@ Assert:
 - pipeline and review pages use the shared console masthead;
 - no web component contains the emoji glyphs `📍`, `✕`, `⚠`, or `✓`;
 - no production fixture adds the reference image's invented severity labels,
-  publishers, locations, or summary counts.
+  publishers, locations, or summary counts;
+- `apps/web/package.json` gains no UI, icon, motion, state, or form dependency.
 
 - [ ] **Step 2: Run focused web tests and confirm red**
 
@@ -1156,47 +1142,39 @@ corepack pnpm --filter @episignal/web test -- src/components/console-masthead.te
 
 Expected: shared masthead and new layout assertions fail.
 
-- [ ] **Step 3: Replace dashboard typography and define exact console tokens**
+- [ ] **Step 3: Adapt the existing semantic tokens and typography**
 
-In `layout.tsx`, replace Fraunces and Inter with built-in Next fonts:
-
-```tsx
-import { Geist, Geist_Mono } from "next/font/google";
-
-const ui = Geist({ subsets: ["latin"], variable: "--font-ui" });
-const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
-```
-
-Apply both variables to `<html>`. In `globals.css`, define the approved tokens:
+Keep the current Fraunces/Inter loading and existing CSS variable names. Adapt
+their values in `globals.css` rather than creating a parallel token system:
 
 ```css
 :root {
-  --canvas: #061321;
-  --surface: #0b1d2d;
-  --surface-raised: #102538;
-  --line: #20384a;
+  --paper: #061321;
+  --paper-raised: #0b1d2d;
   --ink: #f3f7fb;
   --ink-muted: #9eb0c2;
-  --accent: #37d6df;
-  --warning: #d7a84b;
-  --danger: #e5796e;
-  --ui: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
-  --mono: var(--font-mono), ui-monospace, monospace;
-  --tap: 44px;
+  --navy: #102538;
+  --teal: #37d6df;
+  --teal-soft: #12323c;
+  --line: #20384a;
+  --amber: #d7a84b;
+  --crimson: #e5796e;
 }
 ```
 
-Numbers, timestamps, scores, IDs, and counters use `var(--mono)`. Use 1 px
-dividers and inner-edge highlights; no pure black, outer neon glow, gradient
-text, serif type, or blur over scrolling content. Interactive transitions use
-only `transform` and `opacity`, last at most `180ms`, and stop under
-`prefers-reduced-motion`.
+Keep Fraunces only where the current brand and short hero headings already use
+`var(--display)`; dense operational content stays on Inter. Existing
+`font-mono`/system monospace utilities distinguish numbers, timestamps, scores,
+IDs, and counters. Use 1 px dividers and inner-edge highlights; no pure black,
+outer neon glow, gradient text, or blur over scrolling content. Interactive
+transitions use only `transform` and `opacity`, last at most `180ms`, and stop
+under `prefers-reduced-motion`.
 
 - [ ] **Step 4: Build one shared masthead and adapt the three surfaces**
 
-`ConsoleMasthead` uses Phosphor `GlobeHemisphereWest`, `Pulse`, `MapTrifold`,
-`ListChecks`, and `Activity` icons at one `regular` weight. It accepts an
-optional live status label but owns no global state.
+Extract `ConsoleMasthead` from the current `.masthead`, `.brand`, navigation,
+and `.system-pill` markup. Keep its text links and optional live status label;
+it owns no global state and adds no icon dependency.
 
 On the radar, use CSS Grid with a dominant map and narrow signal rail at
 `min-width: 768px`; retain the five-slot brief and current accessible list in
@@ -1210,8 +1188,9 @@ const CARTO_DARK_MATTER_STYLE =
 
 Use cyan for selection, amber only for attached-event context, and coral only
 for failure/destructive states. Do not add severity filters or derive one heat
-score. Adapt Pipeline Monitor and Admin Review Queue to the same masthead,
-tokens, dense dividers, rail/workspace rhythm, skeletons, and state panels.
+score. Adapt Pipeline Monitor and Admin Review Queue through the same existing
+semantic variables, Tailwind utilities, masthead, dense dividers,
+rail/workspace rhythm, skeletons, and state panels.
 
 Mount the review page exactly:
 

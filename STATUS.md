@@ -67,10 +67,11 @@ from the issue; it enters the roadmap only through the planner.
   operator and kept only in browser component memory; no account system is in
   scope.
 - Radar, pipeline, and review surfaces share the supplied dark, map-dominant
-  surveillance-console direction: navy structure, cyan selection, Geist/Geist
-  Mono, Phosphor icons, and dense desktop rails that collapse cleanly on mobile.
-  The reference image is presentation guidance only; its severity, counts, and
-  publishers are not product data.
+  surveillance-console direction: navy structure, cyan selection, and dense
+  desktop rails that collapse cleanly on mobile. Adapt the current
+  Fraunces/Inter, semantic CSS, Tailwind, and MapLibre infrastructure; add no UI
+  dependency. The reference image is presentation guidance only; its severity,
+  counts, and publishers are not product data.
 - Migration downgrade refuses to erase live review history.
 - Live planning evidence was 37 review rows: 28 unresolved diseases, 7
   missing-text retrieval rows, 1 content-integrity quarantine, and 1 ambiguous

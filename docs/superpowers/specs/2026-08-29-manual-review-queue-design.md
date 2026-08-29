@@ -360,23 +360,27 @@ as visual direction, not as a data contract. Do not copy its invented severity,
 counts, filters, publishers, or reviewed-state claims.
 
 The calibrated design dials for EpiSignal are `DESIGN_VARIANCE = 4`,
-`MOTION_INTENSITY = 3`, and `VISUAL_DENSITY = 8`. Operational stability and
-scan speed matter more than decorative motion.
+`MOTION_INTENSITY = 3`, and `VISUAL_DENSITY = 8`. They guide adaptation of the
+current UI; they do not require a pixel match or replacement design system.
+Operational stability and scan speed matter more than decorative motion.
 
 ### Shared surveillance-console language
 
-- Use an off-black navy base (`#061321`), raised navy (`#0b1d2d`), cool border
-  (`#20384a`), near-white text (`#f3f7fb`), muted blue-gray (`#9eb0c2`), and one
-  cyan accent (`#37d6df`). Amber and coral are semantic warning/destructive
-  colors, not secondary brand accents.
-- Replace the current Fraunces/Inter pairing with Geist for interface text and
-  Geist Mono for numbers, timestamps, scores, IDs, and operational counters.
-  Dashboard surfaces use no serif typography.
+- Adapt the existing semantic CSS variables toward an off-black navy base,
+  raised navy panels, cool borders, near-white text, muted blue-gray, and one
+  cyan selection accent. Keep amber and coral for warning/destructive meaning,
+  not as secondary brand accents.
+- Keep the current Fraunces/Inter setup. Fraunces remains limited to the brand
+  and short hero headings; Inter remains the interface face. Existing system
+  monospace utilities may distinguish numbers, timestamps, scores, IDs, and
+  operational counters without downloading another font.
 - Use 1 px lines, negative space, and inner-edge highlights to group dense data.
   Do not wrap every row in a floating card, use outer neon glows, pure black,
   gradient text, or decorative glass blur that harms legibility.
-- Use Phosphor icons at one consistent weight. Remove emoji glyphs from the
-  radar and admin surfaces. Icon-only controls require accessible names.
+- Add no icon package for this adaptation. Prefer existing text labels, simple
+  CSS status marks, and current controls. Remove decorative emoji glyphs from
+  the radar and admin surfaces; icon-only controls still require accessible
+  names.
 - Motion is limited to `transform` and `opacity` transitions for selection,
   drawer entry, and button press feedback. No perpetual animation, map pulse,
   parallax, or layout movement that competes with live evidence. Respect
@@ -401,9 +405,10 @@ context, and accessible list. Change presentation only:
 - never invent the reference image's `High`, `Medium`, or `Low` severity labels,
   and never blend the two EpiSignal scores into one heat value.
 
-The pipeline monitor and review queue share the masthead, tokens, typography,
-panel treatment, and responsive rules. This is a small shared console shell,
-not a new design-system package.
+The pipeline monitor and review queue reuse the existing masthead, semantic CSS
+variables, typography, Tailwind utilities, MapLibre component, panel treatment,
+and responsive rules. Extract a small shared masthead only if needed to avoid
+duplicating the current markup; do not introduce a design-system package.
 
 ### Review queue interaction
 
@@ -478,10 +483,11 @@ These are the agreed public seams for worker tests:
 8. Concurrent or repeated resolution cannot apply side effects twice.
 9. Missing, wrong, or unconfigured admin credentials cannot read or mutate the
    queue, and no secret reaches logs or persisted browser storage.
-10. Radar, pipeline monitor, and review queue use the approved dark
-    surveillance-console tokens, Geist typography, Phosphor icons, dense desktop
-    rail layout, and single-column mobile fallback without inventing severity or
-    collapsing EpiSignal's two scores.
+10. Radar, pipeline monitor, and review queue adapt the supplied dark
+    surveillance-console cues through the existing semantic CSS, Fraunces/Inter
+    typography, MapLibre map, accessible controls, dense desktop rail layout,
+    and single-column mobile fallback. They add no UI dependency, invent no
+    severity, and do not collapse EpiSignal's two scores.
 11. `corepack pnpm verify` exits 0; the completion report quotes real Python and
     web test counts, contract parity, and production-build output.
 12. Live proof records the pre-migration reason composition, post-migration case
