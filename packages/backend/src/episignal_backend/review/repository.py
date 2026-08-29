@@ -10,10 +10,16 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import (
+    CredibilityTier,
     ProcessingStatus,
+    RelationshipType,
     ReviewReason,
     ReviewResolution,
     ReviewStatus,
+)
+from episignal_backend.events.documents import (
+    LocationForMatching,
+    SignalForMatching,
 )
 from episignal_backend.models import (
     Disease,
@@ -49,6 +55,45 @@ from episignal_backend.review.documents import (
     ReviewTargetStale,
 )
 from episignal_backend.review.protocol import LockedReviewCase
+
+
+def _load_signal_for_matching(session: Session, signal: Signal) -> SignalForMatching:
+    from episignal_backend.events.repository import read_stored_extraction
+
+    loc_query = select(SignalLocation).where(SignalLocation.signal_id == signal.id)
+    loc_rows = session.execute(loc_query).scalars().all()
+    locs: list[LocationForMatching] = [
+        LocationForMatching(
+            location_role=loc.location_role,
+            precision=loc.precision,
+            country_code=loc.country_code,
+            admin1=loc.admin1,
+            admin2=loc.admin2,
+            place_name=loc.place_name,
+            latitude=loc.latitude,
+            longitude=loc.longitude,
+        )
+        for loc in loc_rows
+    ]
+    source_stmt = select(Source.is_official, Source.credibility_tier).where(
+        Source.id == signal.source_id
+    )
+    source_row = session.execute(source_stmt).one_or_none()
+    is_official = source_row[0] if source_row else False
+    cred_tier = source_row[1] if source_row else CredibilityTier.UNKNOWN
+    extraction = read_stored_extraction(signal.ai_extraction)
+
+    return SignalForMatching(
+        signal_id=signal.id,
+        disease_id=signal.disease_id,
+        source_id=signal.source_id,
+        source_is_official=is_official,
+        credibility_tier=cred_tier,
+        published_at=signal.published_at,
+        first_seen_at=signal.first_seen_at,
+        locations=tuple(locs),
+        extraction=extraction,
+    )
 
 
 class SqlAlchemyReviewRepository:
@@ -124,6 +169,13 @@ class SqlAlchemyReviewRepository:
         self, case_id: UUID, command: ResolveReviewCommand
     ) -> ReviewCaseResult:
         """Resolve a review case transactionally according to domain rules."""
+        from episignal_backend.events.documents import StoryCluster
+        from episignal_backend.events.finalize import (
+            finalize_event_creation,
+            finalize_event_link,
+        )
+        from episignal_backend.events.repository import SqlAlchemyEventRepository
+
         stmt = (
             select(SignalReviewCase)
             .where(SignalReviewCase.id == case_id)
@@ -166,9 +218,39 @@ class SqlAlchemyReviewRepository:
         elif command.action is ReviewResolution.DISMISS:
             signal.processing_status = ProcessingStatus.DISMISSED
         elif command.action is ReviewResolution.LINK_EVENT:
-            pass
+            assert isinstance(command, LinkEventCommand)
+            cand_stmt = select(SignalReviewCandidate).where(
+                SignalReviewCandidate.review_case_id == case.id,
+                SignalReviewCandidate.event_id == command.event_id,
+            )
+            cand_row = self._session.execute(cand_stmt).scalar_one_or_none()
+            if cand_row is None:
+                raise ReviewTargetStale(command.event_id)
+
+            event_stmt = select(Event.id).where(Event.id == command.event_id)
+            event_exists = self._session.execute(event_stmt).scalar_one_or_none()
+            if event_exists is None:
+                raise ReviewTargetStale(command.event_id)
+
+            sig_matching = _load_signal_for_matching(self._session, signal)
+            event_repo = SqlAlchemyEventRepository(self._session)
+            finalize_event_link(
+                event_repo,
+                event_id=command.event_id,
+                signal=sig_matching,
+                relationship_type=RelationshipType.SUPPORTING_SOURCE,
+                match_score=cand_row.match_score,
+                is_primary=False,
+            )
+            signal.processing_status = ProcessingStatus.MATCHED
+            selected_event_id = command.event_id
         elif command.action is ReviewResolution.CREATE_EVENT:
-            pass
+            sig_matching = _load_signal_for_matching(self._session, signal)
+            cluster = StoryCluster(signals=(sig_matching,))
+            event_repo = SqlAlchemyEventRepository(self._session)
+            created = finalize_event_creation(event_repo, cluster=cluster)
+            signal.processing_status = ProcessingStatus.MATCHED
+            selected_event_id = created.event_id
 
         now = datetime.now(UTC)
         case.status = ReviewStatus.RESOLVED

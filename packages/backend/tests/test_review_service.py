@@ -13,17 +13,20 @@ from episignal_backend.db.types import (
     ReviewStatus,
 )
 from episignal_backend.models import Disease, Signal
-from episignal_backend.models.review import SignalReviewCase
+from episignal_backend.models.review import SignalReviewCandidate, SignalReviewCase
 from episignal_backend.review.documents import (
     AssignDiseaseCommand,
+    CreateEventCommand,
     DiseaseNotFound,
     DismissCommand,
+    LinkEventCommand,
     RetryExtractionCommand,
     RetryGeocodingCommand,
     RetryRetrievalCommand,
     ReviewActionNotAllowed,
     ReviewAlreadyResolved,
     ReviewCaseNotFound,
+    ReviewTargetStale,
 )
 from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
@@ -36,9 +39,21 @@ class FakeResult:
         return self
 
     def scalar_one_or_none(self) -> Any:
+        if isinstance(self._value, list):
+            return self._value[0] if self._value else None
         return self._value
 
     def scalar_one(self) -> Any:
+        return self._value
+
+    def one_or_none(self) -> Any:
+        if isinstance(self._value, list):
+            return self._value[0] if self._value else None
+        return self._value
+
+    def first(self) -> Any:
+        if isinstance(self._value, list):
+            return self._value[0] if self._value else None
         return self._value
 
     def all(self) -> Any:
@@ -381,3 +396,174 @@ def test_incompatible_resolution_action_raises_review_action_not_allowed() -> No
                 disease_id=uuid4(),
             ),
         )
+
+
+def test_link_event_attaches_signal_and_resolves_case() -> None:
+    case_id = uuid4()
+    signal_id = uuid4()
+    event_id = uuid4()
+    disease_id = uuid4()
+    source_id = uuid4()
+    now = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
+
+    case = SignalReviewCase(
+        id=case_id,
+        signal_id=signal_id,
+        reason=ReviewReason.EVENT_MATCH_AMBIGUOUS,
+        status=ReviewStatus.OPEN,
+        opened_at=now,
+    )
+    signal = Signal(
+        id=signal_id,
+        source_id=source_id,
+        disease_id=disease_id,
+        url="https://news.example/1",
+        title="Sample News",
+        processing_status=ProcessingStatus.NEEDS_REVIEW,
+        published_at=now,
+        first_seen_at=now,
+    )
+    candidate_row = SignalReviewCandidate(
+        review_case_id=case_id,
+        event_id=event_id,
+        match_score=0.75,
+    )
+
+    # Session mock:
+    # 1) lock case query -> case
+    # 2) lock signal query -> signal
+    # 3) check candidate snapshot -> candidate_row
+    # 4) check event exists -> FakeResult(True)
+    # 5) load Signal matching context (locations, source, etc.)
+    # 6) event attachment queries
+    session = FakeSession(
+        results=[
+            FakeResult(case),
+            FakeResult(signal),
+            FakeResult(candidate_row),
+            FakeResult(True),
+            FakeResult([]),  # locations
+            FakeResult(None),  # latest brief
+        ]
+    )
+    repo = SqlAlchemyReviewRepository(session)  # type: ignore[arg-type]
+
+    result = repo.resolve_review(
+        case_id,
+        LinkEventCommand(
+            case_id=case_id,
+            reviewed_by="admin@episignal.org",
+            action=ReviewResolution.LINK_EVENT,
+            event_id=event_id,
+        ),
+    )
+
+    assert result.case_id == case_id
+    assert result.resolution is ReviewResolution.LINK_EVENT
+    assert result.selected_event_id == event_id
+    assert case.status is ReviewStatus.RESOLVED
+    assert signal.processing_status is ProcessingStatus.MATCHED
+    assert session.committed is True
+
+
+def test_link_event_rejects_stale_event_id_not_in_snapshot() -> None:
+    case_id = uuid4()
+    signal_id = uuid4()
+    unknown_event_id = uuid4()
+    now = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
+
+    case = SignalReviewCase(
+        id=case_id,
+        signal_id=signal_id,
+        reason=ReviewReason.EVENT_MATCH_AMBIGUOUS,
+        status=ReviewStatus.OPEN,
+        opened_at=now,
+    )
+    signal = Signal(
+        id=signal_id,
+        source_id=uuid4(),
+        url="https://news.example/1",
+        title="Sample News",
+        processing_status=ProcessingStatus.NEEDS_REVIEW,
+    )
+
+    # Session mock:
+    # 1) lock case query -> case
+    # 2) lock signal query -> signal
+    # 3) check candidate snapshot -> None (not in snapshot)
+    session = FakeSession(
+        results=[
+            FakeResult(case),
+            FakeResult(signal),
+            FakeResult(None),
+        ]
+    )
+    repo = SqlAlchemyReviewRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ReviewTargetStale):
+        repo.resolve_review(
+            case_id,
+            LinkEventCommand(
+                case_id=case_id,
+                reviewed_by="admin@episignal.org",
+                action=ReviewResolution.LINK_EVENT,
+                event_id=unknown_event_id,
+            ),
+        )
+
+
+def test_create_event_creates_new_event_from_singleton_cluster_and_resolves_case() -> None:
+    case_id = uuid4()
+    signal_id = uuid4()
+    disease_id = uuid4()
+    source_id = uuid4()
+    now = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
+
+    case = SignalReviewCase(
+        id=case_id,
+        signal_id=signal_id,
+        reason=ReviewReason.EVENT_MATCH_AMBIGUOUS,
+        status=ReviewStatus.OPEN,
+        opened_at=now,
+    )
+    signal = Signal(
+        id=signal_id,
+        source_id=source_id,
+        disease_id=disease_id,
+        url="https://news.example/1",
+        title="Sample News",
+        processing_status=ProcessingStatus.NEEDS_REVIEW,
+        published_at=now,
+        first_seen_at=now,
+    )
+
+    # Session mock:
+    # 1) lock case query -> case
+    # 2) lock signal query -> signal
+    # 3) load signal locations -> []
+    # 4) load source -> None
+    session = FakeSession(
+        results=[
+            FakeResult(case),
+            FakeResult(signal),
+            FakeResult([]),  # signal locations
+            FakeResult(None),  # source
+        ]
+    )
+    repo = SqlAlchemyReviewRepository(session)  # type: ignore[arg-type]
+
+    result = repo.resolve_review(
+        case_id,
+        CreateEventCommand(
+            case_id=case_id,
+            reviewed_by="admin@episignal.org",
+            action=ReviewResolution.CREATE_EVENT,
+        ),
+    )
+
+    assert result.case_id == case_id
+    assert result.resolution is ReviewResolution.CREATE_EVENT
+    assert result.selected_event_id is not None
+    assert case.status is ReviewStatus.RESOLVED
+    assert signal.processing_status is ProcessingStatus.MATCHED
+    assert session.committed is True
