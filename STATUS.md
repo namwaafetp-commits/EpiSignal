@@ -137,7 +137,7 @@ purpose-specific model routing.
 - [x] 3. Write the keyword gate function.
 - [x] 4. Add the repository seams and fix the stub status filter.
 - [x] 5. Store discoveries without fetching the page.
-- [ ] 6. Write the gate-and-fetch retrieval pass.
+- [x] 6. Write the gate-and-fetch retrieval pass.
 - [ ] 7. Add the `retrieve` stage and its runner.
 - [ ] 8. Add the `pregroup` stage and enable it by default.
 - [ ] 9. Select for extraction without the relevance pass.
