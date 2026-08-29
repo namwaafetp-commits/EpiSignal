@@ -66,6 +66,11 @@ from the issue; it enters the roadmap only through the planner.
 - A single bearer token protects review reads and writes. It is entered by the
   operator and kept only in browser component memory; no account system is in
   scope.
+- Radar, pipeline, and review surfaces share the supplied dark, map-dominant
+  surveillance-console direction: navy structure, cyan selection, Geist/Geist
+  Mono, Phosphor icons, and dense desktop rails that collapse cleanly on mobile.
+  The reference image is presentation guidance only; its severity, counts, and
+  publishers are not product data.
 - Migration downgrade refuses to erase live review history.
 - Live planning evidence was 37 review rows: 28 unresolved diseases, 7
   missing-text retrieval rows, 1 content-integrity quarantine, and 1 ambiguous
@@ -86,7 +91,7 @@ from the issue; it enters the roadmap only through the planner.
 - [ ] 11. Expose transactional resolution and regenerate contracts.
 - [ ] 12. Strictly validate the review API in the web client.
 - [ ] 13. Build the accessible cause-specific review queue.
-- [ ] 14. Mount the admin page and navigation without widening scope.
+- [ ] 14. Apply the surveillance-console visual direction across web surfaces.
 - [ ] 15. Review, verify, capture safe live proof, and report.
 
 ## Blockers

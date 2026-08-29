@@ -15,7 +15,9 @@ typed review case. The operator sees safe decision evidence and may retry the
 responsible stage, assign a canonical disease, link or create an event through
 the existing event-finalization rules, or dismiss the signal without deleting
 evidence. Every resolution records who decided, when, why, and any selected
-disease or event.
+disease or event. Radar, pipeline, and review surfaces also adopt the supplied
+dark, map-dominant surveillance-console language without changing evidence
+semantics.
 
 The approved design is
 `docs/superpowers/specs/2026-08-29-manual-review-queue-design.md`. The executable
@@ -73,6 +75,10 @@ improve future model choice, but neither resolves the other 36 stopped signals.
   `Authorization` header.
 - Queue reads never expose raw text, source spans, prompts, credentials,
   exception messages, or patient-level data.
+- The supplied UI image is visual direction only: dark navy structure, cyan
+  selection, dense work-area-plus-rail layouts, Geist/Geist Mono, and Phosphor
+  icons. Do not copy its invented severity, counts, locations, publishers, or
+  reviewed-state claims, and never collapse EpiSignal's two scores.
 - The migration expands, backfills conservatively, verifies exact case/signal
   reconciliation, and refuses destructive downgrade after live review history
   exists.
@@ -102,9 +108,10 @@ editing, event observation editing, automatic corruption repair, `D2b`, `G`,
 `H`, or `I`. Do not delete signals, cases, AI cost rows, events, observations,
 or source evidence.
 
-Do not resolve live reporting solely to demonstrate a button. If no disposable
-fixture exists, use automated mutation proof and say why live mutation was
-deliberately omitted.
+Do not resolve live reporting solely to demonstrate a button. Live acceptance
+uses only a clearly synthetic disposable fixture. If none exists, record the
+blocker, leave `M` at `building`, and hand back without claiming completion;
+automated tests do not replace this acceptance condition.
 
 ## Completion
 

@@ -4,7 +4,7 @@
 
 **Goal:** Give an authenticated operator a durable queue of signals that need human review and safe, attributable resolutions back into the existing pipeline or into terminal dismissal.
 
-**Architecture:** Add review-case and candidate-snapshot tables behind a small `review` module. Every writer opens a typed case when it moves a signal to `needs_review`; one transactional resolver validates cause-specific commands and reuses extracted event-finalization behavior. FastAPI exposes bearer-protected list and resolve endpoints, and a client-rendered Next page strictly validates responses while keeping the token only in memory.
+**Architecture:** Add review-case and candidate-snapshot tables behind a small `review` module. Every writer opens a typed case when it moves a signal to `needs_review`; one transactional resolver validates cause-specific commands and reuses extracted event-finalization behavior. FastAPI exposes bearer-protected list and resolve endpoints. A client-rendered Next page strictly validates responses while keeping the token only in memory, and all web surfaces adopt the approved dark surveillance-console language without changing evidence semantics.
 
 **Tech Stack:** Python 3.12, Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL/PostGIS, FastAPI, Next.js 16 App Router, React 19, TypeScript, Vitest, Testing Library, pnpm, uv.
 
@@ -58,6 +58,8 @@ Create:
 - `apps/web/src/lib/api-reviews.test.ts`
 - `apps/web/src/components/admin-review-queue.tsx`
 - `apps/web/src/components/admin-review-queue.test.tsx`
+- `apps/web/src/components/console-masthead.tsx`
+- `apps/web/src/components/console-masthead.test.tsx`
 - `apps/web/src/app/admin/reviews/page.tsx`
 
 Modify only where named by a task:
@@ -240,48 +242,47 @@ Expected: failure because revision `0010` and new contract values do not exist.
 - [ ] **Step 3: Implement expand, backfill, verification, and guarded downgrade**
 
 Use Alembic operations with bound parameters. The upgrade must finish with a
-count equality check equivalent to:
+per-signal cardinality check equivalent to:
 
 ```sql
-SELECT
-  (SELECT count(*) FROM signals WHERE processing_status = 'needs_review') AS signals,
-  (SELECT count(*) FROM signal_review_cases WHERE status = 'open') AS cases;
+SELECT s.id
+FROM signals AS s
+LEFT JOIN signal_review_cases AS c
+  ON c.signal_id = s.id AND c.status = 'open'
+WHERE s.processing_status = 'needs_review'
+GROUP BY s.id
+HAVING count(c.id) <> 1;
 ```
 
-Raise `RuntimeError` if counts differ. Backfill reason precedence must match the
-spec and use `legacy_unclassified` whenever the database cannot prove a more
-specific cause. Do not hard-code the observed total `37`.
+Also reject any open case whose signal is not at `needs_review`. Raise
+`RuntimeError` if either query returns a row. Backfill reason precedence must
+match the spec and use `legacy_unclassified` whenever the database cannot prove
+a more specific cause. Do not hard-code the observed total `37`.
 
 Downgrade first runs:
 
 ```sql
-SELECT count(*)
-FROM signal_review_cases
-WHERE status = 'resolved'
-   OR resolution IS NOT NULL
-   OR EXISTS (
-       SELECT 1 FROM signals WHERE processing_status = 'dismissed'
-   );
+SELECT
+  (SELECT count(*) FROM signal_review_cases) AS review_cases,
+  (SELECT count(*) FROM signals WHERE processing_status = 'dismissed') AS dismissed;
 ```
 
-If non-zero, raise the exact guarded-downgrade message. Otherwise drop candidate
+If either value is non-zero, raise the exact guarded-downgrade message. Otherwise drop candidate
 rows, cases, indexes, and constraints, then contract processing status.
 
 - [ ] **Step 4: Run focused migration and schema tests**
 
 Run the Step 2 command. Expected: pass.
 
-- [ ] **Step 5: Exercise empty-database upgrade and downgrade**
+- [ ] **Step 5: Exercise empty-database upgrade and downgrade in the migration test database**
 
 ```powershell
-corepack pnpm db:migrate
-corepack pnpm db:rollback
-corepack pnpm db:migrate
-corepack pnpm db:check
+uv run pytest apps/api/tests/test_migrations.py -k "manual_review and round_trip" -q
 ```
 
-Expected: upgrade, unused-schema rollback, re-upgrade, and health check all exit
-0. Do not run the downgrade after live review resolutions exist.
+Expected: isolated empty-database upgrade, unused-schema rollback, and
+re-upgrade pass. Do not run `corepack pnpm db:rollback` against the configured
+live database after backfill creates review history.
 
 - [ ] **Step 6: Commit**
 
@@ -307,7 +308,7 @@ Test frozen, extra-forbid commands and exact action compatibility:
 ```python
 def test_dismiss_requires_a_note() -> None:
     with pytest.raises(ValidationError):
-        ResolveReviewCommand(
+        DismissCommand(
             case_id=uuid4(), action="dismiss", reviewed_by="operator", note=" "
         )
 
@@ -321,7 +322,7 @@ def test_reason_action_matrix_is_closed() -> None:
 ```
 
 Use a hand-written fake and a mypy assertion to prove it satisfies
-`ReviewRepository`; include methods `lock_open_case`, `signal_for_review`,
+`ReviewRepository`; include methods `lock_review_case`, `signal_for_review`,
 `candidate_event_ids`, `set_disease`, `reset_retrieval`, `mark_classified`,
 `mark_dismissed`, `resolve_case`, `commit`, and `rollback`.
 
@@ -335,36 +336,62 @@ Expected: missing package/types.
 
 - [ ] **Step 3: Implement complete Pydantic types and protocol**
 
-Use one discriminated command model:
+Use a real discriminated union so impossible target fields do not exist on the
+wrong command type:
 
 ```python
-class ResolveReviewCommand(BaseModel):
+class ReviewCommandBase(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     case_id: UUID
-    action: ReviewResolution
     reviewed_by: str = Field(min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=1000)
-    disease_id: UUID | None = None
-    event_id: UUID | None = None
+
+
+class RetryRetrievalCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.RETRY_RETRIEVAL]
+
+
+class RetryExtractionCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.RETRY_EXTRACTION]
+
+
+class AssignDiseaseCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.ASSIGN_DISEASE]
+    disease_id: UUID
+
+
+class LinkEventCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.LINK_EVENT]
+    event_id: UUID
+
+
+class CreateEventCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.CREATE_EVENT]
+
+
+class DismissCommand(ReviewCommandBase):
+    action: Literal[ReviewResolution.DISMISS]
 
     @model_validator(mode="after")
-    def targets_match_action(self) -> "ResolveReviewCommand":
-        if self.action is ReviewResolution.ASSIGN_DISEASE:
-            if self.disease_id is None or self.event_id is not None:
-                raise ValueError("assign_disease requires disease_id only")
-        elif self.action is ReviewResolution.LINK_EVENT:
-            if self.event_id is None or self.disease_id is not None:
-                raise ValueError("link_event requires event_id only")
-        elif self.disease_id is not None or self.event_id is not None:
-            raise ValueError(f"{self.action.value} accepts no target id")
-        if self.action is ReviewResolution.DISMISS and not (self.note or "").strip():
+    def note_is_required(self) -> "DismissCommand":
+        if not (self.note or "").strip():
             raise ValueError("dismiss requires a non-blank note")
         return self
+
+
+ResolveReviewCommand = Annotated[
+    RetryRetrievalCommand
+    | RetryExtractionCommand
+    | AssignDiseaseCommand
+    | LinkEventCommand
+    | CreateEventCommand
+    | DismissCommand,
+    Field(discriminator="action"),
+]
 ```
 
-Replace the ellipsis in implementation with explicit branches and raise precise
-`ValueError` messages. Define frozen queue/read/result types for every field in
-the design. The protocol must contain only operations used by
+Define frozen queue/read/result types for every field in the design. The
+protocol must contain only operations used by
 `resolve_review_case`; queue reads remain a separate session function.
 
 - [ ] **Step 4: Run tests plus mypy**
@@ -596,7 +623,7 @@ reason/action, missing target, already-resolved case, and exception rollback:
 ```python
 def test_assign_disease_returns_signal_to_geocoded() -> None:
     repo = FakeReviewRepository(reason=ReviewReason.DISEASE_UNRESOLVED)
-    command = ResolveReviewCommand(
+    command = AssignDiseaseCommand(
         case_id=repo.case_id,
         action=ReviewResolution.ASSIGN_DISEASE,
         disease_id=DISEASE_ID,
@@ -621,9 +648,11 @@ Expected: missing resolver/adapter methods.
 `resolve_review_case` must:
 
 ```python
-case = repo.lock_open_case(command.case_id)
+case = repo.lock_review_case(command.case_id)
 if case is None:
     raise ReviewCaseNotFound(command.case_id)
+if case.status is ReviewStatus.RESOLVED:
+    raise ReviewAlreadyResolved(command.case_id)
 if command.action not in ALLOWED_RESOLUTIONS[case.reason]:
     raise ReviewActionNotAllowed(case.reason, command.action)
 try:
@@ -633,7 +662,7 @@ try:
         resolution=command.action,
         reviewed_by=command.reviewed_by,
         note=command.note,
-        selected_disease_id=command.disease_id,
+        selected_disease_id=selected_disease_id,
         selected_event_id=selected_event_id,
         resolved_at=resolved_at,
     )
@@ -1006,23 +1035,41 @@ git commit -m "feat(web): validate admin review contracts"
 
 - Create: `apps/web/src/components/admin-review-queue.tsx`
 - Create: `apps/web/src/components/admin-review-queue.test.tsx`
+- Modify: `apps/web/package.json`
+- Modify: `pnpm-lock.yaml`
 
-- [ ] **Step 1: Write failing behavior tests**
+- [ ] **Step 1: Verify and add the one icon dependency**
+
+`@phosphor-icons/react` is not present at planning time. Verify before install:
+
+```powershell
+corepack pnpm --filter @episignal/web why @phosphor-icons/react
+corepack pnpm --filter @episignal/web add @phosphor-icons/react
+```
+
+Expected: the first command reports no installed dependency; the second adds
+the package to `apps/web/package.json` and `pnpm-lock.yaml`. Add no motion,
+state, form, or component library.
+
+- [ ] **Step 2: Write failing behavior and layout tests**
 
 Use Testing Library and `userEvent` to prove:
 
 - locked state asks for token and operator name;
 - the token input has `type="password"` and no persistence call occurs;
-- successful unlock renders oldest cases;
+- successful unlock renders an oldest-first case rail and selected-case
+  decision workspace;
 - each reason renders only allowed controls;
 - missing disease uses canonical disease options;
 - ambiguous candidates show public ID, title, verification status, and score;
 - dismissal requires note plus confirmation;
-- success removes the card and announces through `aria-live`;
-- conflict/unavailable preserves card and entered values;
-- token never appears in rendered text or hrefs.
+- success removes the case and announces through `aria-live`;
+- conflict/unavailable preserves the case and entered values;
+- token never appears in rendered text or hrefs;
+- icon-only buttons have accessible names and rendered text contains none of
+  the emoji glyphs `📍`, `✕`, `⚠`, or `✓`.
 
-- [ ] **Step 2: Run component test and confirm red**
+- [ ] **Step 3: Run component test and confirm red**
 
 ```powershell
 corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.test.tsx
@@ -1030,9 +1077,9 @@ corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.
 
 Expected: component missing.
 
-- [ ] **Step 3: Implement one client component with local credential state**
+- [ ] **Step 4: Implement one isolated client component**
 
-Start with:
+Credential and selection state stays local:
 
 ```tsx
 "use client";
@@ -1040,17 +1087,23 @@ Start with:
 export function AdminReviewQueue() {
   const [token, setToken] = useState("");
   const [reviewedBy, setReviewedBy] = useState("");
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [queue, setQueue] = useState<ReviewQueueState>({ status: "locked" });
-  // load and resolve through api-reviews; never localStorage/sessionStorage/cookie
+  const [pendingCaseId, setPendingCaseId] = useState<string | null>(null);
 }
 ```
 
-Use semantic headings, `<form>`, `<fieldset>`, `<legend>`, `<label>`, native
-`<select>`, and buttons. Keep one pending action per case. Require explicit
-confirmation checkbox for dismissal. Render safe signal facts only. Use current
-utility classes and design tokens; add no dependency or generic form system.
+Implement complete locked, loading, ready, empty, unauthorized, disabled,
+conflict, and unavailable branches. Use a
+desktop `case-rail` plus `decision-workspace`; DOM order remains rail then
+workspace and CSS collapses it to one column below `768px`. Use semantic
+headings, `<form>`, `<fieldset>`, `<legend>`, `<label>`, native `<select>`, and
+buttons. Use Phosphor icons at weight `regular`; decorative icons are
+`aria-hidden`, and icon-only controls have labels. Keep one pending action per
+case. Require explicit confirmation for dismissal. Render safe facts only. No
+token persistence, animation library, or generic form system.
 
-- [ ] **Step 4: Run component and client tests**
+- [ ] **Step 5: Run component and client tests**
 
 ```powershell
 corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.test.tsx src/lib/api-reviews.test.ts
@@ -1058,39 +1111,109 @@ corepack pnpm --filter @episignal/web test -- src/components/admin-review-queue.
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```powershell
-git add apps/web/src/components/admin-review-queue.tsx apps/web/src/components/admin-review-queue.test.tsx
+git add apps/web/package.json pnpm-lock.yaml apps/web/src/components/admin-review-queue.tsx apps/web/src/components/admin-review-queue.test.tsx
 git commit -m "feat(web): add manual review queue"
 ```
 
-## Task 14: Mount the admin page and navigation without widening scope
+## Task 14: Apply the surveillance-console visual direction across web surfaces
 
 **Files:**
 
+- Create: `apps/web/src/components/console-masthead.tsx`
+- Create: `apps/web/src/components/console-masthead.test.tsx`
 - Create: `apps/web/src/app/admin/reviews/page.tsx`
+- Modify: `apps/web/src/app/layout.tsx`
+- Modify: `apps/web/src/app/globals.css`
 - Modify: `apps/web/src/components/home-shell.tsx`
 - Modify: `apps/web/src/components/home-shell.test.tsx`
-- Modify: `apps/web/src/app/globals.css` only if existing utilities cannot meet a tested responsive need
+- Modify: `apps/web/src/components/signal-map.tsx`
+- Modify: `apps/web/src/components/signal-map.test.tsx`
+- Modify: `apps/web/src/components/pipeline-monitor.tsx`
+- Modify: `apps/web/src/components/pipeline-monitor.test.tsx`
 
-- [ ] **Step 1: Write failing route/navigation assertions**
+- [ ] **Step 1: Write failing visual-contract and behavior tests**
 
-Assert homepage navigation contains `Review Queue`, the page renders the client
-component, keyboard focus order is logical, and narrow-screen controls remain
-usable without horizontal scroll.
+Assert:
+
+- shared masthead links Radar, Pipeline, and Review Queue;
+- homepage exposes a dominant `radar-workspace` and `signal-rail` without
+  changing current card data, source links, briefs, or score labels;
+- selected map details and every icon-only control retain accessible names;
+- signal map uses CARTO Dark Matter and keeps its unavailable fallback;
+- pipeline and review pages use the shared console masthead;
+- no web component contains the emoji glyphs `📍`, `✕`, `⚠`, or `✓`;
+- no production fixture adds the reference image's invented severity labels,
+  publishers, locations, or summary counts.
 
 - [ ] **Step 2: Run focused web tests and confirm red**
 
 ```powershell
-corepack pnpm --filter @episignal/web test -- src/components/home-shell.test.tsx src/components/admin-review-queue.test.tsx
+corepack pnpm --filter @episignal/web test -- src/components/console-masthead.test.tsx src/components/home-shell.test.tsx src/components/signal-map.test.tsx src/components/pipeline-monitor.test.tsx src/components/admin-review-queue.test.tsx
 ```
 
-Expected: missing navigation/page assertion fails.
+Expected: shared masthead and new layout assertions fail.
 
-- [ ] **Step 3: Mount the page and add one navigation link**
+- [ ] **Step 3: Replace dashboard typography and define exact console tokens**
 
-Page content is intentionally small:
+In `layout.tsx`, replace Fraunces and Inter with built-in Next fonts:
+
+```tsx
+import { Geist, Geist_Mono } from "next/font/google";
+
+const ui = Geist({ subsets: ["latin"], variable: "--font-ui" });
+const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+```
+
+Apply both variables to `<html>`. In `globals.css`, define the approved tokens:
+
+```css
+:root {
+  --canvas: #061321;
+  --surface: #0b1d2d;
+  --surface-raised: #102538;
+  --line: #20384a;
+  --ink: #f3f7fb;
+  --ink-muted: #9eb0c2;
+  --accent: #37d6df;
+  --warning: #d7a84b;
+  --danger: #e5796e;
+  --ui: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --mono: var(--font-mono), ui-monospace, monospace;
+  --tap: 44px;
+}
+```
+
+Numbers, timestamps, scores, IDs, and counters use `var(--mono)`. Use 1 px
+dividers and inner-edge highlights; no pure black, outer neon glow, gradient
+text, serif type, or blur over scrolling content. Interactive transitions use
+only `transform` and `opacity`, last at most `180ms`, and stop under
+`prefers-reduced-motion`.
+
+- [ ] **Step 4: Build one shared masthead and adapt the three surfaces**
+
+`ConsoleMasthead` uses Phosphor `GlobeHemisphereWest`, `Pulse`, `MapTrifold`,
+`ListChecks`, and `Activity` icons at one `regular` weight. It accepts an
+optional live status label but owns no global state.
+
+On the radar, use CSS Grid with a dominant map and narrow signal rail at
+`min-width: 768px`; retain the five-slot brief and current accessible list in
+the rail. On mobile, order masthead, map, then signals with no horizontal page
+scroll. Change only presentation and replace map style with:
+
+```typescript
+const CARTO_DARK_MATTER_STYLE =
+  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+```
+
+Use cyan for selection, amber only for attached-event context, and coral only
+for failure/destructive states. Do not add severity filters or derive one heat
+score. Adapt Pipeline Monitor and Admin Review Queue to the same masthead,
+tokens, dense dividers, rail/workspace rhythm, skeletons, and state panels.
+
+Mount the review page exactly:
 
 ```tsx
 import { AdminReviewQueue } from "@/components/admin-review-queue";
@@ -1100,10 +1223,7 @@ export default function AdminReviewsPage() {
 }
 ```
 
-Add `<Link href="/admin/reviews">Review Queue</Link>` beside Pipeline Monitor.
-Do not alter the radar layout or create a general admin shell.
-
-- [ ] **Step 4: Run web tests, typecheck, and production build**
+- [ ] **Step 5: Run web tests, typecheck, and production build**
 
 ```powershell
 corepack pnpm --filter @episignal/web test
@@ -1111,13 +1231,15 @@ corepack pnpm --filter @episignal/web typecheck
 corepack pnpm --filter @episignal/web build
 ```
 
-Expected: all web tests pass and build lists `/admin/reviews`.
+Expected: all web tests pass; build lists `/`, `/admin/pipeline`, and
+`/admin/reviews`; no horizontal overflow is observed at `390x844` or
+`1440x900`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```powershell
-git add apps/web/src/app/admin/reviews/page.tsx apps/web/src/components/home-shell.tsx apps/web/src/components/home-shell.test.tsx apps/web/src/app/globals.css
-git commit -m "feat(web): mount admin review screen"
+git add apps/web/src/app apps/web/src/components
+git commit -m "feat(web): apply surveillance console visual system"
 ```
 
 ## Task 15: Review, verify, capture safe live proof, and report
@@ -1174,11 +1296,12 @@ and record only:
 - confirmation that raw text, prompts, credentials, exception messages, and
   patient-level data are absent.
 
-Exercise one safe resolution only if a disposable fixture signal already exists
-and record its ID and cleanup. Do not dismiss, reassign, relink, or create an
-event from live reporting solely for proof. If no safe fixture exists, record
-the mutation proof from automated tests and say live mutation was deliberately
-not attempted.
+Exercise one safe resolution only if a clearly synthetic disposable fixture
+signal already exists, and record its ID and cleanup. Do not dismiss, reassign,
+relink, or create an event from live reporting solely for proof. If no such
+fixture exists, do not substitute automated tests for this live acceptance
+condition: record the blocker, leave `M` at `building`, and hand back to the
+planner without claiming completion.
 
 - [ ] **Step 5: Run the full completion gate**
 

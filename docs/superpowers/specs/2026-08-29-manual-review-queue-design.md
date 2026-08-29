@@ -260,9 +260,9 @@ manual callers.
 
 ## Resolution behavior
 
-The repository locks the open case row with `SELECT ... FOR UPDATE`. A second
-resolution attempt after the first returns `409 REVIEW_ALREADY_RESOLVED` and
-does not repeat mutations.
+The repository locks the addressed case row with `SELECT ... FOR UPDATE`, then
+requires it to be open before dispatch. A second resolution attempt after the
+first returns `409 REVIEW_ALREADY_RESOLVED` and does not repeat mutations.
 
 | Review reason | Allowed resolution | Result |
 | --- | --- | --- |
@@ -316,7 +316,7 @@ rendered HTML, or any `NEXT_PUBLIC_` variable.
 Query parameters: `limit` (`1..50`, default `50`) and `offset` (`>=0`, default
 `0`). Phase 1 returns open cases only, oldest first, then UUID for stable order.
 
-Each item contains:
+Each review case contains:
 
 - case ID, reason, and opened time;
 - signal ID, English title when valid, original title otherwise, source name,
@@ -353,22 +353,77 @@ Wrong-state and wrong-target failures leave both case and signal unchanged.
 
 ## Web interface
 
-Add `/admin/reviews` beside the existing read-only pipeline monitor. It is a
-small client-rendered internal screen:
+The operator supplied a visual reference on 2026-08-29: a dark, map-dominant
+global surveillance console with a compact masthead, cyan selection language,
+fine grid lines, dense signal rail, and restrained translucent panels. Treat it
+as visual direction, not as a data contract. Do not copy its invented severity,
+counts, filters, publishers, or reviewed-state claims.
+
+The calibrated design dials for EpiSignal are `DESIGN_VARIANCE = 4`,
+`MOTION_INTENSITY = 3`, and `VISUAL_DENSITY = 8`. Operational stability and
+scan speed matter more than decorative motion.
+
+### Shared surveillance-console language
+
+- Use an off-black navy base (`#061321`), raised navy (`#0b1d2d`), cool border
+  (`#20384a`), near-white text (`#f3f7fb`), muted blue-gray (`#9eb0c2`), and one
+  cyan accent (`#37d6df`). Amber and coral are semantic warning/destructive
+  colors, not secondary brand accents.
+- Replace the current Fraunces/Inter pairing with Geist for interface text and
+  Geist Mono for numbers, timestamps, scores, IDs, and operational counters.
+  Dashboard surfaces use no serif typography.
+- Use 1 px lines, negative space, and inner-edge highlights to group dense data.
+  Do not wrap every row in a floating card, use outer neon glows, pure black,
+  gradient text, or decorative glass blur that harms legibility.
+- Use Phosphor icons at one consistent weight. Remove emoji glyphs from the
+  radar and admin surfaces. Icon-only controls require accessible names.
+- Motion is limited to `transform` and `opacity` transitions for selection,
+  drawer entry, and button press feedback. No perpetual animation, map pulse,
+  parallax, or layout movement that competes with live evidence. Respect
+  `prefers-reduced-motion`.
+- Desktop uses a dense asymmetric grid: dominant work area plus a narrower
+  signal/case rail. Below `768px`, every surface collapses to one column with no
+  horizontal page scroll and at least 44 px interactive targets.
+- Loading uses layout-matched skeletons. Empty, unauthorized, disabled,
+  conflict, and unavailable states keep the same console frame and explain the
+  next safe action.
+
+The existing radar adopts this shared language in the same item so the new
+review page does not become a second unrelated product. Keep the current
+signal-first contract, MapLibre behavior, ordered five-slot briefs, event
+context, and accessible list. Change presentation only:
+
+- switch the map to CARTO Dark Matter with the current resilient list fallback;
+- make the map the dominant desktop work area and the recent-signal list a
+  narrow right rail, collapsing map then list on mobile;
+- use cyan for selection and retain early-signal score, evidence score, source
+  standing, and verification status as separate facts;
+- never invent the reference image's `High`, `Medium`, or `Low` severity labels,
+  and never blend the two EpiSignal scores into one heat value.
+
+The pipeline monitor and review queue share the masthead, tokens, typography,
+panel treatment, and responsive rules. This is a small shared console shell,
+not a new design-system package.
+
+### Review queue interaction
+
+Add `/admin/reviews` beside the existing read-only pipeline monitor:
 
 1. Locked state asks for admin token and operator name.
 2. Successful authentication loads oldest open cases.
-3. Each case card shows reason in plain language, signal/source facts, AI
+3. Desktop shows a compact oldest-first case rail and a larger selected-case
+   decision workspace. Mobile shows the same content in one document flow.
+4. The selected case shows reason in plain language, signal/source facts, AI
    disease, locations, and candidate events with scores when present.
-4. Only allowed actions render. Disease and event choices use native labelled
+5. Only allowed actions render. Disease and event choices use native labelled
    controls. Destructive dismissal requires a note and explicit confirmation.
-5. A successful resolution removes the card and announces the result through
-   an `aria-live` region. A failed action preserves the card and inputs.
-6. Empty, loading, unauthorized, disabled, and unavailable states are distinct.
+6. A successful resolution removes the case from the rail and announces the
+   result through an `aria-live` region. A failed action preserves the case and
+   inputs.
+7. Empty, loading, unauthorized, disabled, and unavailable states are distinct.
 
 No raw text editor, extraction editor, event search, batch action, assignment,
-pagination controls beyond a simple next/previous pair, or visual redesign is
-included.
+or pagination controls beyond a simple next/previous pair are included.
 
 ## Error handling and concurrency
 
@@ -423,11 +478,17 @@ These are the agreed public seams for worker tests:
 8. Concurrent or repeated resolution cannot apply side effects twice.
 9. Missing, wrong, or unconfigured admin credentials cannot read or mutate the
    queue, and no secret reaches logs or persisted browser storage.
-10. `corepack pnpm verify` exits 0; the completion report quotes real Python and
+10. Radar, pipeline monitor, and review queue use the approved dark
+    surveillance-console tokens, Geist typography, Phosphor icons, dense desktop
+    rail layout, and single-column mobile fallback without inventing severity or
+    collapsing EpiSignal's two scores.
+11. `corepack pnpm verify` exits 0; the completion report quotes real Python and
     web test counts, contract parity, and production-build output.
-11. Live proof records the pre-migration reason composition, post-migration case
+12. Live proof records the pre-migration reason composition, post-migration case
     counts, one safe non-destructive resolution, and database health. Do not
-    dismiss or relink live evidence solely to create proof.
+    dismiss or relink live evidence solely to create proof. If no clearly
+    synthetic disposable fixture exists, the item remains `building` until one
+    can be provided safely.
 
 ## Out of scope
 
