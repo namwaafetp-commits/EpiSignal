@@ -582,7 +582,10 @@ class SqlAlchemyEventRepository:
                         Event.last_summarized_at < age_cutoff,
                     )
                 )
-                .order_by(Event.last_updated_at.desc())
+                # EventSignal is a one-to-many join. Group before limiting so
+                # the batch size counts events, not attached signals.
+                .group_by(Event.id)
+                .order_by(func.max(Event.last_updated_at).desc(), Event.id.asc())
                 .limit(limit)
             )
             .scalars()

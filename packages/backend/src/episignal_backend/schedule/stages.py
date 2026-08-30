@@ -32,6 +32,7 @@ from episignal_backend.events.summarize import (
     pick_representative_sources,
     run_summary,
     should_resummarize,
+    unique_summary_candidates,
 )
 from episignal_backend.geocode.external import NominatimClient
 from episignal_backend.geocode.locate import run_geocoding
@@ -376,7 +377,7 @@ def _summarize() -> Mapping[str, int]:
         failed = 0
         unavailable = 0
 
-        for event in awaiting:
+        for event in unique_summary_candidates(awaiting):
             examined += 1
             if not should_resummarize(
                 last_summarized_at=event.last_summarized_at,

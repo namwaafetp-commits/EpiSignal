@@ -9,12 +9,13 @@ new numbers must not trigger a re-summary.
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from episignal_backend.events.documents import SummarySource
+from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     pick_representative_sources,
     run_summary,
     should_resummarize,
+    unique_summary_candidates,
 )
 
 
@@ -109,6 +110,17 @@ def test_a_summary_older_than_the_max_age_is_refreshed() -> None:
         unsummarized_articles=0,
         max_age_hours=24,
     )
+
+
+def test_one_summarization_run_keeps_one_candidate_per_event() -> None:
+    event_id = uuid4()
+    duplicate = EventForSummary(event_id=event_id, public_id="epi-1")
+    other = EventForSummary(event_id=uuid4(), public_id="epi-2")
+
+    candidates = unique_summary_candidates((duplicate, duplicate, other))
+
+    assert candidates == (duplicate, other)
+    assert len({candidate.event_id for candidate in candidates}) == 2
 
 
 def _source(

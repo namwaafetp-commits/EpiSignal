@@ -13,9 +13,11 @@ the routing layer here.
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -81,6 +83,20 @@ class SummaryResult:
     outcome: SummaryOutcome
     verdict: EventSummaryVerdict | None = None
     attempt: Attempt | None = None
+
+
+def unique_summary_candidates(
+    candidates: Sequence[EventForSummary],
+) -> tuple[EventForSummary, ...]:
+    """Keep one candidate per event for a single summarization run."""
+    seen_event_ids: set[UUID] = set()
+    unique: list[EventForSummary] = []
+    for candidate in candidates:
+        if candidate.event_id in seen_event_ids:
+            continue
+        seen_event_ids.add(candidate.event_id)
+        unique.append(candidate)
+    return tuple(unique)
 
 
 def _accept(content: str) -> EventSummaryVerdict:

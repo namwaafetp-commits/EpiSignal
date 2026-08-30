@@ -25,6 +25,7 @@ from episignal_backend.events.summarize import (
     pick_representative_sources,
     run_summary,
     should_resummarize,
+    unique_summary_candidates,
 )
 
 
@@ -70,7 +71,7 @@ def _run(arguments: Arguments) -> dict[str, int]:
         failed = 0
         unavailable = 0
 
-        for event in awaiting:
+        for event in unique_summary_candidates(awaiting):
             examined += 1
             if not should_resummarize(
                 last_summarized_at=event.last_summarized_at,

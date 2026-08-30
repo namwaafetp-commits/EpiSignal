@@ -69,6 +69,22 @@ class FakeSession:
         return None
 
 
+class SummaryCandidateSession(FakeSession):
+    """Model the joined rows produced by an event with several signals."""
+
+    def __init__(self, event_a: Any, event_b: Any) -> None:
+        super().__init__()
+        self._joined_event_ids = [event_a] * 5 + [event_b] * 2
+
+    def execute(self, statement: Any) -> Any:
+        self.executed.append(statement)
+        event_ids = self._joined_event_ids
+        if statement._group_by_clauses:
+            event_ids = list(dict.fromkeys(event_ids))
+        limit = statement._limit_clause.value
+        return FakeResult(event_ids[:limit])
+
+
 class FakeSignal:
     def __init__(
         self,
@@ -116,6 +132,20 @@ class FakeLocation:
         self.place_name = place_name
         self.latitude = latitude
         self.longitude = longitude
+
+
+def test_events_awaiting_summary_deduplicates_signal_join_before_limit() -> None:
+    event_a = uuid4()
+    event_b = uuid4()
+    session = SummaryCandidateSession(event_a, event_b)
+    repository = SqlAlchemyEventRepository(session)
+    repository._build_event_for_summary = lambda event_id: event_id  # type: ignore[method-assign]
+
+    candidates = repository.events_awaiting_summary(limit=2, max_age_hours=48)
+
+    assert candidates == (event_a, event_b)
+    assert len(candidates) == len(set(candidates))
+    assert session.executed[0]._group_by_clauses
 
 
 def test_it_satisfies_the_event_repository_boundary() -> None:
