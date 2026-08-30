@@ -146,6 +146,7 @@ def _make_signal(
     is_official: bool = True,
     cred_tier: CredibilityTier = CredibilityTier.OFFICIAL,
     extraction: Extraction | None = None,
+    embedding: tuple[float, ...] | None = None,
 ) -> SignalForMatching:
     locations = (loc,) if loc is not None else ()
     return SignalForMatching(
@@ -158,6 +159,7 @@ def _make_signal(
         first_seen_at=published_at,
         locations=locations,
         extraction=extraction,
+        embedding=embedding,
     )
 
 
@@ -268,6 +270,74 @@ def test_attach_decision_updates_existing_event_and_recomputes_scores() -> None:
     assert is_prim is False
     assert existing_ev_id in repo.applied_scores
     assert repo.committed is True
+
+
+def test_similarity_is_wired_lazily_and_every_candidate_decision_is_logged(caplog) -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    chiang_mai = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        admin1="Chiang Mai",
+        place_name="Chiang Mai",
+        latitude=18.79,
+        longitude=98.98,
+    )
+    chiang_mai_admin1 = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.ADMIN1,
+        country_code="TH",
+        admin1="Chiang Mai",
+        latitude=18.79,
+        longitude=98.98,
+    )
+    phuket_admin1 = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.ADMIN1,
+        country_code="TH",
+        admin1="Phuket",
+        latitude=7.88,
+        longitude=98.39,
+    )
+    signal = _make_signal(
+        disease_id=disease_id,
+        loc=chiang_mai,
+        published_at=now,
+        embedding=(1.0, 0.0),
+    )
+    matching_event = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(chiang_mai_admin1,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+        representative_embedding=(1.0, 0.0),
+    )
+    conflicting_event = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(phuket_admin1,),
+        first_signal_at=now - timedelta(days=2),
+        last_updated_at=now - timedelta(days=1),
+        representative_embedding=(0.0, 1.0),
+    )
+    repository = FakeAssemblyRepository(
+        [signal],
+        candidates_by_disease={disease_id: [matching_event, conflicting_event]},
+    )
+    caplog.set_level("INFO")
+
+    summary = run_event_assembly(repository, match_threshold=0.90)
+
+    assert summary.events_created == 0
+    assert repository.attached_signals[0][0] == matching_event.event_id
+    assert "matched event" in caplog.text
+    assert "similarity=1.0" in caplog.text
+    assert "reason=conflicting_admin1" in caplog.text
+    assert (
+        f"event_id={conflicting_event.event_id} similarity=None score=0.0 reason=conflicting_admin1"
+    ) in caplog.text
 
 
 def test_refusal_routes_signals_to_needs_review() -> None:

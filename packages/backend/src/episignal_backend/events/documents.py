@@ -72,6 +72,7 @@ class SignalForMatching(BaseModel):
     first_seen_at: datetime
     locations: tuple[LocationForMatching, ...] = ()
     extraction: Extraction | None = None
+    embedding: tuple[float, ...] | None = None
 
 
 _PRECISION_RANK = {
@@ -118,6 +119,14 @@ class StoryCluster(BaseModel):
         ]
         return min(timestamps), max(timestamps)
 
+    @property
+    def representative_embedding(self) -> tuple[float, ...] | None:
+        """Use the first available member embedding, preserving cluster order."""
+        return next(
+            (signal.embedding for signal in self.signals if signal.embedding is not None),
+            None,
+        )
+
 
 class CandidateEvent(BaseModel):
     """An existing event retrieved from storage as a candidate match."""
@@ -129,6 +138,7 @@ class CandidateEvent(BaseModel):
     locations: tuple[LocationForMatching, ...] = ()
     first_signal_at: datetime
     last_updated_at: datetime
+    representative_embedding: tuple[float, ...] | None = None
 
 
 class MatchDecision(BaseModel):

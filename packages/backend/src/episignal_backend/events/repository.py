@@ -139,6 +139,7 @@ class SqlAlchemyEventRepository:
                     first_seen_at=sig.first_seen_at,
                     locations=tuple(locs_by_signal.get(sig.id, ())),
                     extraction=extraction,
+                    embedding=tuple(sig.embedding) if sig.embedding is not None else None,
                 )
             )
 
@@ -192,6 +193,20 @@ class SqlAlchemyEventRepository:
         loc_query = select(EventLocation).where(EventLocation.event_id.in_(event_ids))
         loc_rows = self._session.execute(loc_query).scalars().all()
 
+        embedding_query = (
+            select(EventSignal.event_id, Signal.embedding)
+            .join(Signal, Signal.id == EventSignal.signal_id)
+            .where(
+                EventSignal.event_id.in_(event_ids),
+                EventSignal.is_primary.is_(True),
+            )
+        )
+        embedding_rows = self._session.execute(embedding_query).all()
+        embeddings_by_event = {
+            event_id: tuple(embedding) if embedding is not None else None
+            for event_id, embedding in embedding_rows
+        }
+
         locs_by_event: dict[UUID, list[LocationForMatching]] = defaultdict(list)
         for loc in loc_rows:
             locs_by_event[loc.event_id].append(
@@ -222,6 +237,7 @@ class SqlAlchemyEventRepository:
                     locations=tuple(locs_by_event.get(ev.id, ())),
                     first_signal_at=first_sig,
                     last_updated_at=ev.last_updated_at,
+                    representative_embedding=embeddings_by_event.get(ev.id),
                 )
             )
 
@@ -284,6 +300,7 @@ class SqlAlchemyEventRepository:
             locations=locations,
             first_signal_at=first_sig_at,
             last_updated_at=last_updated_at,
+            representative_embedding=cluster.representative_embedding,
         )
 
     def attach_signal(

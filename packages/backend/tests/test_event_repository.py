@@ -28,6 +28,8 @@ class FakeResult:
         return self
 
     def all(self) -> Any:
+        if self._value is None:
+            return []
         return self._value if isinstance(self._value, list) else [self._value]
 
     def scalar_one_or_none(self) -> Any:
@@ -70,6 +72,7 @@ class FakeSignal:
         is_official,
         credibility_tier,
         extraction=None,
+        embedding=None,
     ) -> None:
         self.id = signal_id
         self.disease_id = disease_id
@@ -79,6 +82,7 @@ class FakeSignal:
         self.is_official = is_official
         self.credibility_tier = credibility_tier
         self.ai_extraction = extraction
+        self.embedding = embedding
 
 
 class FakeLocation:
@@ -124,6 +128,7 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
         first_seen_at=now,
         is_official=True,
         credibility_tier=CredibilityTier.OFFICIAL,
+        embedding=[1.0, 0.0],
         extraction={
             "signal_type": "outbreak_report",
             "title_english": "Outbreak in Beni",
@@ -160,6 +165,7 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
     assert sig.locations[0].place_name == "Beni"
     assert sig.extraction is not None
     assert sig.extraction.signal_type == SignalType.OUTBREAK_REPORT
+    assert sig.embedding == (1.0, 0.0)
 
     # Assert executed statement checked processing_status
     stmt_str = str(session.executed[0])
@@ -384,6 +390,48 @@ def test_a_cluster_without_geography_still_gets_candidates() -> None:
     )
 
     assert [candidate.event_id for candidate in candidates] == [event.id]
+
+
+def test_candidate_events_map_the_primary_signal_embedding() -> None:
+    from episignal_backend.events.documents import StoryCluster
+
+    disease_id = uuid4()
+    now = datetime.now(UTC)
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="CD",
+        admin1="North Kivu",
+        place_name="Beni",
+        latitude=0.49,
+        longitude=29.47,
+    )
+    cluster = StoryCluster(
+        signals=(
+            SignalForMatching(
+                signal_id=uuid4(),
+                disease_id=disease_id,
+                source_id=uuid4(),
+                source_is_official=True,
+                credibility_tier=CredibilityTier.OFFICIAL,
+                published_at=now,
+                first_seen_at=now,
+                locations=(location,),
+            ),
+        )
+    )
+    event = FakeEvent(uuid4(), disease_id, now, now)
+    session = FakeSession(
+        [
+            FakeResult([event]),
+            FakeResult([FakeEventLocation(event.id)]),
+            FakeResult([(event.id, [0.0, 1.0])]),
+        ]
+    )
+
+    candidates = SqlAlchemyEventRepository(session).candidate_events(cluster)
+
+    assert candidates[0].representative_embedding == (0.0, 1.0)
 
 
 def test_create_event_inserts_event_row_and_returns_candidate() -> None:
