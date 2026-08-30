@@ -927,9 +927,20 @@ a dry read of how many live signals now carry a `triage_disease_text` and a
 
 ## Task 9: pgvector and the embedding column
 
+**Planner correction (2026-08-30):** The original task named three interfaces
+that do not exist together in this tree. The operator-only live report in
+`episignal_backend.schema_check` owns extension readiness; the public FastAPI
+readiness contract remains the foundation's database/PostGIS contract. Add the
+small `database_report(session)` interface to `schema_check.py`, have
+`build_report()` merge its three component states, and make the command fail
+when pgvector is unavailable. The signal-column constant is
+`EXPECTED_SIGNAL_COLUMNS` (new), not the nonexistent `EXPECTED_COLUMNS`.
+Python runtime dependencies belong to the backend member's pyproject, not the
+dependency-empty workspace pyproject.
+
 **Files:**
 - Create: `database/migrations/versions/20260830_0018_pgvector_embeddings.py`
-- Modify: `models/signal.py`, `pyproject.toml`, `schema_check.py`
+- Modify: `models/signal.py`, `packages/backend/pyproject.toml`, `schema_check.py`
 - Test: `apps/api/tests/test_migrations.py`, `packages/backend/tests/test_schema_check.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -944,6 +955,8 @@ def test_the_migration_enables_pgvector_and_indexes_the_embedding() -> None:
 
 
 def test_the_health_check_reports_pgvector() -> None:
+    # The fake session returns a version for the pg_extension vector probe and
+    # a healthy connection for the existing database/PostGIS probe.
     report = database_report(session)
 
     assert report["pgvector"] == "up"
@@ -971,8 +984,11 @@ def downgrade() -> None:
 ```
 
 Add `pgvector>=0.3` and `sentence-transformers>=3` to `pyproject.toml`
-dependencies. Extend `database_check.py` with a `pgvector` probe beside the
-existing PostGIS one, and add `embedding` to `schema_check.EXPECTED_COLUMNS`.
+dependencies. Add `database_report(session)` to `schema_check.py`: reuse the
+existing database/PostGIS probe, query `pg_extension` for `vector`, and return
+only component states. Add `embedding` to
+`schema_check.EXPECTED_SIGNAL_COLUMNS`, merge the component report into
+`build_report()`, and require pgvector in the command's exit condition.
 
 - [ ] **Step 3: Run the tests, then commit**
 
