@@ -15,18 +15,39 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import ValidationError
 
-from episignal_backend.ai.documents import ChatRequest, ChatResponse, ModelSpec
+from episignal_backend.ai.documents import (
+    ChatRequest,
+    ChatResponse,
+    ExtractableSignal,
+    ModelSpec,
+    TriageableSignal,
+)
+from episignal_backend.ai.extract import (
+    DEFAULT_MAX_INPUT_CHARACTERS,
+    EXTRACTION_SCHEMA_NAME,
+    EXTRACTION_TEMPERATURE,
+)
 from episignal_backend.ai.ladder import cost_usd
+from episignal_backend.ai.prompts import extraction_prompt, triage_prompt
 from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.ai.schema import Extraction, TriageVerdict
+from episignal_backend.ai.schema import (
+    Extraction,
+    TriageVerdict,
+    extraction_json_schema,
+    triage_json_schema,
+)
+from episignal_backend.ai.triage import TRIAGE_SNIPPET_CHARACTERS
 from episignal_backend.ai.validate import check_grounding
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "model_check"
 DEFAULT_MAX_REQUESTS = 50
 DEFAULT_MAX_COST_USD = Decimal("0.25")
+FIXTURE_SOURCE_NAME = "model-check fixture"
+FIXTURE_URL_BASE = "https://model-check.invalid/"
 
 
 def rate(numerator: int, denominator: int) -> float:
@@ -55,21 +76,45 @@ def load_cases(purpose: str, root: Path = FIXTURE_ROOT) -> tuple[CheckCase, ...]
     return cases
 
 
-def _request(purpose: str, model_id: str, payload: dict[str, Any]) -> ChatRequest:
+def _fixture_id(case_id: str) -> UUID:
+    return uuid5(NAMESPACE_URL, f"episignal:model-check:{case_id}")
+
+
+def _request(purpose: str, model_id: str, case_id: str, payload: dict[str, Any]) -> ChatRequest:
     if purpose == "triage":
-        schema = TriageVerdict.model_json_schema()
+        triage_signal = TriageableSignal(
+            id=_fixture_id(case_id),
+            title=payload["title"],
+            excerpt=payload["excerpt"],
+            source_name=FIXTURE_SOURCE_NAME,
+            url=f"{FIXTURE_URL_BASE}{case_id}",
+            language="en",
+        )
+        system, user = triage_prompt(triage_signal, max_characters=TRIAGE_SNIPPET_CHARACTERS)
+        schema = triage_json_schema()
+        schema_name = "triage_verdict"
+        temperature = 0.0
+    elif purpose == "extraction":
+        extraction_signal = ExtractableSignal(
+            id=_fixture_id(case_id),
+            title=payload["title"],
+            raw_text=payload["raw_text"],
+        )
+        system, user = extraction_prompt(
+            extraction_signal, max_characters=DEFAULT_MAX_INPUT_CHARACTERS
+        )
+        schema = extraction_json_schema()
+        schema_name = EXTRACTION_SCHEMA_NAME
+        temperature = EXTRACTION_TEMPERATURE
     else:
-        schema = Extraction.model_json_schema()
+        raise ValueError(f"unsupported model-check purpose: {purpose}")
     return ChatRequest(
         model_id=model_id,
-        system=(
-            "Return only JSON matching the supplied schema. Do not invent values. "
-            f"This is an offline {purpose} model check."
-        ),
-        user=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        system=system,
+        user=user,
         response_schema=schema,
-        schema_name=f"model_check_{purpose}",
-        temperature=0.0,
+        schema_name=schema_name,
+        temperature=temperature,
     )
 
 
@@ -218,7 +263,7 @@ def run_model_check(
             if requests >= max_requests or spent >= max_cost_usd:
                 status = "partial"
                 break
-            request = _request(purpose, spec.model_id, case.input)
+            request = _request(purpose, spec.model_id, case.case_id, case.input)
             requests += 1
             try:
                 response = model.complete(request)

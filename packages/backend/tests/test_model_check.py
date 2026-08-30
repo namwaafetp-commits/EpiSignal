@@ -4,11 +4,24 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
-from episignal_backend.ai.documents import ChatResponse, ModelSpec, TokenUsage
+from episignal_backend.ai.documents import (
+    ChatResponse,
+    ExtractableSignal,
+    ModelSpec,
+    TokenUsage,
+    TriageableSignal,
+)
+from episignal_backend.ai.extract import DEFAULT_MAX_INPUT_CHARACTERS, EXTRACTION_SCHEMA_NAME
+from episignal_backend.ai.prompts import extraction_prompt, triage_prompt
 from episignal_backend.ai.protocol import ModelUnavailable
+from episignal_backend.ai.schema import extraction_json_schema, triage_json_schema
+from episignal_backend.ai.triage import TRIAGE_SNIPPET_CHARACTERS
 from episignal_backend.db.types import AiProvider
 from episignal_backend.model_check import (
     FIXTURE_ROOT,
+    FIXTURE_SOURCE_NAME,
+    FIXTURE_URL_BASE,
+    _fixture_id,
     load_cases,
     run_model_check,
     save_result,
@@ -37,6 +50,74 @@ def test_lite_fixtures_have_twenty_stable_cases_per_purpose() -> None:
     assert len(extraction) == 20
     assert triage[0].case_id == "TRIAGE-001"
     assert extraction[-1].case_id == "EXTRACT-020"
+
+
+def test_ambiguous_triage_gold_does_not_infer_disease_or_geography() -> None:
+    cases = {case.case_id: case for case in load_cases("triage")}
+
+    assert cases["TRIAGE-006"].expected["disease"] is None
+    assert cases["TRIAGE-006"].expected["country"] is None
+    assert cases["TRIAGE-006"].expected["admin1"] is None
+    assert cases["TRIAGE-011"].expected["country"] is None
+    assert cases["TRIAGE-011"].expected["admin1"] is None
+    assert cases["TRIAGE-012"].expected["admin1"] is None
+
+
+def test_model_check_uses_production_prompt_seams_and_request_contract() -> None:
+    triage_case = load_cases("triage")[0]
+    triage_model = FakeModel(
+        json.dumps(
+            {
+                "relevant": True,
+                "public_health": True,
+                "category": "infectious_disease",
+                "event_type": "outbreak_report",
+                "confidence": 0.9,
+            }
+        )
+    )
+    run_model_check(
+        purpose="triage",
+        models=((_spec(), triage_model),),
+        cases=(triage_case,),
+    )
+    triage_signal = TriageableSignal(
+        id=_fixture_id(triage_case.case_id),
+        title=triage_case.input["title"],
+        excerpt=triage_case.input["excerpt"],
+        source_name=FIXTURE_SOURCE_NAME,
+        url=f"{FIXTURE_URL_BASE}{triage_case.case_id}",
+        language="en",
+    )
+    triage_request = triage_model.requests[0]
+    expected_system, expected_user = triage_prompt(
+        triage_signal, max_characters=TRIAGE_SNIPPET_CHARACTERS
+    )
+    assert (triage_request.system, triage_request.user) == (expected_system, expected_user)
+    assert triage_request.response_schema == triage_json_schema()
+    assert triage_request.schema_name == "triage_verdict"
+    assert triage_request.temperature == 0.0
+
+    extraction_case = load_cases("extraction")[0]
+    extraction_model = FakeModel(json.dumps(extraction_case.expected))
+    run_model_check(
+        purpose="extraction",
+        models=((_spec(), extraction_model),),
+        cases=(extraction_case,),
+    )
+    extraction_signal = ExtractableSignal(
+        id=_fixture_id(extraction_case.case_id),
+        title=extraction_case.input["title"],
+        raw_text=extraction_case.input["raw_text"],
+    )
+    extraction_request = extraction_model.requests[0]
+    expected_system, expected_user = extraction_prompt(
+        extraction_signal, max_characters=DEFAULT_MAX_INPUT_CHARACTERS
+    )
+    assert (extraction_request.system, extraction_request.user) == (expected_system, expected_user)
+    assert extraction_request.response_schema == extraction_json_schema()
+    assert extraction_request.schema_name == EXTRACTION_SCHEMA_NAME
+    assert extraction_request.temperature == 0.0
 
 
 def test_triage_scoring_exposes_recall_and_false_negatives() -> None:
