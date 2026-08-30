@@ -10,8 +10,56 @@ from episignal_backend.ai.schema import (
     Extraction,
     GroundedCount,
     StoredExtractionPayload,
+    TriageVerdict,
 )
 from pydantic import ValidationError
+
+
+def test_a_triage_verdict_allows_every_fact_to_be_missing() -> None:
+    verdict = TriageVerdict.model_validate(
+        {"relevant": True, "public_health": True, "confidence": 0.9}
+    )
+
+    assert verdict.disease is None
+    assert verdict.country is None
+    assert verdict.admin1 is None
+
+
+def test_a_two_letter_country_is_required_when_present() -> None:
+    with pytest.raises(ValidationError):
+        TriageVerdict.model_validate(
+            {
+                "relevant": True,
+                "public_health": True,
+                "confidence": 0.9,
+                "country": "Thailand",
+            }
+        )
+
+
+def test_an_empty_string_is_read_as_missing() -> None:
+    verdict = TriageVerdict.model_validate(
+        {
+            "relevant": True,
+            "public_health": True,
+            "confidence": 0.9,
+            "admin1": "  ",
+        }
+    )
+
+    assert verdict.admin1 is None
+
+
+def test_an_unknown_key_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        TriageVerdict.model_validate(
+            {
+                "relevant": True,
+                "public_health": True,
+                "confidence": 0.9,
+                "severity": "high",
+            }
+        )
 
 
 def test_the_slots_are_ordered_as_an_epidemiologist_reads_them() -> None:

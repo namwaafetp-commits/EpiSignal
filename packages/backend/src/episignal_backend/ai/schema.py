@@ -224,6 +224,56 @@ def _require_span(value: str) -> str:
     return collapsed
 
 
+class TriageCategory(StrEnum):
+    INFECTIOUS_DISEASE = "infectious_disease"
+    ENVIRONMENTAL = "environmental"
+    CHEMICAL = "chemical"
+    OTHER_PUBLIC_HEALTH = "other_public_health"
+    NOT_PUBLIC_HEALTH = "not_public_health"
+
+
+class TriageVerdict(BaseModel):
+    """Cheap metadata from a headline and opening paragraph.
+
+    Facts stay nullable because forcing a small model to fill them invites
+    invention. The two judgements and their confidence are always required.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    relevant: bool
+    public_health: bool
+    category: TriageCategory | None = None
+    event_type: SignalType | None = None
+    disease: str | None = Field(default=None, max_length=200)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    admin1: str | None = Field(default=None, max_length=200)
+    admin2: str | None = Field(default=None, max_length=200)
+    location_text: str | None = Field(default=None, max_length=300)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("disease", "admin1", "admin2", "location_text", mode="before")
+    @classmethod
+    def blank_is_missing(cls, value: object) -> object:
+        if isinstance(value, str) and (
+            not value.strip() or value.strip().lower() in {"unknown", "n/a", "none"}
+        ):
+            return None
+        return value
+
+    @field_validator("country", mode="before")
+    @classmethod
+    def country_is_upper(cls, value: object) -> object:
+        if isinstance(value, str):
+            collapsed = value.strip().upper()
+            return collapsed or None
+        return value
+
+
+def triage_json_schema() -> dict[str, Any]:
+    return TriageVerdict.model_json_schema()
+
+
 class BriefSlot(StrEnum):
     """One of the five questions a brief answers, in the order it is asked."""
 
