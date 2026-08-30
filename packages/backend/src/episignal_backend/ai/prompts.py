@@ -14,8 +14,13 @@ from episignal_backend.ai.documents import (
     ClassifiableSignal,
     ClusterMemberSignal,
     ExtractableSignal,
+    TriageableSignal,
 )
-from episignal_backend.ai.schema import classification_json_schema, extraction_json_schema
+from episignal_backend.ai.schema import (
+    classification_json_schema,
+    extraction_json_schema,
+    triage_json_schema,
+)
 
 EXTRACTION_RULES = """You read one news article and return epidemiological facts as JSON.
 
@@ -51,6 +56,30 @@ Rules:
 The object must match this JSON Schema exactly:
 """
 
+TRIAGE_RULES = """You read one news item and return structured metadata as JSON.
+
+Rules:
+- Return one JSON object and nothing else. No prose, no code fence.
+- Every field you are not certain of from the text you were given must be null.
+  Never guess a disease, a country, or a province.
+- country is a two-letter ISO 3166-1 alpha-2 code, or null.
+- Judge relevance generously: when a headline might concern an outbreak, an
+  unusual illness, or a public health response, mark it relevant. A missed
+  outbreak costs more than a wasted look.
+- Mark relevant false only when the item is plainly about something else --
+  sport, business, entertainment, crime, politics with no health content.
+- confidence is your confidence in relevant, not in the whole object.
+
+The object must match this JSON Schema exactly:
+"""
+
+TRIAGE_REPAIR = """Your previous answer did not match the schema.
+
+Error: {error}
+
+Return the corrected JSON object and nothing else.
+"""
+
 
 def truncate(text: str, limit: int) -> str:
     """Cut at a whitespace boundary so a word is never split mid-token.
@@ -83,6 +112,28 @@ def classification_prompt(batch: Sequence[ClassifiableSignal]) -> tuple[str, str
     system = CLASSIFICATION_RULES + json.dumps(classification_json_schema(), sort_keys=True)
     items = "\n\n".join(f"id: {signal.id}\ntitle: {signal.title}" for signal in batch)
     return system, items
+
+
+def triage_prompt(signal: TriageableSignal, *, max_characters: int) -> tuple[str, str]:
+    system = TRIAGE_RULES + json.dumps(triage_json_schema(), sort_keys=True)
+    published = signal.published_at.isoformat() if signal.published_at else "unknown"
+    user = (
+        f"TITLE: {signal.title}\n"
+        f"SOURCE: {signal.source_name}\n"
+        f"PUBLISHED: {published}\n"
+        f"URL: {signal.url}\n"
+        f"LANGUAGE: {signal.language or 'unknown'}\n\n"
+        f"SNIPPET:\n{truncate(signal.excerpt, max_characters)}"
+    )
+    return system, user
+
+
+def triage_repair_prompt(
+    signal: TriageableSignal, *, error: str, max_characters: int
+) -> tuple[str, str]:
+    """One repair carrying the validation failure the model must correct."""
+    system, user = triage_prompt(signal, max_characters=max_characters)
+    return system, user + "\n\n" + TRIAGE_REPAIR.format(error=error)
 
 
 MAX_CLUSTER_MEMBERS = 4

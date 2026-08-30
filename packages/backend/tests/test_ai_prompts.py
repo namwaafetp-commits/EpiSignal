@@ -1,20 +1,61 @@
 import json
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from episignal_backend.ai.documents import (
     ClassifiableSignal,
     ClusterMemberSignal,
     ExtractableSignal,
+    TriageableSignal,
 )
 from episignal_backend.ai.prompts import (
     MAX_CLUSTER_MEMBERS,
     classification_prompt,
     cluster_extraction_prompt,
     extraction_prompt,
+    triage_prompt,
+    triage_repair_prompt,
     truncate,
 )
 
 FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
+SIGNAL = TriageableSignal(
+    id=FIRST,
+    title="Dengue outbreak in Chiang Mai",
+    excerpt="Officials reported 42 cases in Chiang Mai province.",
+    source_name="Bangkok Post",
+    url="https://example.com/dengue",
+    published_at=datetime(2026, 8, 30, 8, 0, tzinfo=UTC),
+    language="en",
+)
+LONG_SIGNAL = SIGNAL.model_copy(update={"excerpt": "word " * 500})
+
+
+def test_the_triage_prompt_carries_the_metadata_a_blocking_key_needs() -> None:
+    system, user = triage_prompt(SIGNAL, max_characters=1200)
+
+    assert "null" in system
+    assert "TITLE:" in user
+    assert "SOURCE:" in user
+    assert "PUBLISHED:" in user
+    assert "URL:" in user
+
+
+def test_the_triage_prompt_truncates_the_snippet() -> None:
+    _, user = triage_prompt(LONG_SIGNAL, max_characters=100)
+
+    assert LONG_SIGNAL.excerpt not in user
+
+
+def test_a_repair_prompt_carries_the_validation_error() -> None:
+    _, user = triage_repair_prompt(
+        SIGNAL,
+        error="country must be 2 characters",
+        max_characters=1200,
+    )
+
+    assert "country must be 2 characters" in user
+    assert "TITLE:" in user
 
 
 def test_truncation_stops_at_a_whitespace_boundary() -> None:

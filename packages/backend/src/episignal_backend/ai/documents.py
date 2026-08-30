@@ -72,6 +72,30 @@ class ClassifiableSignal(BaseModel):
         return _require_text(value)
 
 
+class TriageableSignal(BaseModel):
+    """A retrieved signal with source metadata for early structured triage."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    title: str = Field(min_length=1)
+    excerpt: str = Field(min_length=1)
+    source_name: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+    published_at: datetime | None = None
+    language: str | None = None
+
+    @field_validator("title", "excerpt", "source_name", "url")
+    @classmethod
+    def text_is_not_blank(cls, value: str) -> str:
+        return _require_text(value)
+
+    @field_validator("published_at")
+    @classmethod
+    def published_at_is_aware(cls, value: datetime | None) -> datetime | None:
+        return _require_aware(value) if value is not None else None
+
+
 class ExtractableSignal(BaseModel):
     """A signal judged relevant, with the text its extraction must be grounded in."""
 
