@@ -130,7 +130,36 @@ purpose-specific model routing.
   **Corrections** table with the file and line that forced each one. Do not
   re-derive or relitigate them.
 
-## Task ledger — `O2` (active)
+## Task ledger — `R` (active)
+
+- [x] 1. Normalized title.
+- [ ] 2. Triage vocabulary and schema columns.
+- [ ] 3. Purpose-scoped ladder.
+- [ ] 4. The triage contract.
+- [ ] 5. The triage prompt.
+- [ ] 6. The triage pass.
+- [ ] 7. Pre-fetch normalized-title dedup.
+- [ ] 8. The `triage` stage and Phase A checkpoint.
+- [ ] 9. pgvector and the embedding column.
+- [ ] 10. The embedding provider.
+- [ ] 11. The embedding pass and stage.
+- [ ] 12. Candidate blocking.
+- [ ] 13. Similarity as an additive term.
+- [ ] 14. Wire similarity into assembly, with decision logging.
+- [ ] 15. The four calibration fixtures.
+- [ ] 16. Phase B checkpoint.
+- [ ] 17. The summary history table.
+- [ ] 18. The event summary contract.
+- [ ] 19. Representative article selection.
+- [ ] 20. Material-update detection.
+- [ ] 21. The DeepSeek summarization pass.
+- [ ] 22. The `summarize` stage, runner, and force flag.
+- [ ] 23. Cost reporting.
+- [ ] 24. Documentation and configuration.
+- [ ] 25. End-to-end fixture run.
+- [ ] 26. Review, verify, live proof, report.
+
+## Task ledger — `O2` (stale position; implementation merged)
 
 - [x] 1. Seed the `title_inclusion` keyword rules.
 - [x] 2. Add the `filtered` processing status and its migration.
@@ -246,4 +275,3 @@ corepack pnpm spend:report
 
 Update this table only from a run you actually performed, and record the commit
 it was performed at.
-

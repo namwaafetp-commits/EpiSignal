@@ -93,7 +93,7 @@ Umbrella architecture and shared invariants:
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 | `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. | `C2`, `D2a`, `L` | `verified` |
 | `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `verified` |
-| `R` | Event-based surveillance: early metadata, embeddings, event summaries | An article's own disease and place are known before extraction, two reports of one outbreak match semantically without ever overriding a deterministic conflict, and each event carries one narrative summary traceable to the articles that produced it. | `O2` | `planned` |
+| `R` | Event-based surveillance: early metadata, embeddings, event summaries | An article's own disease and place are known before extraction, two reports of one outbreak match semantically without ever overriding a deterministic conflict, and each event carries one narrative summary traceable to the articles that produced it. | `O2` | `building` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·
