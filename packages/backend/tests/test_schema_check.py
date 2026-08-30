@@ -1,4 +1,33 @@
-from episignal_backend.schema_check import EXPECTED_TABLES, missing_tables
+from episignal_backend.schema_check import (
+    EXPECTED_SIGNAL_COLUMNS,
+    EXPECTED_TABLES,
+    database_report,
+    missing_tables,
+)
+
+
+class HealthyConnection:
+    def scalar(self, statement: object) -> object:
+        return "3.5 USE_GEOS=1" if "postgis_full_version" in str(statement) else 1
+
+
+class PgvectorSession:
+    def connection(self) -> HealthyConnection:
+        return HealthyConnection()
+
+    def scalar(self, statement: object) -> object:
+        assert "pg_extension" in str(statement)
+        return "0.8.1"
+
+
+def test_the_health_check_reports_pgvector() -> None:
+    report = database_report(PgvectorSession())  # type: ignore[arg-type]
+
+    assert report["pgvector"] == "up"
+
+
+def test_the_expected_signal_columns_include_the_embedding() -> None:
+    assert "embedding" in EXPECTED_SIGNAL_COLUMNS
 
 
 def test_no_missing_tables_when_every_core_table_is_present() -> None:

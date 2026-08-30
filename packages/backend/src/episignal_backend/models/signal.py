@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -45,6 +46,12 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         Index("ix_signals_disease_id", "disease_id"),
         Index("ix_signals_normalized_title", "normalized_title"),
         Index("ix_signals_triage_block", "triage_disease_text", "triage_country_code"),
+        Index(
+            "ix_signals_embedding",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
     source_id: Mapped[UUID] = mapped_column(
@@ -76,6 +83,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     triage_admin2: Mapped[str | None] = mapped_column(Text)
     triage_location_text: Mapped[str | None] = mapped_column(Text)
     triage_confidence: Mapped[float | None] = mapped_column(Float)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
     signal_type: Mapped[SignalType] = mapped_column(
         vocabulary(SignalType, "signal_type_values"),
         nullable=False,

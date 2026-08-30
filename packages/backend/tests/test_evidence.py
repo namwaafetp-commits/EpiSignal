@@ -44,6 +44,7 @@ def sqlite_session() -> Session:
                 triage_admin2 TEXT,
                 triage_location_text TEXT,
                 triage_confidence FLOAT,
+                embedding VECTOR(1024),
                 signal_type VARCHAR(32) NOT NULL,
                 ai_extraction JSON,
                 ai_model TEXT,

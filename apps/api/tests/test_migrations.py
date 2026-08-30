@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260830_0017"]
+    assert scripts.get_heads() == ["20260830_0018"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -290,3 +290,11 @@ def test_the_migration_widens_the_purpose_constraint() -> None:
     assert "'triage'" in sql
     assert "'event_summary'" in sql
     assert "normalized_title" in sql
+
+
+def test_the_migration_enables_pgvector_and_indexes_the_embedding() -> None:
+    sql = render_offline("upgrade", "20260830_0017:20260830_0018")
+
+    assert "create extension if not exists vector" in sql
+    assert "vector(1024)" in sql
+    assert "hnsw" in sql
