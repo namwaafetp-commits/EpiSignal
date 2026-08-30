@@ -28,11 +28,11 @@ Triage completed for two existing cheap OpenRouter models:
 
 | Model | Cases | Recall | False negatives | Accuracy | Cost |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Llama 3.1 8B Instruct | 20 | 100% | 0 | 50% overall / 55% schema acceptance | $0.000376 |
+| Llama 3.1 8B Instruct | 20 | 100% | 0 | 60% overall / 65% schema acceptance | $0.000376 |
 | Mistral Small 24B | 20 | 100% | 0 | 90% overall / 100% schema acceptance | $0.000850 |
 
 The corrected run uses the production triage prompt and request contract. Llama
-had nine schema failures and one false positive; Mistral had no schema failures,
+had seven schema failures and one false positive; Mistral had no schema failures,
 two false positives, and no missed relevant cases in this small sample. Schema
 failures are recorded separately, not silently counted as false negatives.
 
