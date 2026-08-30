@@ -141,7 +141,7 @@ purpose-specific model routing.
 - [x] 7. Pre-fetch normalized-title dedup.
 - [x] 8. The `triage` stage and Phase A checkpoint.
 - [x] 9. pgvector and the embedding column.
-- [ ] 10. The embedding provider.
+- [x] 10. The embedding provider.
 - [ ] 11. The embedding pass and stage.
 - [ ] 12. Candidate blocking.
 - [ ] 13. Similarity as an additive term.
