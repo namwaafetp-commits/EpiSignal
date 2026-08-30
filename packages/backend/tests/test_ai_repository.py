@@ -11,6 +11,7 @@ from episignal_backend.ai.schema import (
     EXTRACTION_SCHEMA_VERSION,
     EXTRACTION_VERSION_KEY,
     Extraction,
+    TriageVerdict,
 )
 from episignal_backend.db.types import (
     AiOutcome,
@@ -19,6 +20,7 @@ from episignal_backend.db.types import (
     ProcessingStatus,
     SignalType,
     StoryGroupRole,
+    TriageStatus,
 )
 from episignal_backend.ingestion.fingerprint import content_hash as compute_hash
 from episignal_backend.models.signal import Signal
@@ -125,6 +127,69 @@ def test_the_roster_preserves_a_models_purpose() -> None:
     repository = SqlAlchemyAiRepository(FakeSession([FakeResult([row])]))
 
     assert repository.models()[0].purpose is AiPurpose.TRIAGE
+
+
+def test_awaiting_triage_returns_source_metadata_and_uses_the_blocking_filters() -> None:
+    source_id = uuid4()
+    row = Signal(
+        id=uuid4(),
+        source_id=source_id,
+        title="Dengue outbreak in Chiang Mai",
+        raw_text="Officials reported 42 dengue cases.",
+        content_hash=compute_hash(
+            "Dengue outbreak in Chiang Mai",
+            "Officials reported 42 dengue cases.",
+        ),
+        processing_status=ProcessingStatus.NORMALIZED,
+        triage_status=TriageStatus.PENDING,
+        url="https://example.com/dengue",
+        language="en",
+        published_at=NOW,
+    )
+    session = FakeSession([FakeResult([(row, "Bangkok Post")])])
+
+    pending = SqlAlchemyAiRepository(session).awaiting_triage(limit=10)
+
+    assert pending[0].source_name == "Bangkok Post"
+    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
+    assert ProcessingStatus.NORMALIZED.value in rendered
+    assert TriageStatus.PENDING.value in rendered
+    assert "story_group_members" in rendered
+
+
+def test_recording_irrelevant_triage_filters_without_deleting_the_signal() -> None:
+    session = FakeSession()
+    signal_id = uuid4()
+
+    SqlAlchemyAiRepository(session).record_triage(
+        signal_id,
+        TriageVerdict(
+            relevant=False,
+            public_health=False,
+            category="not_public_health",
+            confidence=0.98,
+        ),
+        None,
+        NOW,
+    )
+
+    statement = session.executed[0]
+    assert isinstance(statement, Update)
+    params = statement.compile().params
+    assert TriageStatus.DONE in params.values()
+    assert ProcessingStatus.FILTERED in params.values()
+
+
+def test_a_final_triage_failure_is_recorded_without_changing_processing_status() -> None:
+    session = FakeSession()
+
+    SqlAlchemyAiRepository(session).record_triage_failure(uuid4())
+
+    statement = session.executed[0]
+    assert isinstance(statement, Update)
+    params = statement.compile().params
+    assert TriageStatus.FAILED in params.values()
+    assert not any(isinstance(value, ProcessingStatus) for value in params.values())
 
 
 def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> None:

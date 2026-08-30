@@ -9,6 +9,7 @@ reached for through a handle the passes were given.
 """
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -22,8 +23,10 @@ from episignal_backend.ai.documents import (
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
+    TriageableSignal,
     Verdict,
 )
+from episignal_backend.ai.schema import TriageVerdict
 from episignal_backend.db.types import ReviewReason
 
 
@@ -44,6 +47,8 @@ class AiRepository(Protocol):
 
     def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]: ...
 
+    def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]: ...
+
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]: ...
 
     def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]: ...
@@ -57,6 +62,16 @@ class AiRepository(Protocol):
     def record_request(self, record: AiRequestRecord) -> None: ...
 
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None: ...
+
+    def record_triage(
+        self,
+        signal_id: UUID,
+        verdict: TriageVerdict,
+        disease_id: UUID | None,
+        at: datetime,
+    ) -> None: ...
+
+    def record_triage_failure(self, signal_id: UUID) -> None: ...
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None: ...
 

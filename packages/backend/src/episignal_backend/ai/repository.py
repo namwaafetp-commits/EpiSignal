@@ -8,6 +8,7 @@ behalf of the passes above it.
 
 import logging
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
@@ -22,6 +23,7 @@ from episignal_backend.ai.documents import (
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
+    TriageableSignal,
     Verdict,
 )
 from episignal_backend.ai.prompts import MAX_CLUSTER_MEMBERS
@@ -29,12 +31,15 @@ from episignal_backend.ai.schema import (
     BACKFILL_MIN_SCHEMA_VERSION,
     EXTRACTION_SCHEMA_VERSION,
     EXTRACTION_VERSION_KEY,
+    TriageVerdict,
 )
 from episignal_backend.db.types import (
     ProcessingStatus,
     ReviewReason,
+    SignalType,
     StoryGroupRole,
     StoryGroupState,
+    TriageStatus,
 )
 from episignal_backend.ingestion.fingerprint import verify_content_hash
 from episignal_backend.models import (
@@ -42,6 +47,7 @@ from episignal_backend.models import (
     AiRequest,
     Disease,
     Signal,
+    Source,
     StoryGroup,
     StoryGroupMember,
 )
@@ -136,6 +142,53 @@ class SqlAlchemyAiRepository:
             )
             for row in rows
         )
+
+    def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]:
+        stmt = (
+            select(Signal, Source.name)
+            .join(Source, Source.id == Signal.source_id)
+            .where(
+                Signal.processing_status == ProcessingStatus.NORMALIZED,
+                Signal.triage_status == TriageStatus.PENDING,
+                Signal.raw_text.is_not(None),
+                ~_deferred_by_open_group(),
+            )
+            .order_by(Signal.first_seen_at)
+        )
+        chunk_size = max(limit, 20)
+        max_scan = max(limit * 5, 100)
+        offset = 0
+        pending: list[TriageableSignal] = []
+
+        while len(pending) < limit and offset < max_scan:
+            rows = self._session.execute(stmt.offset(offset).limit(chunk_size)).all()
+            if not rows:
+                break
+            offset += len(rows)
+            for row, source_name in rows:
+                if not verify_content_hash(row.title, row.raw_text, row.content_hash):
+                    logger.warning(
+                        "Signal %s failed content hash integrity check; omitted from triage pass",
+                        row.id,
+                    )
+                    continue
+                pending.append(
+                    TriageableSignal(
+                        id=row.id,
+                        title=row.title,
+                        excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
+                        source_name=source_name,
+                        url=row.url,
+                        published_at=row.published_at,
+                        language=row.language,
+                    )
+                )
+                if len(pending) == limit:
+                    break
+            if len(rows) < chunk_size:
+                break
+
+        return tuple(pending)
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         stmt = (
@@ -267,6 +320,36 @@ class SqlAlchemyAiRepository:
                 ai_model=verdict.model_id,
                 ai_processed_at=verdict.decided_at,
             )
+        )
+
+    def record_triage(
+        self,
+        signal_id: UUID,
+        verdict: TriageVerdict,
+        disease_id: UUID | None,
+        at: datetime,
+    ) -> None:
+        del at
+        values: dict[str, object] = {
+            "triage_status": TriageStatus.DONE,
+            "triage_category": verdict.category.value if verdict.category else None,
+            "triage_disease_text": verdict.disease,
+            "triage_country_code": verdict.country,
+            "triage_admin1": verdict.admin1,
+            "triage_admin2": verdict.admin2,
+            "triage_location_text": verdict.location_text,
+            "triage_confidence": verdict.confidence,
+            "public_health_relevant": verdict.public_health,
+            "signal_type": verdict.event_type or SignalType.UNKNOWN,
+            "disease_id": disease_id,
+        }
+        if not verdict.relevant:
+            values["processing_status"] = ProcessingStatus.FILTERED
+        self._session.execute(update(Signal).where(Signal.id == signal_id).values(**values))
+
+    def record_triage_failure(self, signal_id: UUID) -> None:
+        self._session.execute(
+            update(Signal).where(Signal.id == signal_id).values(triage_status=TriageStatus.FAILED)
         )
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
