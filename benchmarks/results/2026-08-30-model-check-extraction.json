@@ -1,0 +1,15 @@
+{
+  "date": "2026-08-30T00:00:00+00:00",
+  "fixture_version": "model-check-v1",
+  "git_sha": "cda5efe120ab92fe42f051928df1acbe6cc1c228",
+  "models": [
+    "meta-llama/llama-3.1-8b-instruct",
+    "mistralai/mistral-small-24b-instruct-2501"
+  ],
+  "note": "Live extraction smoke was attempted but did not complete within the provider timeout; no model quality result is claimed.",
+  "purpose": "extraction",
+  "requests": 0,
+  "results": {},
+  "status": "not_run",
+  "total_cost_usd": "0.000000"
+}

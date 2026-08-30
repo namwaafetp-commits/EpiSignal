@@ -11,16 +11,16 @@ position and evidence ledger.
 | Field | Value |
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
-| Item | `F` — Model benchmarking harness |
-| Status | `not-started` |
+| Item | `F Lite` — Lean model check |
+| Status | `verified` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | No F-specific spec is committed; design is the next planning step |
-| Plan | No F-specific plan is committed |
+| Spec | F Lite is defined by the current task scope; the prior database-heavy F design is superseded |
+| Plan | F Lite is implemented by `model_check.py` and `test_model_check.py` |
 
 ## Verified main baseline
 
-The current `main` commit is
-`1b6371340e58f6773766f6920a47279a87f8bc0d`. The following commands were run
+The current `main` baseline commit is
+`cda5efe120ab92fe42f051928df1acbe6cc1c228`. The following commands were run
 from that checkout on 2026-08-30 before this documentation reconciliation:
 
 | Fact | Value |
@@ -37,6 +37,12 @@ The run emitted two existing Python deprecation warnings and the existing Vite
 configuration warnings. No test failure or unexpected xfail occurred. The
 full record is in
 [the post-merge reconciliation report](docs/reports/2026-08-30-post-merge-reconciliation.md).
+
+F Lite final verification passed with 95 web tests, 1184 Python tests, and 0
+xfails; `test:pipeline` passed with 16 tests; the offline model-check suite
+passed 9 tests. Live triage evidence is stored in `benchmarks/results/`;
+extraction live smoke was attempted but timed out and is explicitly recorded as
+`not_run`. See the [F Lite report](docs/reports/2026-08-30-f-lite-model-check-report.md).
 
 ## Current implementation state
 
@@ -98,28 +104,41 @@ ledger against the superseding Lean MVP architecture:
 - [ ] The original plan's live production proof was not run and is not claimed
   as synthetic/code verification evidence.
 
+## Task ledger — `F Lite`
+
+- [x] Twenty triage and twenty extraction cases are committed separately from
+  production data.
+- [x] Deterministic triage and extraction scoring exposes false negatives,
+  grounding failures, unsupported numeric claims, null handling, cost, and
+  latency without an LLM judge.
+- [x] Explicit capped provider calls and JSON result persistence are isolated
+  from production routing and the production AI ledger.
+- [x] Offline suite and full repository gates pass; bounded live triage evidence
+  is recorded. Live extraction evidence remains an explicit follow-up because
+  the provider smoke timed out.
+
 ## Other roadmap state
 
 - `D2b` is verified for the Lean MVP's LLM-judge scope; embeddings are deferred
   to Phase 2.
 - `E`, `L`, `M`, and `O` are verified. `G` and `I` are also implemented and
   verified through the R events API/UI work.
-- `H`, `J`, `K`, `N`, and `Z` remain not-started. `F` is the one next
-  implementation item; no other item is active.
+- `H`, `J`, `K`, `N`, and `Z` remain not-started. F Lite is verified; real-data
+  end-to-end surveillance validation is the one next implementation priority.
 
 ## Next action
 
-**Planner:** design and plan `F` — Model benchmarking harness. Start from the
-latest `main` in a fresh task branch/worktree when implementation begins. Do
-not use historical branch names or stale worktrees as a base.
+**Planner:** plan one bounded real-data end-to-end surveillance validation run.
+Start from the latest `main` in a fresh task branch/worktree when that item
+begins. Do not use historical branch names or stale worktrees as a base.
 
-F's objective is to persist comparable acceptance, cost-per-accepted,
-grounding, and brief-quality measurements by model and purpose. Its existing
-dependencies (`C`, plus the verified purpose-scoped roster, cost ledger,
-extraction validators, event judge, and summarizer) are satisfied. It must not
-change the production roster or routing, wire batch jobs, enable embeddings, or
-build new product surfaces. No F-specific spec or plan exists yet; the
-benchmark design must be committed before implementation.
+The objective is to observe the complete existing pipeline on real incoming
+reporting and evaluate its produced signals, events, observations, summaries,
+and provenance. Dependencies already satisfied are the Lean MVP stages, the
+verified pipeline fixture, F Lite's deterministic checks, and the existing
+database/provider setup. It must not change the production roster or routing,
+wire benchmark history, enable embeddings, alter thresholds, or build product
+surfaces. Do not implement this next item in the F Lite task.
 
 ## Blockers
 
