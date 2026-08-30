@@ -16,7 +16,12 @@ def test_triage_runs_after_dedupe_and_before_grouping() -> None:
         StageName.EXTRACT,
         StageName.GEOCODE,
         StageName.MATCH,
+        StageName.SUMMARIZE,
     )
+
+
+def test_summarization_runs_after_matching() -> None:
+    assert DAILY_CHAIN.index(StageName.SUMMARIZE) > DAILY_CHAIN.index(StageName.MATCH)
 
 
 def test_retrieval_precedes_dedupe() -> None:

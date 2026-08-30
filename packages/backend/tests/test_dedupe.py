@@ -227,3 +227,79 @@ def test_tightening_the_body_threshold_prevents_a_match() -> None:
 
     assert repository.duplicates == []
     assert repository.normalized == [copy.id]
+
+
+def test_a_syndicated_copy_within_the_near_exact_window_is_a_duplicate() -> None:
+    primary = signal(
+        title=(
+            "Dos residentes no vacunados mueren de sarampion en Pensilvania "
+            "- Telemundo Dallas ( 39 )"
+        ),
+        body=read("syndicated_body_a.txt"),
+        content_hash="a" * 64,
+        first_seen_at=FIRST,
+        published_at=FIRST,
+    )
+    copy = signal(
+        title=(
+            "Dos residentes no vacunados mueren de sarampion en Pensilvania "
+            "- Telemundo New York ( 47 )"
+        ),
+        body=read("syndicated_body_b.txt"),
+        content_hash="b" * 64,
+        first_seen_at=LATER,
+        published_at=LATER,
+    )
+    repository = FakeRepository(queue=(copy,), pool=(primary, copy))
+
+    run_dedupe(repository)
+
+    assert repository.duplicates == [(copy.id, primary.id)]
+
+
+def test_a_near_exact_title_farther_than_the_window_is_not_a_duplicate() -> None:
+    primary = signal(
+        title="A cholera outbreak reported in Juba",
+        body=read("syndicated_body_a.txt"),
+        content_hash="a" * 64,
+        first_seen_at=FIRST,
+        published_at=FIRST,
+    )
+    weeks_later = signal(
+        title="A cholera outbreak reported in Juba - follow-up",
+        body=read("independent_body.txt"),
+        content_hash="b" * 64,
+        first_seen_at=FIRST + timedelta(days=5),
+        published_at=FIRST + timedelta(days=5),
+    )
+    repository = FakeRepository(queue=(weeks_later,), pool=(primary, weeks_later))
+
+    run_dedupe(repository)
+
+    assert repository.duplicates == []
+    assert repository.normalized == [weeks_later.id]
+
+
+def test_an_identical_title_outside_the_near_exact_band_needs_the_body() -> None:
+    primary = signal(
+        title="Two unvaccinated residents die of measles in Pennsylvania",
+        body=read("syndicated_body_a.txt"),
+        content_hash="a" * 64,
+        first_seen_at=FIRST,
+        published_at=FIRST,
+    )
+    independent = signal(
+        title="Two unvaccinated residents die of measles in Pennsylvania",
+        body=read("independent_body.txt"),
+        content_hash="b" * 64,
+        first_seen_at=LATER,
+        published_at=LATER,
+    )
+    repository = FakeRepository(queue=(independent,), pool=(primary, independent))
+
+    # Identical titles are excluded from the near-exact band (ratio == 100),
+    # so an independent body is still corroboration, not a duplicate.
+    run_dedupe(repository)
+
+    assert repository.duplicates == []
+    assert repository.normalized == [independent.id]

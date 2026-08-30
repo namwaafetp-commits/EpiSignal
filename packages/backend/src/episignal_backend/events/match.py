@@ -188,6 +188,7 @@ def decide(
     candidates: Sequence[CandidateEvent],
     *,
     threshold: float = 0.70,
+    review_threshold: float | None = None,
     weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     distance_km: float = 50.0,
     recency_days: float = 90.0,
@@ -196,7 +197,10 @@ def decide(
     """Make the conservative matching decision for a story cluster.
 
     - attach: exactly one candidate event scores >= threshold.
-    - create: no candidate event scores >= threshold.
+    - create: no candidate event scores >= threshold, and none falls in the
+      ambiguous band.
+    - ambiguous: a single candidate scores between the review threshold and
+      the auto threshold, so an LLM judge must decide.
     - refuse: two or more candidate events score >= threshold.
 
     Deterministic guards run before ``similarity_for``. Similarity therefore
@@ -205,6 +209,7 @@ def decide(
     candidate_scores: dict[UUID, float] = {}
     candidate_rejections: dict[UUID, MatchRejection | None] = {}
     qualifiers: list[tuple[CandidateEvent, float]] = []
+    ambiguous: list[tuple[CandidateEvent, float]] = []
 
     for cand in candidates:
         # These guards are the safety boundary: a semantic resemblance must
@@ -234,6 +239,9 @@ def decide(
         if score >= threshold:
             qualifiers.append((cand, score))
             candidate_rejections[cand.event_id] = None
+        elif review_threshold is not None and score >= review_threshold:
+            ambiguous.append((cand, score))
+            candidate_rejections[cand.event_id] = None
         else:
             candidate_rejections[cand.event_id] = MatchRejection.SCORE_BELOW_THRESHOLD
 
@@ -246,15 +254,24 @@ def decide(
             candidate_scores=candidate_scores,
             candidate_rejections=candidate_rejections,
         )
-    elif len(qualifiers) == 0:
+    elif len(qualifiers) >= 2:
         return MatchDecision(
-            action=MatchAction.CREATE,
+            action=MatchAction.REFUSE,
+            candidate_scores=candidate_scores,
+            candidate_rejections=candidate_rejections,
+        )
+    elif len(ambiguous) == 1:
+        chosen_cand, chosen_score = ambiguous[0]
+        return MatchDecision(
+            action=MatchAction.AMBIGUOUS,
+            event_id=chosen_cand.event_id,
+            match_score=chosen_score,
             candidate_scores=candidate_scores,
             candidate_rejections=candidate_rejections,
         )
     else:
         return MatchDecision(
-            action=MatchAction.REFUSE,
+            action=MatchAction.CREATE,
             candidate_scores=candidate_scores,
             candidate_rejections=candidate_rejections,
         )

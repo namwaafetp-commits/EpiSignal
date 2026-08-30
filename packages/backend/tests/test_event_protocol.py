@@ -11,6 +11,7 @@ from episignal_backend.db.types import (
 )
 from episignal_backend.events.documents import (
     CandidateEvent,
+    EventForSummary,
     LocationForMatching,
     SignalForMatching,
     StoryCluster,
@@ -117,6 +118,27 @@ class InMemoryEventRepository:
 
     def record_ai_request(self, record: AiRequestRecord) -> None:
         return None
+
+    def events_awaiting_summary(
+        self, *, limit: int, max_age_hours: int
+    ) -> Sequence[EventForSummary]:
+        return ()
+
+    def store_summary(
+        self,
+        *,
+        event_id: UUID,
+        headline: str,
+        summary: str,
+        status: str,
+        latest_development: str,
+        uncertainties: list[str],
+        model_id: str,
+        source_signal_ids: list[UUID],
+        counts: dict[str, object] | None,
+        now: datetime | None = None,
+    ) -> int:
+        return 1
 
     def commit(self) -> None:
         self.committed = True

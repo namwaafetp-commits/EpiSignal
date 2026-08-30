@@ -27,6 +27,7 @@ from episignal_backend.events.finalize import (
     finalize_event_creation,
     finalize_event_link,
 )
+from episignal_backend.events.judge import JudgeOutcome, run_judge
 from episignal_backend.events.match import DEFAULT_MATCH_WEIGHTS, SimilarityFor, decide
 from episignal_backend.events.protocol import EventRepository
 from episignal_backend.events.score import (
@@ -38,6 +39,16 @@ from episignal_backend.events.score import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _event_context_label(candidate: CandidateEvent) -> str:
+    """A short human label of where an event is, for the judge."""
+    parts: list[str] = []
+    for loc in candidate.locations:
+        label = loc.place_name or loc.admin2 or loc.admin1 or loc.country_code
+        if label and label not in parts:
+            parts.append(label)
+    return ", ".join(parts) if parts else "location unknown"
 
 
 def _recording_similarity_provider(
@@ -72,6 +83,8 @@ class AssemblySummary(BaseModel):
     signals_refused: int
     unclusterable: int
     deltas_applied: int = 0
+    ambiguous_judged: int = 0
+    ambiguous_attached: int = 0
 
 
 def _maybe_run_delta(
@@ -135,6 +148,7 @@ def run_event_assembly(
     cluster_window_days: int = 7,
     cluster_distance_km: float = 50.0,
     match_threshold: float = 0.6,
+    review_threshold: float | None = None,
     match_weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     match_recency_days: float = 90.0,
     match_distance_km: float = 50.0,
@@ -146,6 +160,8 @@ def run_event_assembly(
     delta_model: ChatModel | None = None,
     delta_spec: ModelSpec | None = None,
     followup_window_days: float | None = None,
+    judge_model: ChatModel | None = None,
+    judge_spec: ModelSpec | None = None,
 ) -> AssemblySummary:
     """Run the end-to-end event assembly pass.
 
@@ -153,6 +169,10 @@ def run_event_assembly(
     latest report is older than `followup_window_days` runs the delta pass and
     writes what changed onto the newest observation. The pass enriches; it
     never gates the attach, and a pass that cannot run changes nothing.
+
+    When `judge_model` and `judge_spec` are given, a match in the ambiguous band
+    is decided by the LLM judge: same_event attaches, anything else creates a
+    new event. Without a judge, every ambiguous match prefers a new event.
     """
     signals = repo.signals_to_match(limit=limit, stale=stale)
     if not signals:
@@ -176,6 +196,8 @@ def run_event_assembly(
     signals_attached = 0
     signals_refused = 0
     deltas_applied = 0
+    ambiguous_judged = 0
+    ambiguous_attached = 0
 
     for cluster in clusters:
         candidates = repo.candidate_events(
@@ -189,6 +211,7 @@ def run_event_assembly(
             cluster,
             candidates,
             threshold=match_threshold,
+            review_threshold=review_threshold,
             weights=match_weights,
             distance_km=match_distance_km,
             recency_days=match_recency_days,
@@ -250,6 +273,98 @@ def run_event_assembly(
                 now=now,
             )
 
+        elif decision.action is MatchAction.AMBIGUOUS:
+            assert decision.event_id is not None
+            event_id = decision.event_id
+            judged_candidate = next(
+                (cand for cand in candidates if cand.event_id == event_id), None
+            )
+            logger.info(
+                "ambiguous event match event_id=%s score=%s judge=%s",
+                event_id,
+                decision.match_score,
+                "configured" if judge_model is not None and judge_spec is not None else "none",
+            )
+
+            judged_same = False
+            if judge_model is not None and judge_spec is not None and judged_candidate is not None:
+                representative = cluster.signals[0]
+                title = representative.title or (
+                    representative.extraction.title_english
+                    if representative.extraction is not None
+                    else ""
+                )
+                snippet = (
+                    "\n".join(point.text for point in representative.extraction.brief)
+                    if representative.extraction is not None and representative.extraction.brief
+                    else title
+                )
+                result = run_judge(
+                    judge_model,
+                    judge_spec,
+                    new_title=title,
+                    new_snippet=snippet,
+                    event_title=judged_candidate.title,
+                    event_context=_event_context_label(judged_candidate),
+                    recent_source_titles=judged_candidate.recent_source_titles,
+                )
+                if result.attempt is not None:
+                    repo.record_ai_request(
+                        cost_row(
+                            result.attempt,
+                            purpose=AiPurpose.EVENT_MATCH_JUDGE,
+                            signal_id=representative.signal_id,
+                            batch_size=1,
+                            at=now or datetime.now(UTC),
+                        )
+                    )
+                judged_same = (
+                    result.outcome is JudgeOutcome.ACCEPTED
+                    and result.judgement is not None
+                    and result.judgement.same_event
+                )
+                ambiguous_judged += 1
+                logger.info(
+                    "judged event event_id=%s same_event=%s reason=%s",
+                    event_id,
+                    judged_same,
+                    result.judgement.reason if result.judgement is not None else None,
+                )
+
+            if judged_same:
+                previous_brief = repo.latest_brief(event_id)
+                match_score = decision.match_score if decision.match_score is not None else 1.0
+                for sig in cluster.signals:
+                    finalize_event_link(
+                        repo,
+                        event_id=event_id,
+                        signal=sig,
+                        relationship_type=RelationshipType.SUPPORTING_SOURCE,
+                        match_score=match_score,
+                        is_primary=False,
+                        early_signal_weights=early_signal_weights,
+                        evidence_weights=evidence_weights,
+                        now=now,
+                    )
+                    signals_attached += 1
+                    ambiguous_attached += 1
+                early = early_signal_score(cluster.signals, now=now, weights=early_signal_weights)
+                evid = evidence_score(cluster.signals, weights=evidence_weights)
+                v_status = verification_status(cluster.signals)
+                repo.apply_scores(event_id, early.total, evid.total, v_status)
+            else:
+                # Prefer a new event: false merges are worse than duplicates.
+                created = finalize_event_creation(
+                    repo,
+                    cluster=cluster,
+                    early_signal_weights=early_signal_weights,
+                    evidence_weights=evidence_weights,
+                    now=now,
+                )
+                logger.info("judge refused; created new event event_id=%s", created.event_id)
+                events_created += 1
+                signals_attached += len(cluster.signals)
+
         elif decision.action is MatchAction.CREATE:
             created = finalize_event_creation(
                 repo,
@@ -292,4 +407,6 @@ def run_event_assembly(
         signals_refused=signals_refused,
         unclusterable=len(unclusterable),
         deltas_applied=deltas_applied,
+        ambiguous_judged=ambiguous_judged,
+        ambiguous_attached=ambiguous_attached,
     )

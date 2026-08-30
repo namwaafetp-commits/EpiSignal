@@ -78,6 +78,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events */
+        get: operations["list_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Detail */
+        get: operations["get_event_detail_api_v1_events__public_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{public_id}/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Observations */
+        get: operations["get_event_observations_api_v1_events__public_id__observations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{public_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Sources */
+        get: operations["get_event_sources_api_v1_events__public_id__sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/radar": {
         parameters: {
             query?: never;
@@ -231,6 +299,173 @@ export interface components {
          * @enum {string}
          */
         EventContextStatus: "none" | "attached" | "ambiguous";
+        /** EventDetailResponse */
+        EventDetailResponse: {
+            /** Admin1 */
+            admin1: string | null;
+            /** Admin2 */
+            admin2: string | null;
+            /** Article Count */
+            article_count: number;
+            /** Country Code */
+            country_code: string | null;
+            /** Disease */
+            disease: string | null;
+            /** Early Signal Score */
+            early_signal_score: number | null;
+            /** Event Type */
+            event_type: string;
+            /** Evidence Score */
+            evidence_score: number | null;
+            /** First Reported At */
+            first_reported_at: string | null;
+            /** Headline */
+            headline: string | null;
+            /** Last Summarized At */
+            last_summarized_at: string | null;
+            /**
+             * Latest Report At
+             * Format: date-time
+             */
+            latest_report_at: string;
+            /** Observations */
+            observations: components["schemas"]["EventObservationResponse"][];
+            /** Public Id */
+            public_id: string;
+            /** Sources */
+            sources: components["schemas"]["EventSourceResponse"][];
+            status: components["schemas"]["EventStatus"];
+            /** Summaries */
+            summaries: components["schemas"]["EventSummaryResponse"][];
+            /** Summary */
+            summary: string | null;
+            verification_status: components["schemas"]["VerificationStatus"];
+        };
+        /** EventListItemResponse */
+        EventListItemResponse: {
+            /** Admin1 */
+            admin1: string | null;
+            /** Admin2 */
+            admin2: string | null;
+            /** Article Count */
+            article_count: number;
+            /** Country Code */
+            country_code: string | null;
+            /** Disease */
+            disease: string | null;
+            /** Event Type */
+            event_type: string;
+            /** First Reported At */
+            first_reported_at: string | null;
+            /** Headline */
+            headline: string | null;
+            /** Last Summarized At */
+            last_summarized_at: string | null;
+            /**
+             * Latest Report At
+             * Format: date-time
+             */
+            latest_report_at: string;
+            /** Public Id */
+            public_id: string;
+            status: components["schemas"]["EventStatus"];
+            /** Summary */
+            summary: string | null;
+            verification_status: components["schemas"]["VerificationStatus"];
+        };
+        /** EventListResponse */
+        EventListResponse: {
+            /** Items */
+            items: components["schemas"]["EventListItemResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** EventObservationResponse */
+        EventObservationResponse: {
+            /** Confirmed Cases */
+            confirmed_cases: number | null;
+            /** Deaths */
+            deaths: number | null;
+            /** Extraction Confidence */
+            extraction_confidence: number | null;
+            /** Hospitalizations */
+            hospitalizations: number | null;
+            /** New Cases */
+            new_cases: number | null;
+            /** New Deaths */
+            new_deaths: number | null;
+            /** Notes */
+            notes: string | null;
+            /** Observation Date */
+            observation_date: string | null;
+            /** Probable Cases */
+            probable_cases: number | null;
+            /** Reported At */
+            reported_at: string | null;
+            /** Suspected Cases */
+            suspected_cases: number | null;
+            /** Total Cases */
+            total_cases: number | null;
+        };
+        /** EventSourceResponse */
+        EventSourceResponse: {
+            /** Credibility Tier */
+            credibility_tier: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /** Is Official */
+            is_official: boolean;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Published At */
+            published_at: string | null;
+            /** Relationship Type */
+            relationship_type: string;
+            /**
+             * Signal Id
+             * Format: uuid
+             */
+            signal_id: string;
+            /** Source Name */
+            source_name: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * EventStatus
+         * @enum {string}
+         */
+        EventStatus: "monitoring" | "ongoing" | "expanding" | "stable" | "declining" | "resolved" | "unknown";
+        /** EventSummaryResponse */
+        EventSummaryResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Headline */
+            headline: string;
+            /** Latest Development */
+            latest_development: string | null;
+            /** Model Id */
+            model_id: string;
+            status: components["schemas"]["EventStatus"];
+            /** Summary */
+            summary: string;
+            /** Uncertainties */
+            uncertainties: string[] | null;
+            /** Version */
+            version: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -674,7 +909,7 @@ export interface components {
          * @description One step of the pipeline. Never a rung of the model ladder: that is a tier.
          * @enum {string}
          */
-        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match";
+        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -820,6 +1055,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewCaseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                disease?: string | null;
+                country?: string | null;
+                admin1?: string | null;
+                status?: string | null;
+                verification_status?: string | null;
+                start_date?: string | null;
+                end_date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_detail_api_v1_events__public_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_observations_api_v1_events__public_id__observations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventObservationResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_sources_api_v1_events__public_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"][];
                 };
             };
             /** @description Validation Error */

@@ -15,15 +15,24 @@ from datetime import UTC, datetime
 from episignal_backend.ai.embed import run_embedding
 from episignal_backend.ai.embeddings import LocalBgeM3Provider
 from episignal_backend.ai.extract import run_extraction
-from episignal_backend.ai.ladder import Guards
+from episignal_backend.ai.ladder import Guards, cost_row
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
 from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 from episignal_backend.ai.triage import run_triage
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
+from episignal_backend.db.types import AiPurpose
 from episignal_backend.events.assemble import run_event_assembly
 from episignal_backend.events.delta import configure_delta
+from episignal_backend.events.judge import configure_judge
 from episignal_backend.events.repository import SqlAlchemyEventRepository
+from episignal_backend.events.summarize import (
+    SummaryOutcome,
+    configure_summary,
+    pick_representative_sources,
+    run_summary,
+    should_resummarize,
+)
 from episignal_backend.geocode.external import NominatimClient
 from episignal_backend.geocode.locate import run_geocoding
 from episignal_backend.geocode.repository import (
@@ -142,6 +151,8 @@ def _dedupe() -> Mapping[str, int]:
                 title=settings.stage0_title_similarity,
                 body=settings.stage0_body_similarity,
                 shingle_size=settings.stage0_shingle_size,
+                near_exact_title=settings.stage0_near_exact_title_similarity,
+                near_exact_window_hours=settings.stage0_near_exact_window_hours,
             ),
             window_hours=settings.stage0_candidate_window_hours,
             batch_size=settings.stage0_batch_size,
@@ -315,6 +326,7 @@ def _match() -> Mapping[str, int]:
         # The delta pass is enrichment: without a provider key the assembly
         # still runs, it simply never records what changed.
         wiring = configure_delta(settings, specs)
+        judge = configure_judge(settings, specs)
         summary = run_event_assembly(
             event_repository,
             limit=settings.event_match_batch_size,
@@ -322,6 +334,7 @@ def _match() -> Mapping[str, int]:
             cluster_window_days=settings.event_cluster_window_days,
             cluster_distance_km=settings.event_cluster_distance_km,
             match_threshold=settings.event_match_threshold,
+            review_threshold=settings.event_match_review_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
@@ -329,6 +342,8 @@ def _match() -> Mapping[str, int]:
             delta_model=wiring.model,
             delta_spec=wiring.spec,
             followup_window_days=wiring.window_days,
+            judge_model=judge.model,
+            judge_spec=judge.spec,
         )
     return {
         "seen": summary.signals_seen,
@@ -338,6 +353,94 @@ def _match() -> Mapping[str, int]:
         "refused": summary.signals_refused,
         "unclusterable": summary.unclusterable,
         "deltas": summary.deltas_applied,
+        "judged": summary.ambiguous_judged,
+        "judge_attached": summary.ambiguous_attached,
+    }
+
+
+def _summarize() -> Mapping[str, int]:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    with session_scope() as session:
+        event_repository = SqlAlchemyEventRepository(session)
+        specs = list(SqlAlchemyAiRepository(session).models())
+        wiring = configure_summary(settings, specs)
+        awaiting = event_repository.events_awaiting_summary(
+            limit=settings.event_match_batch_size,
+            max_age_hours=settings.resummary_max_age_hours,
+        )
+
+        examined = 0
+        skipped = 0
+        summarized = 0
+        failed = 0
+        unavailable = 0
+
+        for event in awaiting:
+            examined += 1
+            if not should_resummarize(
+                last_summarized_at=event.last_summarized_at,
+                latest_observation=event.latest_observation,
+                previous_counts=event.previous_counts,
+                unsummarized_articles=event.unsummarized_articles,
+                now=now,
+                max_age_hours=settings.resummary_max_age_hours,
+                new_article_count=settings.resummary_new_article_count,
+            ):
+                skipped += 1
+                continue
+
+            if wiring.model is None or wiring.spec is None:
+                skipped += 1
+                continue
+
+            sources = pick_representative_sources(
+                event.sources,
+                max_sources=settings.summary_max_sources,
+            )
+            result = run_summary(
+                wiring.model,
+                wiring.spec,
+                event=event,
+                sources=sources,
+            )
+            if result.attempt is not None:
+                event_repository.record_ai_request(
+                    cost_row(
+                        result.attempt,
+                        purpose=AiPurpose.EVENT_SUMMARY,
+                        signal_id=None,
+                        batch_size=1,
+                        at=now,
+                    )
+                )
+            if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
+                event_repository.store_summary(
+                    event_id=event.event_id,
+                    headline=result.verdict.headline,
+                    summary=result.verdict.summary,
+                    status=result.verdict.status.value,
+                    latest_development=result.verdict.latest_development,
+                    uncertainties=list(result.verdict.uncertainties),
+                    model_id=wiring.spec.model_id,
+                    source_signal_ids=[source.signal_id for source in sources],
+                    counts=event.latest_observation,
+                    now=now,
+                )
+                summarized += 1
+            elif result.outcome is SummaryOutcome.UNAVAILABLE:
+                unavailable += 1
+            else:
+                failed += 1
+
+        event_repository.commit()
+
+    return {
+        "examined": examined,
+        "skipped": skipped,
+        "summarized": summarized,
+        "failed": failed,
+        "unavailable": unavailable,
     }
 
 
@@ -355,4 +458,5 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
         StageName.EXTRACT: _extract,
         StageName.GEOCODE: _geocode,
         StageName.MATCH: _match,
+        StageName.SUMMARIZE: _summarize,
     }

@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     stage0_shingle_size: int = Field(default=5, ge=1, le=20)
     stage0_candidate_window_hours: int = Field(default=72, ge=1, le=720)
     stage0_batch_size: int = Field(default=200, ge=1, le=5000)
+    # Near-exact RapidFuzz dedup (lean MVP Section 9): a title similarity at or
+    # above this score within this publication window is a syndicated copy.
+    stage0_near_exact_title_similarity: float = Field(default=0.92, ge=0.0, le=1.0)
+    stage0_near_exact_window_hours: int = Field(default=48, ge=1, le=720)
 
     openrouter_api_key: SecretStr | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
@@ -132,6 +136,18 @@ class Settings(BaseSettings):
     # run the delta pass. Ten days: the operator's window for stateful
     # follow-up, kept configurable like every other matching bound.
     event_followup_window_days: float = Field(default=10.0, ge=0.0, le=3650.0)
+    # The deterministic decision band between attaching to an existing event
+    # and creating a new one. A single candidate scoring between the review
+    # threshold and the auto threshold is ambiguous: an LLM judge decides
+    # same_event, and uncertainty falls back to a new event (false merges are
+    # worse than duplicate events).
+    event_match_review_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
+    event_match_judge_batch_size: int = Field(default=20, ge=1, le=5000)
+    # Event summarization: a material change triggers a re-summary, and a
+    # summary older than the max age is refreshed even without a change.
+    resummary_new_article_count: int = Field(default=3, ge=1, le=100)
+    resummary_max_age_hours: int = Field(default=24, ge=1, le=720)
+    summary_max_sources: int = Field(default=6, ge=1, le=20)
 
     # Seven days. Bounds the query issued after a long gap: a laptop closed for
     # a month asks for a week, not a month GDELT would refuse.

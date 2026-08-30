@@ -8,6 +8,7 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from episignal_backend.db.types import (
 )
 from episignal_backend.events.documents import (
     CandidateEvent,
+    EventForSummary,
     LocationForMatching,
     SignalForMatching,
     StoryCluster,
@@ -111,6 +113,32 @@ class EventRepository(Protocol):
 
     def record_ai_request(self, record: AiRequestRecord) -> None:
         """Write one cost row. The delta pass is costed like every other request."""
+        ...
+
+    def events_awaiting_summary(
+        self, *, limit: int, max_age_hours: int
+    ) -> Sequence[EventForSummary]:
+        """Events that may need a new summary, with the sources to summarize from."""
+        ...
+
+    def store_summary(
+        self,
+        *,
+        event_id: UUID,
+        headline: str,
+        summary: str,
+        status: str,
+        latest_development: str,
+        uncertainties: list[str],
+        model_id: str,
+        source_signal_ids: list[UUID],
+        counts: dict[str, object] | None,
+        now: datetime | None = None,
+    ) -> int:
+        """Append one versioned summary and denormalize it onto the event.
+
+        Returns the version that was written (1 for the first summary).
+        """
         ...
 
     def commit(self) -> None:

@@ -10,16 +10,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from episignal_backend.ai.schema import Extraction
+from episignal_backend.ai.schema import BriefPoint, Extraction
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
 
 
 class MatchAction(StrEnum):
-    """The outcome of matching a cluster against candidate events."""
+    """The outcome of matching a cluster against candidate events.
+
+    ``AMBIGUOUS`` is a single candidate scoring between the review and auto
+    thresholds: the deterministic engine cannot decide, so an LLM judge must.
+    """
 
     ATTACH = "attach"
     CREATE = "create"
     REFUSE = "refuse"
+    AMBIGUOUS = "ambiguous"
 
 
 class MatchRejection(StrEnum):
@@ -70,6 +75,7 @@ class SignalForMatching(BaseModel):
     credibility_tier: CredibilityTier
     published_at: datetime | None = None
     first_seen_at: datetime
+    title: str = ""
     locations: tuple[LocationForMatching, ...] = ()
     extraction: Extraction | None = None
     embedding: tuple[float, ...] | None = None
@@ -139,6 +145,8 @@ class CandidateEvent(BaseModel):
     first_signal_at: datetime
     last_updated_at: datetime
     representative_embedding: tuple[float, ...] | None = None
+    title: str = ""
+    recent_source_titles: tuple[str, ...] = ()
 
 
 class MatchDecision(BaseModel):
@@ -154,11 +162,14 @@ class MatchDecision(BaseModel):
 
     @model_validator(mode="after")
     def validate_decision(self) -> "MatchDecision":
-        if self.action == MatchAction.ATTACH:
+        # AMBIGUOUS carries exactly one candidate and its score, like ATTACH,
+        # so the assembly knows which event the judge must consider.
+        carries_target = self.action in (MatchAction.ATTACH, MatchAction.AMBIGUOUS)
+        if carries_target:
             if self.event_id is None:
-                raise ValueError("An attach decision must carry an event_id")
+                raise ValueError(f"A {self.action} decision must carry an event_id")
             if self.match_score is None:
-                raise ValueError("An attach decision must carry a match_score")
+                raise ValueError(f"A {self.action} decision must carry a match_score")
         else:
             if self.event_id is not None:
                 raise ValueError(f"A {self.action} decision must not carry an event_id")
@@ -181,3 +192,35 @@ class ScoreBreakdown(BaseModel):
             if not (0.0 <= value <= 1.0):
                 raise ValueError(f"Component '{name}' score {value} is out of bounds [0.0, 1.0]")
         return self
+
+
+class SummarySource(BaseModel):
+    """One source the summarizer may read, already in pick order."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    signal_id: UUID
+    title: str = Field(min_length=1)
+    source_name: str = Field(min_length=1)
+    is_official: bool = False
+    brief: tuple[BriefPoint, ...] = ()
+
+
+class EventForSummary(BaseModel):
+    """Everything the summarizer needs to write one event's narrative."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_id: UUID
+    public_id: str = Field(min_length=1)
+    disease: str = ""
+    location: str = ""
+    headline: str | None = None
+    summary: str | None = None
+    # The counts snapshot the last summary was written against, and the latest
+    # observation today. Material-change detection compares the two.
+    previous_counts: dict[str, object] | None = None
+    latest_observation: dict[str, object] | None = None
+    unsummarized_articles: int = 0
+    last_summarized_at: datetime | None = None
+    sources: tuple[SummarySource, ...] = ()

@@ -37,6 +37,11 @@ class FakeResult:
             return self._value[0] if self._value else None
         return self._value
 
+    def first(self) -> Any:
+        if isinstance(self._value, list):
+            return self._value[0] if self._value else None
+        return self._value
+
 
 class FakeSession:
     def __init__(self, results: list[Any] | None = None) -> None:
@@ -83,6 +88,7 @@ class FakeSignal:
         self.credibility_tier = credibility_tier
         self.ai_extraction = extraction
         self.embedding = embedding
+        self.title = f"Signal {signal_id}"
 
 
 class FakeLocation:
@@ -188,6 +194,8 @@ class FakeEvent:
         self.last_updated_at = last_updated_at
         self.country_code = country_code
         self.admin1 = admin1
+        self.title = f"Outbreak event {event_id}"
+        self.created_at = last_updated_at
 
 
 class FakeEventLocation:
@@ -565,6 +573,36 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
     assert obs.confirmed_cases is None
     assert obs.suspected_cases is None
     assert obs.extraction_confidence == 0.88
+
+
+def test_record_observation_is_idempotent_for_a_stale_rerun() -> None:
+    from episignal_backend.models import EventObservation
+
+    ev_id = uuid4()
+    sig_id = uuid4()
+    now = datetime.now(UTC)
+    sig = SignalForMatching(
+        signal_id=sig_id,
+        disease_id=uuid4(),
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.HIGH,
+        published_at=now,
+        first_seen_at=now,
+    )
+
+    # First call: the dedup query finds nothing, so an observation is added.
+    session = FakeSession([FakeResult([])])
+    repo = SqlAlchemyEventRepository(session)
+    repo.record_observation(event_id=ev_id, signal=sig)
+    assert len(session.added) == 1
+
+    # Stale re-run: the dedup query finds the existing row, so nothing new is
+    # added and the earlier observation is never overwritten or duplicated.
+    session = FakeSession([FakeResult([EventObservation(event_id=ev_id, signal_id=sig_id)])])
+    repo = SqlAlchemyEventRepository(session)
+    repo.record_observation(event_id=ev_id, signal=sig)
+    assert session.added == []
 
 
 def test_add_locations_inserts_event_location_rows() -> None:

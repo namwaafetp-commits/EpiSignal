@@ -63,6 +63,9 @@ class FakeAssemblyRepository:
         assert cluster.disease_id is not None
         return self._candidates.get(cluster.disease_id, [])
 
+    def recent_source_titles(self, event_id: UUID, *, limit: int = 5) -> tuple[str, ...]:
+        return ()
+
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
         assert cluster.disease_id is not None
         rep_loc = cluster.representative_location

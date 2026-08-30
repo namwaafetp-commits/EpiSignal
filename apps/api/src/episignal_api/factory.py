@@ -19,7 +19,7 @@ from starlette.requests import Request
 
 from episignal_api import API_NAME, API_VERSION
 from episignal_api.middleware import REQUEST_ID_HEADER, RequestIDMiddleware
-from episignal_api.routes import admin, health, radar, reviews, signals, version
+from episignal_api.routes import admin, events, health, radar, reviews, signals, version
 
 logger = logging.getLogger("episignal_api")
 
@@ -56,6 +56,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(version.router)
     app.include_router(signals.router)
     app.include_router(radar.router)
+    app.include_router(events.router)
     app.include_router(admin.router)
     app.include_router(reviews.router)
 

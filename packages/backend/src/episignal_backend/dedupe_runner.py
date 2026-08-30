@@ -54,6 +54,8 @@ def _run(arguments: Arguments) -> DedupeResult:
                 title=settings.stage0_title_similarity,
                 body=settings.stage0_body_similarity,
                 shingle_size=settings.stage0_shingle_size,
+                near_exact_title=settings.stage0_near_exact_title_similarity,
+                near_exact_window_hours=settings.stage0_near_exact_window_hours,
             ),
             window_hours=arguments.window_hours or settings.stage0_candidate_window_hours,
             batch_size=arguments.batch_size or settings.stage0_batch_size,

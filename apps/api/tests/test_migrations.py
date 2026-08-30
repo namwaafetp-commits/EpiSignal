@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260830_0018"]
+    assert scripts.get_heads() == ["20260830_0019"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -298,3 +298,20 @@ def test_the_migration_enables_pgvector_and_indexes_the_embedding() -> None:
     assert "create extension if not exists vector" in sql
     assert "vector(1024)" in sql
     assert "hnsw" in sql
+
+
+def test_the_summary_revision_adds_event_summary_fields_and_history() -> None:
+    sql = render_offline("upgrade", "20260830_0018:20260830_0019")
+
+    assert "create table event_summaries" in sql
+    assert "uq_event_summaries_event_version" in sql
+    assert "headline" in sql
+    assert "last_summarized_at" in sql
+    assert "article_count" in sql
+    assert "'event_match_judge'" in sql
+
+
+def test_the_summary_downgrade_refuses_to_erase_judge_cost_rows() -> None:
+    source = _revision_source("20260830_0019_event_summaries")
+    assert "event_match_judge" in source
+    assert "raise RuntimeError" in source

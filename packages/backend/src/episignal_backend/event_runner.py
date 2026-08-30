@@ -17,6 +17,7 @@ from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import AssemblySummary, run_event_assembly
 from episignal_backend.events.delta import configure_delta
+from episignal_backend.events.judge import configure_judge
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 
 
@@ -54,6 +55,7 @@ def _run(arguments: Arguments) -> AssemblySummary:
     with session_scope() as session:
         specs = list(SqlAlchemyAiRepository(session).models())
         wiring = configure_delta(settings, specs)
+        judge = configure_judge(settings, specs)
         return run_event_assembly(
             SqlAlchemyEventRepository(session),
             limit=limit,
@@ -61,6 +63,7 @@ def _run(arguments: Arguments) -> AssemblySummary:
             cluster_window_days=settings.event_cluster_window_days,
             cluster_distance_km=settings.event_cluster_distance_km,
             match_threshold=settings.event_match_threshold,
+            review_threshold=settings.event_match_review_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
@@ -68,6 +71,8 @@ def _run(arguments: Arguments) -> AssemblySummary:
             delta_model=wiring.model,
             delta_spec=wiring.spec,
             followup_window_days=wiring.window_days,
+            judge_model=judge.model,
+            judge_spec=judge.spec,
         )
 
 
@@ -88,7 +93,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"seen={summary.signals_seen} clusters={summary.clusters_built} "
         f"created={summary.events_created} attached={summary.signals_attached} "
         f"refused={summary.signals_refused} unclusterable={summary.unclusterable} "
-        f"deltas={summary.deltas_applied}"
+        f"deltas={summary.deltas_applied} judged={summary.ambiguous_judged} "
+        f"judge_attached={summary.ambiguous_attached}"
     )
     return 0
 

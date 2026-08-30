@@ -11,6 +11,9 @@ This module imports neither SQLAlchemy nor httpx.
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
+
+from rapidfuzz import fuzz
 
 from episignal_backend.ingestion.documents import ComparableSignal
 from episignal_backend.ingestion.protocol import DedupeRepository
@@ -27,6 +30,13 @@ class DedupeThresholds:
     title: float = 0.90
     body: float = 0.80
     shingle_size: int = 5
+    # Near-exact RapidFuzz rule (lean MVP Section 9): title similarity above
+    # this score within a short publication window is a syndicated copy. The
+    # upper bound is deliberately exclusive of an exact title match: an exact
+    # match keeps the verified conservative path (identical headline with a
+    # genuinely independent body is corroboration, not a duplicate).
+    near_exact_title: float = 0.92
+    near_exact_window_hours: int = 48
 
 
 @dataclass(frozen=True)
@@ -55,10 +65,33 @@ def precedes(left: ComparableSignal, right: ComparableSignal) -> bool:
     return str(left.id) < str(right.id)
 
 
+def near_exact_title_match(
+    signal: ComparableSignal,
+    candidate: ComparableSignal,
+    thresholds: DedupeThresholds,
+) -> bool:
+    """Whether two titles are near-exact syndications of one report.
+
+    RapidFuzz ratio on the raw titles, not the normalized form, because the
+    stored normalized title already strips the masthead suffix that is exactly
+    what syndication differs by. Requires both publication times within the
+    window; an unknown publication time never matches near-exactly.
+    """
+    if signal.published_at is None or candidate.published_at is None:
+        return False
+    gap = abs(signal.published_at - candidate.published_at)
+    if gap > timedelta(hours=thresholds.near_exact_window_hours):
+        return False
+    ratio = fuzz.ratio(signal.title, candidate.title)
+    return thresholds.near_exact_title <= ratio < 100.0
+
+
 def matches(
     signal: ComparableSignal, candidate: ComparableSignal, thresholds: DedupeThresholds
 ) -> bool:
     if candidate.content_hash == signal.content_hash:
+        return True
+    if near_exact_title_match(signal, candidate, thresholds):
         return True
     # Title first: it is far cheaper, and a body comparison that the title
     # already rules out is work no pair needs.

@@ -107,6 +107,9 @@ class AiPurpose(StrEnum):
     TRIAGE = "triage"
     # One narrative per event, regenerated only on a material update.
     EVENT_SUMMARY = "event_summary"
+    # The judge that decides whether an ambiguous match is the same event. A
+    # single request per ambiguous candidate, costed like every other pass.
+    EVENT_MATCH_JUDGE = "event_match_judge"
 
 
 class AiProvider(StrEnum):

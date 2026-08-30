@@ -30,16 +30,20 @@ from episignal_backend.db.types import (
 )
 from episignal_backend.events.documents import (
     CandidateEvent,
+    EventForSummary,
     LocationForMatching,
     SignalForMatching,
     StoryCluster,
+    SummarySource,
 )
 from episignal_backend.models import (
     AiRequest,
+    Disease,
     Event,
     EventLocation,
     EventObservation,
     EventSignal,
+    EventSummary,
     Signal,
     SignalLocation,
     Source,
@@ -137,6 +141,7 @@ class SqlAlchemyEventRepository:
                     credibility_tier=cred_tier,
                     published_at=sig.published_at,
                     first_seen_at=sig.first_seen_at,
+                    title=sig.title,
                     locations=tuple(locs_by_signal.get(sig.id, ())),
                     extraction=extraction,
                     embedding=tuple(sig.embedding) if sig.embedding is not None else None,
@@ -207,6 +212,8 @@ class SqlAlchemyEventRepository:
             for event_id, embedding in embedding_rows
         }
 
+        titles_by_event = self._recent_source_titles_by_event(event_ids)
+
         locs_by_event: dict[UUID, list[LocationForMatching]] = defaultdict(list)
         for loc in loc_rows:
             locs_by_event[loc.event_id].append(
@@ -238,10 +245,43 @@ class SqlAlchemyEventRepository:
                     first_signal_at=first_sig,
                     last_updated_at=ev.last_updated_at,
                     representative_embedding=embeddings_by_event.get(ev.id),
+                    title=ev.title,
+                    recent_source_titles=titles_by_event.get(ev.id, ()),
                 )
             )
 
         return tuple(candidates)
+
+    def _recent_source_titles_by_event(
+        self, event_ids: Sequence[UUID], *, limit: int = 5
+    ) -> dict[UUID, tuple[str, ...]]:
+        """The newest attached signal titles per event, newest first.
+
+        One query for every candidate event, so a run of twenty candidates is
+        not twenty round trips. The judge reads these as an event's recent
+        voice: what it has been saying lately, distinct from one headline.
+        """
+        if not event_ids:
+            return {}
+        rows = self._session.execute(
+            select(
+                EventSignal.event_id,
+                Signal.title,
+                Signal.published_at,
+                Signal.first_seen_at,
+            )
+            .join(Signal, Signal.id == EventSignal.signal_id)
+            .where(EventSignal.event_id.in_(event_ids), Signal.title.is_not(None))
+            .order_by(
+                EventSignal.event_id,
+                func.coalesce(Signal.published_at, Signal.first_seen_at).desc(),
+                Signal.id.desc(),
+            )
+        ).all()
+        titles: dict[UUID, list[str]] = defaultdict(list)
+        for event_id, title, _published_at, _first_seen_at in rows:
+            titles[event_id].append(title)
+        return {event_id: tuple(items[:limit]) for event_id, items in titles.items()}
 
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
         if cluster.disease_id is None:
@@ -301,6 +341,8 @@ class SqlAlchemyEventRepository:
             first_signal_at=first_sig_at,
             last_updated_at=last_updated_at,
             representative_embedding=cluster.representative_embedding,
+            title=title,
+            recent_source_titles=(),
         )
 
     def attach_signal(
@@ -322,6 +364,20 @@ class SqlAlchemyEventRepository:
         self._session.add(rel)
 
     def record_observation(self, event_id: UUID, signal: SignalForMatching) -> None:
+        # Idempotency: a stale re-run must not append a second observation for
+        # the same (event, signal) pair. The event_signals primary key already
+        # blocks a second attach, but the observation write would not, so guard
+        # here too. Nothing is ever overwritten; an existing row is left as the
+        # first record of that report.
+        existing = self._session.execute(
+            select(EventObservation.id).where(
+                EventObservation.event_id == event_id,
+                EventObservation.signal_id == signal.signal_id,
+            )
+        ).first()
+        if existing is not None:
+            return
+
         obs_date = None
         conf = None
         notes = None
@@ -501,6 +557,194 @@ class SqlAlchemyEventRepository:
                 requested_at=record.requested_at,
             )
         )
+
+    def events_awaiting_summary(
+        self, *, limit: int, max_age_hours: int
+    ) -> Sequence[EventForSummary]:
+        """Events that may need a new summary, newest update first.
+
+        The candidate set is any event with an attached signal that was never
+        summarized, gained new material since its last summary, or whose last
+        summary is older than the max age. Material-change detection then makes
+        the final per-event decision.
+        """
+        now = datetime.now(UTC)
+        age_cutoff = now - timedelta(hours=max_age_hours)
+
+        event_ids = (
+            self._session.execute(
+                select(Event.id)
+                .join(EventSignal, EventSignal.event_id == Event.id)
+                .where(
+                    or_(
+                        Event.last_summarized_at.is_(None),
+                        Event.last_summarized_at < Event.last_updated_at,
+                        Event.last_summarized_at < age_cutoff,
+                    )
+                )
+                .order_by(Event.last_updated_at.desc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+
+        return tuple(self._build_event_for_summary(event_id) for event_id in event_ids)
+
+    def _build_event_for_summary(self, event_id: UUID) -> EventForSummary:
+        event = self._session.execute(select(Event).where(Event.id == event_id)).scalar_one()
+        disease = None
+        if event.disease_id is not None:
+            disease = self._session.execute(
+                select(Disease.canonical_name).where(Disease.id == event.disease_id)
+            ).scalar_one_or_none()
+
+        # The newest summary this event already carries, and its counts snapshot.
+        summary_row = self._session.execute(
+            select(EventSummary)
+            .where(EventSummary.event_id == event_id)
+            .order_by(EventSummary.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        previous_counts = (
+            dict(summary_row.counts) if summary_row is not None and summary_row.counts else None
+        )
+        headline = summary_row.headline if summary_row is not None else event.headline
+        summary = summary_row.summary if summary_row is not None else event.summary
+
+        # The latest observation, for the counts comparison.
+        observation = self._session.execute(
+            select(EventObservation)
+            .where(EventObservation.event_id == event_id)
+            .order_by(
+                func.coalesce(EventObservation.reported_at, EventObservation.created_at).desc(),
+                EventObservation.created_at.desc(),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        latest_observation = self._observation_counts(observation)
+
+        # Attached signals, newest first. Signals seen after the last summary
+        # are unsummarized; a never-summarized event counts every member.
+        member_rows = self._session.execute(
+            select(
+                EventSignal.signal_id,
+                Signal.title,
+                Signal.first_seen_at,
+                Source.name,
+                Source.is_official,
+                Signal.ai_extraction,
+            )
+            .join(Signal, Signal.id == EventSignal.signal_id)
+            .join(Source, Source.id == Signal.source_id)
+            .where(EventSignal.event_id == event_id)
+            .order_by(Signal.first_seen_at.desc())
+        ).all()
+
+        unsummarized = 0
+        sources: list[SummarySource] = []
+        for (
+            signal_id,
+            title,
+            first_seen_at,
+            source_name,
+            is_official,
+            ai_extraction,
+        ) in member_rows:
+            if event.last_summarized_at is None or (
+                first_seen_at is not None and first_seen_at > event.last_summarized_at
+            ):
+                unsummarized += 1
+            extraction = read_stored_extraction(ai_extraction)
+            brief = tuple(extraction.brief) if extraction is not None else ()
+            sources.append(
+                SummarySource(
+                    signal_id=signal_id,
+                    title=title,
+                    source_name=source_name or "unknown",
+                    is_official=is_official,
+                    brief=brief,
+                )
+            )
+
+        return EventForSummary(
+            event_id=event.id,
+            public_id=event.public_id,
+            disease=disease or "",
+            location=event.admin1 or event.country_code or "",
+            headline=headline,
+            summary=summary,
+            previous_counts=previous_counts,
+            latest_observation=latest_observation,
+            unsummarized_articles=unsummarized,
+            last_summarized_at=event.last_summarized_at,
+            sources=tuple(sources),
+        )
+
+    def store_summary(
+        self,
+        *,
+        event_id: UUID,
+        headline: str,
+        summary: str,
+        status: str,
+        latest_development: str,
+        uncertainties: list[str],
+        model_id: str,
+        source_signal_ids: list[UUID],
+        counts: dict[str, object] | None,
+        now: datetime | None = None,
+    ) -> int:
+        moment = now or datetime.now(UTC)
+        version_row = self._session.execute(
+            select(func.max(EventSummary.version)).where(EventSummary.event_id == event_id)
+        ).scalar_one_or_none()
+        version = (version_row or 0) + 1
+
+        row = EventSummary(
+            id=uuid4(),
+            event_id=event_id,
+            version=version,
+            headline=headline,
+            summary=summary,
+            status=EventStatus(status),
+            latest_development=latest_development,
+            uncertainties=uncertainties,
+            model_id=model_id,
+            source_signal_ids=source_signal_ids,
+            counts=counts,
+        )
+        self._session.add(row)
+
+        article_count = self._session.execute(
+            select(func.count(EventSignal.signal_id)).where(EventSignal.event_id == event_id)
+        ).scalar_one()
+        self._session.execute(
+            update(Event)
+            .where(Event.id == event_id)
+            .values(
+                headline=headline,
+                summary=summary,
+                article_count=article_count,
+                last_summarized_at=moment,
+            )
+        )
+        return version
+
+    @staticmethod
+    def _observation_counts(observation: EventObservation | None) -> dict[str, object] | None:
+        if observation is None:
+            return None
+        return {
+            "data_as_of": observation.observation_date.isoformat()
+            if observation.observation_date is not None
+            else None,
+            "confirmed_cases": observation.confirmed_cases,
+            "total_cases": observation.total_cases,
+            "deaths": observation.deaths,
+            "new_cases": observation.new_cases,
+            "new_deaths": observation.new_deaths,
+        }
 
     def commit(self) -> None:
         self._session.commit()

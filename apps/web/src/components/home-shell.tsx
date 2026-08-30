@@ -147,6 +147,7 @@ export function HomeShell({
           EpiSignal
         </Link>
         <nav aria-label="Primary navigation">
+          <Link href="/events">Events</Link>
           <a href="#radar-map">Map</a>
           <a href="#signals-list">Signals</a>
           <Link href="/admin/pipeline">Pipeline Monitor</Link>

@@ -132,6 +132,8 @@ def test_stage0_defaults_are_strict() -> None:
     assert settings.stage0_shingle_size == 5
     assert settings.stage0_candidate_window_hours == 72
     assert settings.stage0_batch_size == 200
+    assert settings.stage0_near_exact_title_similarity == 0.92
+    assert settings.stage0_near_exact_window_hours == 48
 
 
 def test_a_similarity_threshold_above_one_is_rejected() -> None:
@@ -242,6 +244,11 @@ def test_event_matching_defaults_are_set() -> None:
     assert settings.event_match_stale is False
     assert settings.event_lookback_days == 7
     assert settings.event_candidate_limit == 20
+    assert settings.event_match_review_threshold == 0.55
+    assert settings.event_match_judge_batch_size == 20
+    assert settings.resummary_new_article_count == 3
+    assert settings.resummary_max_age_hours == 24
+    assert settings.summary_max_sources == 6
 
 
 def test_event_match_threshold_must_be_between_zero_and_one() -> None:
@@ -250,6 +257,14 @@ def test_event_match_threshold_must_be_between_zero_and_one() -> None:
 
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_EVENT_MATCH_THRESHOLD="-0.1")
+
+
+def test_event_match_review_threshold_must_be_between_zero_and_one() -> None:
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_EVENT_MATCH_REVIEW_THRESHOLD="1.5")
+
+    with pytest.raises(ValidationError):
+        build_settings(EPISIGNAL_EVENT_MATCH_REVIEW_THRESHOLD="-0.1")
 
 
 def test_the_catch_up_clamp_defaults_to_seven_days() -> None:

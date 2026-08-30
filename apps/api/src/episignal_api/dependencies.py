@@ -1,5 +1,5 @@
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -79,6 +79,43 @@ def get_radar_page(
     with session_scope() as session:
         now = datetime.now(UTC)
         return query_radar(session, now=now, hours=hours, limit=limit)
+
+
+def get_session() -> Any:
+    """Yield a database session for a request's read-only queries.
+
+    The events routes are read-only; the session commits nothing.
+    """
+    with session_scope() as session:
+        yield session
+
+
+def get_event_page(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    disease: Annotated[str | None, Query()] = None,
+    country: Annotated[str | None, Query()] = None,
+    admin1: Annotated[str | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+    verification_status: Annotated[str | None, Query()] = None,
+    start_date: Annotated[date | None, Query()] = None,
+    end_date: Annotated[date | None, Query()] = None,
+) -> Any:
+    from episignal_backend.events.read import query_event_list
+
+    with session_scope() as session:
+        return query_event_list(
+            session,
+            limit=limit,
+            offset=offset,
+            disease=disease,
+            country=country,
+            admin1=admin1,
+            status=status,
+            verification_status=verification_status,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
 
 def get_pipeline_runs_page(

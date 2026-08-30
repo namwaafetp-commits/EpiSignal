@@ -34,6 +34,8 @@
     "extract:backfill": "uv run --package episignal-backend python -m episignal_backend.backfill_runner",
     "geocode:signals": "uv run --package episignal-backend python -m episignal_backend.geocode_runner",
     "match:events": "uv run --package episignal-backend python -m episignal_backend.event_runner",
+    "summarize:events": "uv run --package episignal-backend python -m episignal_backend.summarize_runner",
+    "test:pipeline": "uv run pytest packages/backend/tests/test_pipeline_fixture.py packages/backend/tests/test_dedupe.py -v",
     "pipeline:run": "uv run --package episignal-backend python -m episignal_backend.pipeline_runner",
     "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
 

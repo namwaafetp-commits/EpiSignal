@@ -19,6 +19,7 @@ DAILY_CHAIN: tuple[StageName, ...] = (
     StageName.EXTRACT,
     StageName.GEOCODE,
     StageName.MATCH,
+    StageName.SUMMARIZE,
 )
 
 CHAINS: dict[str, tuple[StageName, ...]] = {"daily": DAILY_CHAIN}

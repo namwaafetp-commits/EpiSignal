@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -91,6 +92,14 @@ class Event(IdentityMixin, TimestampMixin, Base):
     early_signal_score: Mapped[float | None] = mapped_column(Float)
     evidence_score: Mapped[float | None] = mapped_column(Float)
     ai_summary: Mapped[str | None] = mapped_column(Text)
+    # Lean MVP event summary surface. `headline`/`summary` are the latest
+    # accepted summary; the versioned history lives in `event_summaries`.
+    headline: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    article_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class EventSignal(Base):
@@ -197,6 +206,42 @@ class EventLocation(IdentityMixin, Base):
     geometry: Mapped[Any | None] = mapped_column(point_4326())
     geocoding_source: Mapped[str | None] = mapped_column(Text)
     geocoding_confidence: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EventSummary(IdentityMixin, Base):
+    """One generated summary of an event, versioned and never overwritten.
+
+    Each material update appends a row; the newest row is what
+    ``events.headline``/``events.summary`` denormalize for the public surface.
+    """
+
+    __tablename__ = "event_summaries"
+    __table_args__ = (
+        UniqueConstraint("event_id", "version", name="uq_event_summaries_event_version"),
+        Index("ix_event_summaries_event", "event_id"),
+    )
+
+    event_id: Mapped[UUID] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    headline: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[EventStatus] = mapped_column(
+        vocabulary(EventStatus, "event_status_values"),
+        nullable=False,
+        default=EventStatus.MONITORING,
+    )
+    latest_development: Mapped[str | None] = mapped_column(Text)
+    uncertainties: Mapped[list[str] | None] = mapped_column(JSONB)
+    model_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_signal_ids: Mapped[list[UUID] | None] = mapped_column(JSONB)
+    # The epidemiological snapshot this summary was written against, so the next
+    # material-change check compares like with like instead of re-reading prose.
+    counts: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

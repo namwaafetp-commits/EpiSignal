@@ -25,6 +25,7 @@ class StageName(StrEnum):
     EXTRACT = "extract"
     GEOCODE = "geocode"
     MATCH = "match"
+    SUMMARIZE = "summarize"
 
 
 @dataclass(frozen=True)

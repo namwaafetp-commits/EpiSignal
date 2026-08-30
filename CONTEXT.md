@@ -207,3 +207,27 @@ How well corroborated an event is, decided from the standing of the sources that
 reported it. Only an official authority can make an event confirmed, and no model
 confidence can.
 _Avoid_: confirmed, validated, trusted, as bare adjectives.
+
+### Summarization
+
+**Headline**:
+An event's current one-line headline, derived from the latest accepted summary.
+Stored on the event in the language the site shows.
+
+**Summary**:
+An event's current narrative — a few fact-grounded sentences, with uncertainties
+flagged, derived from the latest representative sources and the latest
+observation counts. Stored on the event; the versioned history lives in
+`event_summaries`.
+
+**Material change**:
+Whether the latest report meaningfully changes what a reader would conclude about
+an event. The material-change detector compares the latest observation counts
+against the counts the last summary was written against, the count of
+unsummarized articles, and the wall-clock age of the last summary; a summary is
+regenerated only on a material change.
+
+**Representative**:
+In summarization, the 3–6 best sources the summary prompt reads. Official
+sources first, then most-recent, then quantitative, then independent. The
+prompt cites each and never reaches beyond them.
