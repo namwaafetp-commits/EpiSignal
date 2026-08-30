@@ -22,6 +22,16 @@ class MatchAction(StrEnum):
     REFUSE = "refuse"
 
 
+class MatchRejection(StrEnum):
+    """Why one candidate event could not accept a story cluster."""
+
+    DISEASE_MISMATCH = "disease_mismatch"
+    CONFLICTING_ADMIN1 = "conflicting_admin1"
+    OUTSIDE_TIME_WINDOW = "outside_time_window"
+    TOO_FAR = "too_far"
+    SCORE_BELOW_THRESHOLD = "score_below_threshold"
+
+
 class LocationForMatching(BaseModel):
     """A resolved location associated with a signal or event."""
 
@@ -130,6 +140,7 @@ class MatchDecision(BaseModel):
     event_id: UUID | None = None
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
     candidate_scores: dict[UUID, float] = Field(default_factory=dict)
+    candidate_rejections: dict[UUID, MatchRejection | None] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_decision(self) -> "MatchDecision":

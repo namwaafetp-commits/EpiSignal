@@ -144,7 +144,7 @@ purpose-specific model routing.
 - [x] 10. The embedding provider.
 - [x] 11. The embedding pass and stage.
 - [x] 12. Candidate blocking.
-- [ ] 13. Similarity as an additive term.
+- [x] 13. Similarity as an additive term.
 - [ ] 14. Wire similarity into assembly, with decision logging.
 - [ ] 15. The four calibration fixtures.
 - [ ] 16. Phase B checkpoint.

@@ -6,7 +6,7 @@ and deciding whether to attach, create, or refuse.
 This module imports neither SQLAlchemy nor httpx.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from uuid import UUID
 
 from episignal_backend.db.types import LocationRole, Precision
@@ -20,6 +20,7 @@ from episignal_backend.events.documents import (
     LocationForMatching,
     MatchAction,
     MatchDecision,
+    MatchRejection,
     StoryCluster,
 )
 
@@ -29,6 +30,10 @@ DEFAULT_MATCH_WEIGHTS: dict[str, float] = {
     "temporal": 0.20,
     "precision": 0.15,
 }
+
+SIMILARITY_WEIGHT = 0.15
+
+SimilarityFor = Callable[[StoryCluster, CandidateEvent], float | None]
 
 _PRECISION_RANK: dict[Precision, int] = {
     Precision.PLACE: 4,
@@ -131,6 +136,53 @@ def match_score(
     return max(0.0, min(1.0, total))
 
 
+def _temporal_gap_days(cluster: StoryCluster, candidate: CandidateEvent) -> float:
+    cluster_start, cluster_end = cluster.span
+    if cluster_end < candidate.first_signal_at:
+        return (candidate.first_signal_at - cluster_end).total_seconds() / 86400.0
+    if cluster_start > candidate.last_updated_at:
+        return (cluster_start - candidate.last_updated_at).total_seconds() / 86400.0
+    return 0.0
+
+
+def _deterministic_rejection(
+    cluster: StoryCluster,
+    candidate: CandidateEvent,
+    *,
+    distance_km: float,
+    recency_days: float,
+) -> MatchRejection | None:
+    if cluster.disease_id is None or cluster.disease_id != candidate.disease_id:
+        return MatchRejection.DISEASE_MISMATCH
+
+    cluster_location = cluster.representative_location
+    candidate_location = _candidate_representative_location(candidate)
+    if (
+        cluster_location is not None
+        and candidate_location is not None
+        and cluster_location.admin1 is not None
+        and candidate_location.admin1 is not None
+        and cluster_location.admin1 != candidate_location.admin1
+    ):
+        return MatchRejection.CONFLICTING_ADMIN1
+
+    if _temporal_gap_days(cluster, candidate) > recency_days:
+        return MatchRejection.OUTSIDE_TIME_WINDOW
+
+    if (
+        cluster_location is None
+        or candidate_location is None
+        or not spatially_compatible(
+            cluster_location,
+            candidate_location,
+            distance_km=distance_km,
+        )
+    ):
+        return MatchRejection.TOO_FAR
+
+    return None
+
+
 def decide(
     cluster: StoryCluster,
     candidates: Sequence[CandidateEvent],
@@ -139,17 +191,35 @@ def decide(
     weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     distance_km: float = 50.0,
     recency_days: float = 90.0,
+    similarity_for: SimilarityFor | None = None,
 ) -> MatchDecision:
     """Make the conservative matching decision for a story cluster.
 
     - attach: exactly one candidate event scores >= threshold.
     - create: no candidate event scores >= threshold.
     - refuse: two or more candidate events score >= threshold.
+
+    Deterministic guards run before ``similarity_for``. Similarity therefore
+    cannot be consulted for a refused pair and can only add to its score.
     """
     candidate_scores: dict[UUID, float] = {}
+    candidate_rejections: dict[UUID, MatchRejection | None] = {}
     qualifiers: list[tuple[CandidateEvent, float]] = []
 
     for cand in candidates:
+        # These guards are the safety boundary: a semantic resemblance must
+        # never revive a different disease, place, or time window.
+        rejection = _deterministic_rejection(
+            cluster,
+            cand,
+            distance_km=distance_km,
+            recency_days=recency_days,
+        )
+        if rejection is not None:
+            candidate_scores[cand.event_id] = 0.0
+            candidate_rejections[cand.event_id] = rejection
+            continue
+
         score = match_score(
             cluster,
             cand,
@@ -157,9 +227,15 @@ def decide(
             distance_km=distance_km,
             recency_days=recency_days,
         )
+        similarity = similarity_for(cluster, cand) if similarity_for is not None else None
+        if similarity is not None:
+            score = min(1.0, score + SIMILARITY_WEIGHT * max(0.0, similarity))
         candidate_scores[cand.event_id] = score
         if score >= threshold:
             qualifiers.append((cand, score))
+            candidate_rejections[cand.event_id] = None
+        else:
+            candidate_rejections[cand.event_id] = MatchRejection.SCORE_BELOW_THRESHOLD
 
     if len(qualifiers) == 1:
         chosen_cand, chosen_score = qualifiers[0]
@@ -168,14 +244,17 @@ def decide(
             event_id=chosen_cand.event_id,
             match_score=chosen_score,
             candidate_scores=candidate_scores,
+            candidate_rejections=candidate_rejections,
         )
     elif len(qualifiers) == 0:
         return MatchDecision(
             action=MatchAction.CREATE,
             candidate_scores=candidate_scores,
+            candidate_rejections=candidate_rejections,
         )
     else:
         return MatchDecision(
             action=MatchAction.REFUSE,
             candidate_scores=candidate_scores,
+            candidate_rejections=candidate_rejections,
         )

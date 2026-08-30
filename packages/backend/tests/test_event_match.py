@@ -6,6 +6,7 @@ from episignal_backend.events.documents import (
     CandidateEvent,
     LocationForMatching,
     MatchAction,
+    MatchRejection,
     SignalForMatching,
     StoryCluster,
 )
@@ -298,3 +299,126 @@ def test_decide_candidate_exactly_at_threshold_qualifies():
     assert decision.action == MatchAction.ATTACH
     assert decision.event_id == event_id
     assert decision.match_score == actual_score
+
+
+def _safety_fixtures() -> tuple[StoryCluster, CandidateEvent, CandidateEvent, CandidateEvent]:
+    now = datetime.now(UTC)
+    dengue_id = uuid4()
+    chiang_mai = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        admin1="Chiang Mai",
+        place_name="Chiang Mai",
+        latitude=18.79,
+        longitude=98.98,
+    )
+    chiang_mai_admin1 = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.ADMIN1,
+        country_code="TH",
+        admin1="Chiang Mai",
+        latitude=18.79,
+        longitude=98.98,
+    )
+    phuket_admin1 = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.ADMIN1,
+        country_code="TH",
+        admin1="Phuket",
+        latitude=7.88,
+        longitude=98.39,
+    )
+    cluster = _make_cluster(dengue_id, chiang_mai, now)
+
+    def event(disease_id, location) -> CandidateEvent:
+        return CandidateEvent(
+            event_id=uuid4(),
+            disease_id=disease_id,
+            locations=(location,),
+            first_signal_at=now - timedelta(days=2),
+            last_updated_at=now - timedelta(days=1),
+        )
+
+    return (
+        cluster,
+        event(dengue_id, chiang_mai_admin1),
+        event(dengue_id, phuket_admin1),
+        event(uuid4(), chiang_mai_admin1),
+    )
+
+
+def test_conflicting_admin1_is_refused_before_similarity_is_consulted() -> None:
+    cluster, _, phuket_event, _ = _safety_fixtures()
+    calls = []
+
+    decision = decide(
+        cluster,
+        [phuket_event],
+        similarity_for=lambda _, event: calls.append(event.event_id) or 0.99,
+        threshold=0.80,
+    )
+
+    assert decision.action is MatchAction.CREATE
+    assert decision.candidate_rejections[phuket_event.event_id] is MatchRejection.CONFLICTING_ADMIN1
+    assert calls == []
+
+
+def test_similarity_cannot_veto_a_deterministic_match() -> None:
+    cluster, chiang_mai_event, _, _ = _safety_fixtures()
+
+    decision = decide(
+        cluster,
+        [chiang_mai_event],
+        similarity_for=lambda _cluster, _event: 0.10,
+        threshold=0.80,
+    )
+
+    assert decision.action is MatchAction.ATTACH
+
+
+def test_similarity_raises_the_score_of_a_permitted_pair() -> None:
+    cluster, chiang_mai_event, _, _ = _safety_fixtures()
+
+    low = decide(
+        cluster,
+        [chiang_mai_event],
+        similarity_for=lambda _cluster, _event: 0.10,
+        threshold=0.80,
+    )
+    high = decide(
+        cluster,
+        [chiang_mai_event],
+        similarity_for=lambda _cluster, _event: 0.95,
+        threshold=0.80,
+    )
+
+    assert (
+        high.candidate_scores[chiang_mai_event.event_id]
+        > low.candidate_scores[chiang_mai_event.event_id]
+    )
+
+
+def test_a_missing_embedding_falls_back_to_the_deterministic_score() -> None:
+    cluster, chiang_mai_event, _, _ = _safety_fixtures()
+
+    decision = decide(cluster, [chiang_mai_event], threshold=0.80)
+
+    assert decision.action is MatchAction.ATTACH
+    assert decision.candidate_rejections[chiang_mai_event.event_id] is None
+
+
+def test_a_different_disease_is_refused_with_its_own_reason() -> None:
+    cluster, _, _, measles_event = _safety_fixtures()
+    calls = []
+
+    decision = decide(
+        cluster,
+        [measles_event],
+        similarity_for=lambda _, event: calls.append(event.event_id) or 0.99,
+        threshold=0.80,
+    )
+
+    assert decision.action is MatchAction.CREATE
+    assert decision.candidate_rejections[measles_event.event_id] is MatchRejection.DISEASE_MISMATCH
+    assert calls == []
