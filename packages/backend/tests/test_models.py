@@ -96,7 +96,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 25
+    assert len(enum_columns) == 27
 
     for column in enum_columns:
         enum_class = column.type.enum_class
@@ -140,6 +140,16 @@ def test_signal_records_discovery_provenance() -> None:
     assert columns.published_at_offset_minutes.nullable
     assert not columns.retrieval_attempts.nullable
     assert columns.query_rule_id.nullable
+
+
+def test_signal_carries_early_triage_metadata() -> None:
+    from episignal_backend.models import Signal
+
+    columns = Signal.__table__.c
+    assert not columns.triage_status.nullable
+    assert columns.normalized_title.nullable
+    assert columns.triage_disease_text.nullable
+    assert columns.triage_country_code.type.length == 2
 
 
 def test_source_records_its_domain() -> None:
@@ -200,6 +210,19 @@ def test_ai_purposes_are_stored_as_their_values() -> None:
     assert AiPurpose.EXTRACTION.value == "extraction"
 
 
+def test_triage_and_summary_are_costed_purposes() -> None:
+    from episignal_backend.db.types import AiPurpose
+
+    assert AiPurpose.TRIAGE == "triage"
+    assert AiPurpose.EVENT_SUMMARY == "event_summary"
+
+
+def test_triage_failure_is_an_explicit_selectable_state() -> None:
+    from episignal_backend.db.types import TriageStatus
+
+    assert [status.value for status in TriageStatus] == ["pending", "done", "failed"]
+
+
 def test_ai_outcomes_separate_a_refusal_from_a_bad_answer() -> None:
     from episignal_backend.db.types import AiOutcome
 
@@ -214,6 +237,12 @@ def test_the_model_roster_orders_the_ladder_by_tier() -> None:
     assert AiModel.__tablename__ == "ai_models"
     assert {"tier", "model_id", "prompt_price_per_million"} <= set(AiModel.__table__.columns.keys())
     assert AiModel.__table__.columns["model_id"].unique is True
+
+
+def test_a_roster_row_may_name_the_purpose_it_serves() -> None:
+    from episignal_backend.models import AiModel
+
+    assert AiModel.purpose.nullable is True
 
 
 def test_a_cost_row_keeps_the_price_that_was_charged() -> None:

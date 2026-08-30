@@ -133,7 +133,7 @@ purpose-specific model routing.
 ## Task ledger — `R` (active)
 
 - [x] 1. Normalized title.
-- [ ] 2. Triage vocabulary and schema columns.
+- [x] 2. Triage vocabulary and schema columns.
 - [ ] 3. Purpose-scoped ladder.
 - [ ] 4. The triage contract.
 - [ ] 5. The triage prompt.

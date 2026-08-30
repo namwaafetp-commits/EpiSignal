@@ -72,6 +72,16 @@ class ProcessingStatus(StrEnum):
     DISMISSED = "dismissed"
 
 
+class TriageStatus(StrEnum):
+    """How far triage got with one signal. Failure is a state, not a silence."""
+
+    PENDING = "pending"
+    DONE = "done"
+    # The model answered twice and neither answer validated. The signal stays
+    # selectable; the ledger says why.
+    FAILED = "failed"
+
+
 class Precision(StrEnum):
     """How specific a resolved location actually is.
 
@@ -92,6 +102,11 @@ class AiPurpose(StrEnum):
     EXTRACTION = "extraction"
     # The delta pass after an attach: two briefs compared, not an article read.
     FOLLOW_UP = "follow_up"
+    # Title-and-snippet structured triage: relevance plus the disease and place
+    # that candidate blocking needs before extraction has run.
+    TRIAGE = "triage"
+    # One narrative per event, regenerated only on a material update.
+    EVENT_SUMMARY = "event_summary"
 
 
 class AiProvider(StrEnum):

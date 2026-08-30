@@ -219,7 +219,7 @@ def test_a_roster_row_may_name_the_purpose_it_serves() -> None:
 
 
 def test_the_migration_widens_the_purpose_constraint() -> None:
-    sql = render_offline("upgrade", "20260829_0016:20260830_0017")
+    sql = render_offline("upgrade", "20260829_0017:20260830_0017")
     assert "'triage'" in sql
     assert "'event_summary'" in sql
     assert "normalized_title" in sql
@@ -287,7 +287,7 @@ type as the cost row's) and `event_id` is deferred to Task 20.
 
 - [ ] **Step 4: Write the migration**
 
-`20260830_0017_triage_metadata.py`, revises `20260829_0016`. It must:
+`20260830_0017_triage_metadata.py`, revises `20260829_0017`. It must:
 
 1. widen the `ai_purpose` CHECK constraint on `ai_requests` with `triage` and
    `event_summary`, using the drop-and-recreate pattern of

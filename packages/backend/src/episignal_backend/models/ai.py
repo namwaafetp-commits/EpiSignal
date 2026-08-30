@@ -48,6 +48,9 @@ class AiModel(IdentityMixin, TimestampMixin, Base):
         default=AiProvider.OPENROUTER,
         server_default=AiProvider.OPENROUTER.value,
     )
+    purpose: Mapped[AiPurpose | None] = mapped_column(
+        vocabulary(AiPurpose, "ai_model_purpose_values")
+    )
     prompt_price_per_million: Mapped[Decimal] = mapped_column(
         PRICE, nullable=False, server_default="0"
     )

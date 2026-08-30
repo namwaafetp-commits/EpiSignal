@@ -18,7 +18,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
-from episignal_backend.db.types import DiscoveryMethod, ProcessingStatus, SignalType, vocabulary
+from episignal_backend.db.types import (
+    DiscoveryMethod,
+    ProcessingStatus,
+    SignalType,
+    TriageStatus,
+    vocabulary,
+)
 
 
 class Signal(IdentityMixin, TimestampMixin, Base):
@@ -37,6 +43,8 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         Index("ix_signals_first_seen_at", "first_seen_at"),
         Index("ix_signals_duplicate_of_signal_id", "duplicate_of_signal_id"),
         Index("ix_signals_disease_id", "disease_id"),
+        Index("ix_signals_normalized_title", "normalized_title"),
+        Index("ix_signals_triage_block", "triage_disease_text", "triage_country_code"),
     )
 
     source_id: Mapped[UUID] = mapped_column(
@@ -46,6 +54,7 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     url: Mapped[str] = mapped_column(Text, nullable=False)
     canonical_url: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_title: Mapped[str | None] = mapped_column(Text)
     raw_text: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -54,6 +63,19 @@ class Signal(IdentityMixin, TimestampMixin, Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     relevance_score: Mapped[float | None] = mapped_column(Float)
     public_health_relevant: Mapped[bool | None] = mapped_column(Boolean)
+    triage_status: Mapped[TriageStatus] = mapped_column(
+        vocabulary(TriageStatus, "triage_status_values"),
+        nullable=False,
+        default=TriageStatus.PENDING,
+        server_default=TriageStatus.PENDING.value,
+    )
+    triage_category: Mapped[str | None] = mapped_column(Text)
+    triage_disease_text: Mapped[str | None] = mapped_column(Text)
+    triage_country_code: Mapped[str | None] = mapped_column(String(2))
+    triage_admin1: Mapped[str | None] = mapped_column(Text)
+    triage_admin2: Mapped[str | None] = mapped_column(Text)
+    triage_location_text: Mapped[str | None] = mapped_column(Text)
+    triage_confidence: Mapped[float | None] = mapped_column(Float)
     signal_type: Mapped[SignalType] = mapped_column(
         vocabulary(SignalType, "signal_type_values"),
         nullable=False,

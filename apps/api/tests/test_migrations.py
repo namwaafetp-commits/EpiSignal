@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260829_0017"]
+    assert scripts.get_heads() == ["20260830_0017"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -283,3 +283,10 @@ def test_the_title_inclusion_widens_the_rule_group_check_constraint() -> None:
 def test_the_title_inclusion_downgrade_deletes_inclusion_rules() -> None:
     source = _revision_source("20260829_0017_add_title_inclusion_rule_group")
     assert "delete from filter_rules where rule_group = 'title_inclusion'" in source.lower()
+
+
+def test_the_migration_widens_the_purpose_constraint() -> None:
+    sql = render_offline("upgrade", "20260829_0017:20260830_0017")
+    assert "'triage'" in sql
+    assert "'event_summary'" in sql
+    assert "normalized_title" in sql
