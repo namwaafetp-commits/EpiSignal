@@ -186,6 +186,24 @@ purpose-specific model routing.
 - [x] 13. Add the measurement gate.
 - [x] 14. Review, gate, and report.
 
+## Queued behind `O2` — item `R`
+
+`R` — Event-based surveillance is **planned**, not active. `HANDOFF.md` stays
+with `O2` until that item is verified.
+
+[Spec](docs/superpowers/specs/2026-08-29-event-surveillance-pipeline-design.md) ·
+[plan](docs/superpowers/plans/2026-08-29-event-surveillance-pipeline.md) — 26
+tasks in three separately verified phases: structured Llama triage after the
+keyword gate, pgvector + BGE-M3 embeddings consulted only for pairs the
+deterministic guards already permit, and DeepSeek event summaries with a
+versioned history. The worker branches from `codex/pipeline-funnel-v2` once
+`O2` is verified; the plan is written against the post-`O2` code shape.
+
+Seven conflicts between the operator's brief and this codebase are resolved in
+the spec's **Conflicts with the brief** table. The load-bearing one: embedding
+similarity may add confidence to a match but may never veto one, because a
+false merge hides a geographically distinct outbreak.
+
 ## Blockers
 
 **None.** `M` is `verified`. `O2` is planned and unblocked; its branch base is

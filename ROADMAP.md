@@ -89,10 +89,11 @@ Umbrella architecture and shared invariants:
 | `C2` | English title and the five-slot brief | Every extraction carries an English title and a five-bullet brief in fixed slot order, with source spans left in the language the publisher wrote. | `C` | `verified` |
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
-| `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. | `D2a` | `not-started` |
+| `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. Embedding half absorbed by `R`; what remains is the escalated model judgement. | `D2a` | `not-started` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 | `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. | `C2`, `D2a`, `L` | `verified` |
-| `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `building` |
+| `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `verified` |
+| `R` | Event-based surveillance: early metadata, embeddings, event summaries | An article's own disease and place are known before extraction, two reports of one outbreak match semantically without ever overriding a deterministic conflict, and each event carries one narrative summary traceable to the articles that produced it. | `O2` | `planned` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·
@@ -119,7 +120,9 @@ Artifacts:
 [report](docs/reports/2026-08-29-subproject-o-report.md) ·
 [issue #1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) —
 `O2` [spec](docs/superpowers/specs/2026-08-29-pipeline-funnel-v2-design.md) ·
-[plan](docs/superpowers/plans/2026-08-29-pipeline-funnel-v2.md)
+[plan](docs/superpowers/plans/2026-08-29-pipeline-funnel-v2.md) —
+`R` [spec](docs/superpowers/specs/2026-08-29-event-surveillance-pipeline-design.md) ·
+[plan](docs/superpowers/plans/2026-08-29-event-surveillance-pipeline.md)
 
 ### Pipeline as it stands
 
