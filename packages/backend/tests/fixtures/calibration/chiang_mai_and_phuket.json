@@ -1,0 +1,26 @@
+{
+  "reports": [
+    {
+      "signal_id": "20000000-0000-0000-0000-000000000001",
+      "disease_id": "d0000000-0000-0000-0000-000000000001",
+      "published_at": "2026-08-24T01:00:00Z",
+      "country_code": "TH",
+      "admin1": "Chiang Mai",
+      "place_name": "Chiang Mai",
+      "latitude": 18.79,
+      "longitude": 98.98,
+      "embedding": [1.0, 0.0]
+    },
+    {
+      "signal_id": "20000000-0000-0000-0000-000000000002",
+      "disease_id": "d0000000-0000-0000-0000-000000000001",
+      "published_at": "2026-08-24T04:00:00Z",
+      "country_code": "TH",
+      "admin1": "Phuket",
+      "place_name": "Phuket",
+      "latitude": 7.88,
+      "longitude": 98.39,
+      "embedding": [1.0, 0.0]
+    }
+  ]
+}

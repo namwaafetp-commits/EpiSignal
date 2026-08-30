@@ -146,7 +146,7 @@ purpose-specific model routing.
 - [x] 12. Candidate blocking.
 - [x] 13. Similarity as an additive term.
 - [x] 14. Wire similarity into assembly, with decision logging.
-- [ ] 15. The four calibration fixtures.
+- [x] 15. The four calibration fixtures.
 - [ ] 16. Phase B checkpoint.
 - [ ] 17. The summary history table.
 - [ ] 18. The event summary contract.
