@@ -3,6 +3,7 @@
 **Date:** 2026-08-30  
 **Branch:** `codex/f-lite-model-check`  
 **Baseline:** `cda5efe120ab92fe42f051928df1acbe6cc1c228`
+**Corrected triage implementation:** `3c876e7b2e48ae2641feb1345ea1ebd914780f00`
 
 F Lite compares only `triage` and `extraction` using committed synthetic JSON
 fixtures and explicit provider calls. It has no benchmark database, migration,
@@ -14,7 +15,9 @@ deferred to post-MVP.
 
 `packages/backend/tests/fixtures/model_check/triage.json` and
 `extraction.json` each contain 20 stable cases. The runner is
-`corepack pnpm model:check`; it reuses the existing Pydantic contracts,
+`corepack pnpm model:check`; it builds the existing `TriageableSignal` and
+`ExtractableSignal` contracts, calls the production `triage_prompt` and
+`extraction_prompt` seams, and uses the production schemas, temperatures,
 grounding validator, provider adapters, roster seed prices, and `cost_usd`.
 Results under `benchmarks/results/` retain the git SHA, fixture version, model
 IDs, guard, raw answers, deterministic scores, token counts, latency, and cost.
@@ -25,12 +28,13 @@ Triage completed for two existing cheap OpenRouter models:
 
 | Model | Cases | Recall | False negatives | Accuracy | Cost |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Llama 3.1 8B Instruct | 20 | 0% | 0 | 0% schema acceptance | $0.000060 |
-| Mistral Small 24B | 20 | 100% | 0 | 90% | $0.000142 |
+| Llama 3.1 8B Instruct | 20 | 100% | 0 | 50% overall / 55% schema acceptance | $0.000376 |
+| Mistral Small 24B | 20 | 100% | 0 | 90% overall / 100% schema acceptance | $0.000850 |
 
-Llama's responses were all schema-rejected; they are recorded as schema
-failures, not silently counted as false negatives. Mistral produced two false
-positives and no missed relevant cases in this small sample.
+The corrected run uses the production triage prompt and request contract. Llama
+had nine schema failures and one false positive; Mistral had no schema failures,
+two false positives, and no missed relevant cases in this small sample. Schema
+failures are recorded separately, not silently counted as false negatives.
 
 Extraction live smoke was attempted under a four-request/$0.02 cap, but the
 provider did not complete within the configured timeout. The explicit `not_run`
@@ -46,10 +50,10 @@ flag, route, threshold, scheduler, or embedding setting was changed.
 
 ## Verification
 
-- `corepack pnpm verify`: PASS — 95 web tests, 1193 Python tests, 0 xfails;
+- `corepack pnpm verify`: PASS — 95 web tests, 1195 Python tests, 0 xfails;
   existing deprecation/Vite warnings only.
 - `corepack pnpm test:pipeline`: PASS — 16 tests.
-- `uv run pytest packages/backend/tests/test_model_check.py -q`: PASS — 9
+- `uv run pytest packages/backend/tests/test_model_check.py -q`: PASS — 11
   offline tests, no network calls.
 
 ## How to extend

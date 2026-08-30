@@ -1,7 +1,7 @@
 {
-  "date": "2026-08-30T14:24:08.378998+00:00",
+  "date": "2026-08-30T14:56:32.779070+00:00",
   "fixture_version": "model-check-v1",
-  "git_sha": "36802168b6ed2e3061aea147228b7050a5a2a857",
+  "git_sha": "3c876e7b2e48ae2641feb1345ea1ebd914780f00",
   "guard": {
     "max_cost_usd": "0.10",
     "max_requests": 40
@@ -17,39 +17,58 @@
       "cases": [
         {
           "actual": {
-            "excerpt": "Health officials reported 42 cholera cases in Luanda.",
-            "title": "Cholera outbreak leaves 42 sick in Luanda"
+            "admin1": null,
+            "admin2": null,
+            "category": "infectious_disease",
+            "confidence": 1.0,
+            "country": null,
+            "disease": "cholera",
+            "event_type": "outbreak_report",
+            "location_text": "Luanda",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-001",
-          "completion_tokens": 34,
-          "cost_usd": "0.000003",
+          "completion_tokens": 95,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": "Luanda",
-            "country": "AO",
+            "country": null,
             "disease": "cholera",
             "relevant": true
           },
-          "latency_ms": 2264,
-          "prompt_tokens": 69,
+          "latency_ms": 4719,
+          "prompt_tokens": 776,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "Fans say excitement is running high ahead of the championship.",
-            "title": "Local football team fever rises before final"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.0,
+            "country": null,
+            "disease": null,
+            "event_type": null,
+            "location_text": null,
+            "public_health": false,
+            "relevant": false
           },
           "case_id": "TRIAGE-002",
-          "completion_tokens": 32,
-          "cost_usd": "0.000003",
+          "completion_tokens": 60,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
             "admin1": null,
@@ -57,80 +76,113 @@
             "disease": null,
             "relevant": false
           },
-          "latency_ms": 3922,
-          "prompt_tokens": 84,
+          "latency_ms": 968,
+          "prompt_tokens": 791,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
-            "tn": 0,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 1,
             "tp": 0
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "Clinicians are investigating a cluster of patients with an unidentified illness.",
-            "title": "Unknown illness cluster investigated in Mwanza"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 1.0,
+            "country": null,
+            "disease": null,
+            "event_type": "outbreak_report",
+            "location_text": null,
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-003",
-          "completion_tokens": 32,
-          "cost_usd": "0.000003",
+          "completion_tokens": 63,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
             "admin1": "Mwanza",
-            "country": "TZ",
+            "country": null,
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 1593,
-          "prompt_tokens": 67,
+          "latency_ms": 3140,
+          "prompt_tokens": 774,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "A traveller was diagnosed after arriving from overseas; contacts are being traced.",
-            "title": "Imported measles case detected in Auckland"
+            "admin1": null,
+            "admin2": null,
+            "category": "infectious_disease",
+            "confidence": 1.0,
+            "country": null,
+            "disease": "measles",
+            "event_type": "imported_case",
+            "location_text": "Auckland",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-004",
-          "completion_tokens": 31,
-          "cost_usd": "0.000003",
+          "completion_tokens": 73,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": "Auckland",
-            "country": "NZ",
+            "country": null,
             "disease": "measles",
             "relevant": true
           },
-          "latency_ms": 1781,
-          "prompt_tokens": 67,
+          "latency_ms": 937,
+          "prompt_tokens": 793,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "Doctors have not identified whether influenza, COVID-19, or another infection is responsible.",
-            "title": "Respiratory disease suspected after school illnesses"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.8,
+            "country": null,
+            "disease": "respiratory disease",
+            "event_type": "case_report",
+            "location_text": "school",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-005",
-          "completion_tokens": 39,
-          "cost_usd": "0.000003",
+          "completion_tokens": 67,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": null,
@@ -138,35 +190,47 @@
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 905,
-          "prompt_tokens": 91,
+          "latency_ms": 1483,
+          "prompt_tokens": 797,
           "score": {
+            "disease_correct": 0,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "The public-health department began spraying and distributed prevention guidance.",
-            "title": "Government launches mosquito-control campaign in Recife"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 0.9,
+            "country": null,
+            "disease": null,
+            "event_type": "public_health_action",
+            "location_text": "Recife",
+            "public_health": true,
+            "relevant": true,
+            "triage_category": "other_public_health"
           },
           "case_id": "TRIAGE-006",
-          "completion_tokens": 33,
-          "cost_usd": "0.000003",
+          "completion_tokens": 91,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
-            "admin1": "Pernambuco",
-            "country": "BR",
-            "disease": "dengue",
+            "admin1": null,
+            "country": null,
+            "disease": null,
             "relevant": true
           },
-          "latency_ms": 875,
-          "prompt_tokens": 85,
+          "latency_ms": 4375,
+          "prompt_tokens": 772,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -179,12 +243,22 @@
         },
         {
           "actual": {
-            "excerpt": "The statement discusses travel sentiment and contains no cases or health event.",
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 1.0,
+            "country": null,
+            "disease": null,
+            "event_type": "rumor",
+            "location_text": null,
+            "public_health": false,
+            "relevant": false,
+            "snippet": "The statement discusses travel sentiment and contains no cases or health event.",
             "title": "Tourism ministry says malaria fears are hurting bookings"
           },
           "case_id": "TRIAGE-007",
-          "completion_tokens": 32,
-          "cost_usd": "0.000003",
+          "completion_tokens": 93,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": null,
@@ -192,8 +266,8 @@
             "disease": null,
             "relevant": false
           },
-          "latency_ms": 1921,
-          "prompt_tokens": 68,
+          "latency_ms": 4125,
+          "prompt_tokens": 774,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -206,12 +280,21 @@
         },
         {
           "actual": {
-            "excerpt": "Nigeria's health authority confirmed 18 infections in Kano State.",
-            "title": "Officials confirm 18 mpox infections in Kano"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 0.8,
+            "country": null,
+            "disease": "mpox",
+            "event_type": "outbreak_report",
+            "location_text": "Kano State, Nigeria",
+            "public_health": true,
+            "relevant": true,
+            "triage": null
           },
           "case_id": "TRIAGE-008",
-          "completion_tokens": 38,
-          "cost_usd": "0.000003",
+          "completion_tokens": 79,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": "Kano",
@@ -219,8 +302,8 @@
             "disease": "mpox",
             "relevant": true
           },
-          "latency_ms": 765,
-          "prompt_tokens": 90,
+          "latency_ms": 3562,
+          "prompt_tokens": 777,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -233,12 +316,21 @@
         },
         {
           "actual": {
-            "excerpt": "Aid workers are monitoring sanitation conditions; no illness cluster has been reported.",
-            "title": "River flooding raises concern about waterborne disease"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 0.8,
+            "country": null,
+            "disease": "waterborne disease",
+            "event_type": "situation_report",
+            "location_text": null,
+            "public_health": true,
+            "relevant": true,
+            "triage_category": "other_public_health"
           },
           "case_id": "TRIAGE-009",
-          "completion_tokens": 33,
-          "cost_usd": "0.000003",
+          "completion_tokens": 92,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": null,
@@ -246,8 +338,8 @@
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 2014,
-          "prompt_tokens": 69,
+          "latency_ms": 3718,
+          "prompt_tokens": 776,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -260,12 +352,20 @@
         },
         {
           "actual": {
-            "excerpt": "The paper reports laboratory findings and is not a current outbreak report.",
-            "title": "Researchers publish dengue vaccine study"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.8,
+            "country": null,
+            "disease": "dengue",
+            "event_type": "research",
+            "location_text": null,
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-010",
-          "completion_tokens": 34,
-          "cost_usd": "0.000003",
+          "completion_tokens": 64,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
             "admin1": null,
@@ -273,35 +373,47 @@
             "disease": "dengue",
             "relevant": false
           },
-          "latency_ms": 1282,
-          "prompt_tokens": 66,
+          "latency_ms": 4110,
+          "prompt_tokens": 793,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
-            "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "fp": 1,
+            "location_correct": 1,
+            "relevant_correct": 0,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
             "tp": 0
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "The city health office recorded 11 suspected typhoid cases.",
-            "title": "Typhoid cases reported in Kampala district"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 0.9,
+            "country": null,
+            "disease": "typhoid",
+            "event_type": "outbreak_report",
+            "location_text": "Kampala district",
+            "public_health": true,
+            "relevant": true,
+            "triage_category": "other_public_health"
           },
           "case_id": "TRIAGE-011",
-          "completion_tokens": 32,
-          "cost_usd": "0.000003",
+          "completion_tokens": 96,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
-            "admin1": "Central",
-            "country": "UG",
+            "admin1": null,
+            "country": null,
             "disease": "typhoid",
             "relevant": true
           },
-          "latency_ms": 1250,
-          "prompt_tokens": 68,
+          "latency_ms": 3530,
+          "prompt_tokens": 775,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -314,66 +426,103 @@
         },
         {
           "actual": {
-            "excerpt": "Meteorologists expect high temperatures and advise residents to stay hydrated.",
-            "title": "Heatwave warning issued for southern Spain"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.8,
+            "country": null,
+            "disease": null,
+            "event_type": "unknown",
+            "location_text": "southern Spain",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-012",
-          "completion_tokens": 33,
-          "cost_usd": "0.000003",
+          "completion_tokens": 64,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
-            "admin1": "Andalusia",
+            "admin1": null,
             "country": "ES",
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 811,
-          "prompt_tokens": 85,
+          "latency_ms": 3405,
+          "prompt_tokens": 772,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "A health team is testing samples from a group of ill workers.",
-            "title": "Mysterious fever sends workers home in Port Vila"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.8,
+            "country": null,
+            "disease": null,
+            "event_type": "case_report",
+            "location_text": "Port Vila",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-013",
-          "completion_tokens": 37,
-          "cost_usd": "0.000003",
+          "completion_tokens": 76,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
-            "admin1": "Shefa",
-            "country": "VU",
+            "admin1": null,
+            "country": null,
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 922,
-          "prompt_tokens": 89,
+          "latency_ms": 3187,
+          "prompt_tokens": 812,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "A visitor tested positive after arrival; local transmission has not been found.",
-            "title": "Border screening finds imported yellow fever infection"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 1.0,
+            "country": null,
+            "disease": "yellow fever",
+            "event_type": "imported_case",
+            "location_text": null,
+            "public_health": true,
+            "relevant": true,
+            "signal_type": "imported_case",
+            "situation_report": null,
+            "source": "model-check fixture",
+            "subsignal_type": null,
+            "surveillance_update": null,
+            "title": "Border screening finds imported yellow fever infection",
+            "url": "https://model-check.invalid/TRIAGE-014"
           },
           "case_id": "TRIAGE-014",
-          "completion_tokens": 31,
-          "cost_usd": "0.000003",
+          "completion_tokens": 152,
+          "cost_usd": "0.000022",
           "error": null,
           "expected": {
             "admin1": null,
@@ -381,8 +530,8 @@
             "disease": "yellow fever",
             "relevant": true
           },
-          "latency_ms": 2015,
-          "prompt_tokens": 67,
+          "latency_ms": 6500,
+          "prompt_tokens": 774,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -395,12 +544,21 @@
         },
         {
           "actual": {
-            "excerpt": "The financial report uses fever as a metaphor for demand.",
-            "title": "Company reports a fever in quarterly revenue"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.0,
+            "country": null,
+            "disease": null,
+            "event_type": "rumor",
+            "location_text": null,
+            "public_health": false,
+            "relevance_confidence": 0.0,
+            "relevant": false
           },
           "case_id": "TRIAGE-015",
-          "completion_tokens": 32,
-          "cost_usd": "0.000003",
+          "completion_tokens": 73,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
             "admin1": null,
@@ -408,8 +566,8 @@
             "disease": null,
             "relevant": false
           },
-          "latency_ms": 875,
-          "prompt_tokens": 84,
+          "latency_ms": 2844,
+          "prompt_tokens": 771,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -422,12 +580,20 @@
         },
         {
           "actual": {
-            "excerpt": "The centre responds to rising diarrhoeal illness in the coastal region.",
-            "title": "Health ministry opens cholera treatment centre"
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.8,
+            "country": null,
+            "disease": "cholera",
+            "event_type": "outbreak_report",
+            "location_text": "coastal region",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-016",
-          "completion_tokens": 35,
-          "cost_usd": "0.000003",
+          "completion_tokens": 70,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": null,
@@ -435,26 +601,37 @@
             "disease": "cholera",
             "relevant": true
           },
-          "latency_ms": 764,
-          "prompt_tokens": 87,
+          "latency_ms": 1125,
+          "prompt_tokens": 794,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "Veterinarians reported avian influenza among poultry; no human cases are known.",
-            "title": "Animal disease outbreak prompts farm quarantine"
+            "admin1": null,
+            "admin2": null,
+            "category": "infectious_disease",
+            "confidence": 1.0,
+            "country": null,
+            "disease": "avian influenza",
+            "event_type": "outbreak_report",
+            "location_text": "farm",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-017",
-          "completion_tokens": 32,
-          "cost_usd": "0.000003",
+          "completion_tokens": 71,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
             "admin1": null,
@@ -462,53 +639,76 @@
             "disease": "avian influenza",
             "relevant": true
           },
-          "latency_ms": 1921,
-          "prompt_tokens": 68,
+          "latency_ms": 3077,
+          "prompt_tokens": 775,
           "score": {
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "The provincial surveillance report says cases increased this month.",
-            "title": "Dengue cases rise across Cebu province"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 0.8,
+            "country": null,
+            "disease": "Dengue",
+            "event_type": "surveillance_update",
+            "location_text": "Cebu province",
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-018",
-          "completion_tokens": 30,
-          "cost_usd": "0.000003",
+          "completion_tokens": 73,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": "Cebu",
-            "country": "PH",
+            "country": null,
             "disease": "dengue",
             "relevant": true
           },
-          "latency_ms": 1125,
-          "prompt_tokens": 66,
+          "latency_ms": 984,
+          "prompt_tokens": 792,
           "score": {
+            "disease_correct": 0,
             "fn": 0,
             "fp": 0,
-            "schema_failures": 1,
-            "schema_valid": false,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
             "tn": 0,
-            "tp": 0
+            "tp": 1
           },
-          "status": "rejected"
+          "status": "accepted"
         },
         {
           "actual": {
-            "excerpt": "The entertainment article discusses cinema, not disease.",
+            "admin1": null,
+            "admin2": null,
+            "category": null,
+            "confidence": 0.0,
+            "country": null,
+            "disease": null,
+            "event_type": "unknown",
+            "location_text": null,
+            "public_health": false,
+            "relevant": false,
             "title": "Film review calls new thriller an infectious hit"
           },
           "case_id": "TRIAGE-019",
-          "completion_tokens": 31,
-          "cost_usd": "0.000003",
+          "completion_tokens": 74,
+          "cost_usd": "0.000018",
           "error": null,
           "expected": {
             "admin1": null,
@@ -516,8 +716,8 @@
             "disease": null,
             "relevant": false
           },
-          "latency_ms": 780,
-          "prompt_tokens": 83,
+          "latency_ms": 3313,
+          "prompt_tokens": 770,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -530,12 +730,21 @@
         },
         {
           "actual": {
-            "excerpt": "Clinicians are assessing a possible foodborne event, but the cause is not confirmed.",
-            "title": "Several children ill after community gathering"
+            "admin1": null,
+            "admin2": null,
+            "category": "other_public_health",
+            "confidence": 0.8,
+            "country": null,
+            "disease": null,
+            "event_type": "outbreak_report",
+            "location_text": null,
+            "public_health": true,
+            "relevant": true,
+            "triage_category": "other_public_health"
           },
           "case_id": "TRIAGE-020",
-          "completion_tokens": 37,
-          "cost_usd": "0.000003",
+          "completion_tokens": 89,
+          "cost_usd": "0.000019",
           "error": null,
           "expected": {
             "admin1": null,
@@ -543,8 +752,8 @@
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 829,
-          "prompt_tokens": 89,
+          "latency_ms": 3936,
+          "prompt_tokens": 776,
           "score": {
             "fn": 0,
             "fp": 0,
@@ -557,43 +766,41 @@
         }
       ],
       "metrics": {
-        "accepted": 0,
-        "accuracy": 0.0,
-        "average_latency_ms": 1430.7,
+        "accepted": 11,
+        "accuracy": 0.5,
+        "average_latency_ms": 3151.9,
         "cases": 20,
-        "disease_accuracy": 0.0,
+        "disease_accuracy": 0.45,
         "false_negatives": 0,
-        "false_positives": 0,
-        "location_accuracy": 0.0,
-        "recall": 0.0,
-        "schema_failures": 20,
-        "total_cost_usd": "0.000060"
+        "false_positives": 1,
+        "location_accuracy": 0.3,
+        "recall": 1.0,
+        "schema_failures": 9,
+        "total_cost_usd": "0.000376"
       }
     },
     "mistralai/mistral-small-24b-instruct-2501": {
       "cases": [
         {
           "actual": {
-            "confidence": 0.9,
-            "disease": "cholera",
-            "location_text": "Luanda",
+            "confidence": 0.95,
             "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-001",
-          "completion_tokens": 50,
-          "cost_usd": "0.000007",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
             "admin1": "Luanda",
-            "country": "AO",
+            "country": null,
             "disease": "cholera",
             "relevant": true
           },
-          "latency_ms": 2687,
-          "prompt_tokens": 61,
+          "latency_ms": 735,
+          "prompt_tokens": 818,
           "score": {
-            "disease_correct": 1,
+            "disease_correct": 0,
             "fn": 0,
             "fp": 0,
             "location_correct": 0,
@@ -608,14 +815,12 @@
         {
           "actual": {
             "confidence": 0.9,
-            "event_type": "situation_report",
-            "location_text": "local",
             "public_health": false,
-            "relevant": true
+            "relevant": false
           },
           "case_id": "TRIAGE-002",
-          "completion_tokens": 57,
-          "cost_usd": "0.000007",
+          "completion_tokens": 20,
+          "cost_usd": "0.000042",
           "error": null,
           "expected": {
             "admin1": null,
@@ -623,112 +828,44 @@
             "disease": null,
             "relevant": false
           },
-          "latency_ms": 1812,
-          "prompt_tokens": 56,
+          "latency_ms": 670,
+          "prompt_tokens": 814,
           "score": {
             "disease_correct": 1,
             "fn": 0,
-            "fp": 1,
+            "fp": 0,
             "location_correct": 1,
-            "relevant_correct": 0,
+            "relevant_correct": 1,
             "schema_failures": 0,
             "schema_valid": true,
-            "tn": 0,
+            "tn": 1,
             "tp": 0
           },
           "status": "accepted"
         },
         {
           "actual": {
-            "confidence": 0.9,
-            "disease": null,
-            "location_text": "Mwanza",
+            "confidence": 0.95,
             "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-003",
-          "completion_tokens": 54,
-          "cost_usd": "0.000007",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
             "admin1": "Mwanza",
-            "country": "TZ",
-            "disease": null,
-            "relevant": true
-          },
-          "latency_ms": 2420,
-          "prompt_tokens": 59,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 0,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": "measles",
-            "location_text": "Auckland",
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-004",
-          "completion_tokens": 54,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": "Auckland",
-            "country": "NZ",
-            "disease": "measles",
-            "relevant": true
-          },
-          "latency_ms": 4157,
-          "prompt_tokens": 60,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 0,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": "respiratory disease",
-            "location_text": "school",
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-005",
-          "completion_tokens": 55,
-          "cost_usd": "0.000008",
-          "error": null,
-          "expected": {
-            "admin1": null,
             "country": null,
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 2359,
-          "prompt_tokens": 63,
+          "latency_ms": 813,
+          "prompt_tokens": 817,
           "score": {
-            "disease_correct": 0,
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
-            "location_correct": 1,
+            "location_correct": 0,
             "relevant_correct": 1,
             "schema_failures": 0,
             "schema_valid": true,
@@ -739,24 +876,22 @@
         },
         {
           "actual": {
-            "confidence": 0.9,
-            "disease": null,
-            "location_text": "Recife",
+            "confidence": 0.95,
             "public_health": true,
             "relevant": true
           },
-          "case_id": "TRIAGE-006",
-          "completion_tokens": 53,
-          "cost_usd": "0.000007",
+          "case_id": "TRIAGE-004",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
-            "admin1": "Pernambuco",
-            "country": "BR",
-            "disease": "dengue",
+            "admin1": "Auckland",
+            "country": null,
+            "disease": "measles",
             "relevant": true
           },
-          "latency_ms": 1890,
-          "prompt_tokens": 58,
+          "latency_ms": 1234,
+          "prompt_tokens": 818,
           "score": {
             "disease_correct": 0,
             "fn": 0,
@@ -773,23 +908,21 @@
         {
           "actual": {
             "confidence": 0.95,
-            "event_type": null,
-            "location_text": null,
-            "public_health": false,
-            "relevant": false
+            "public_health": true,
+            "relevant": true
           },
-          "case_id": "TRIAGE-007",
-          "completion_tokens": 52,
-          "cost_usd": "0.000007",
+          "case_id": "TRIAGE-005",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
             "admin1": null,
             "country": null,
             "disease": null,
-            "relevant": false
+            "relevant": true
           },
-          "latency_ms": 1671,
-          "prompt_tokens": 60,
+          "latency_ms": 811,
+          "prompt_tokens": 821,
           "score": {
             "disease_correct": 1,
             "fn": 0,
@@ -798,22 +931,82 @@
             "relevant_correct": 1,
             "schema_failures": 0,
             "schema_valid": true,
-            "tn": 1,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.95,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-006",
+          "completion_tokens": 21,
+          "cost_usd": "0.000042",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": null,
+            "relevant": true
+          },
+          "latency_ms": 782,
+          "prompt_tokens": 815,
+          "score": {
+            "disease_correct": 1,
+            "fn": 0,
+            "fp": 0,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.75,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-007",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": null,
+            "relevant": false
+          },
+          "latency_ms": 625,
+          "prompt_tokens": 817,
+          "score": {
+            "disease_correct": 1,
+            "fn": 0,
+            "fp": 1,
+            "location_correct": 1,
+            "relevant_correct": 0,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
             "tp": 0
           },
           "status": "accepted"
         },
         {
           "actual": {
-            "confidence": 0.9,
-            "disease": "mpox",
-            "location_text": "Kano",
+            "confidence": 0.95,
             "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-008",
-          "completion_tokens": 54,
-          "cost_usd": "0.000008",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
             "admin1": "Kano",
@@ -821,45 +1014,43 @@
             "disease": "mpox",
             "relevant": true
           },
-          "latency_ms": 2703,
-          "prompt_tokens": 65,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 0,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": "waterborne",
-            "location_text": "River",
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-009",
-          "completion_tokens": 54,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": null,
-            "country": null,
-            "disease": null,
-            "relevant": true
-          },
-          "latency_ms": 2671,
-          "prompt_tokens": 60,
+          "latency_ms": 686,
+          "prompt_tokens": 823,
           "score": {
             "disease_correct": 0,
             "fn": 0,
             "fp": 0,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.85,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-009",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": null,
+            "relevant": true
+          },
+          "latency_ms": 719,
+          "prompt_tokens": 818,
+          "score": {
+            "disease_correct": 1,
+            "fn": 0,
+            "fp": 0,
             "location_correct": 1,
             "relevant_correct": 1,
             "schema_failures": 0,
@@ -872,14 +1063,12 @@
         {
           "actual": {
             "confidence": 0.9,
-            "disease": "dengue",
-            "location_text": "",
-            "public_health": false,
-            "relevant": false
+            "public_health": true,
+            "relevant": true
           },
           "case_id": "TRIAGE-010",
-          "completion_tokens": 54,
-          "cost_usd": "0.000007",
+          "completion_tokens": 20,
+          "cost_usd": "0.000042",
           "error": null,
           "expected": {
             "admin1": null,
@@ -887,173 +1076,8 @@
             "disease": "dengue",
             "relevant": false
           },
-          "latency_ms": 1828,
-          "prompt_tokens": 56,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 1,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 1,
-            "tp": 0
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": "typhoid",
-            "location_text": "Kampala district",
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-011",
-          "completion_tokens": 51,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": "Central",
-            "country": "UG",
-            "disease": "typhoid",
-            "relevant": true
-          },
-          "latency_ms": 3171,
-          "prompt_tokens": 59,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 0,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": null,
-            "location_text": "southern Spain",
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-012",
-          "completion_tokens": 56,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": "Andalusia",
-            "country": "ES",
-            "disease": null,
-            "relevant": true
-          },
-          "latency_ms": 2905,
-          "prompt_tokens": 58,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 0,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": null,
-            "location_text": "Port Vila",
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-013",
-          "completion_tokens": 53,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": "Shefa",
-            "country": "VU",
-            "disease": null,
-            "relevant": true
-          },
-          "latency_ms": 4016,
-          "prompt_tokens": 60,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 0,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": "yellow fever",
-            "location_text": null,
-            "public_health": true,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-014",
-          "completion_tokens": 46,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": null,
-            "country": null,
-            "disease": "yellow fever",
-            "relevant": true
-          },
-          "latency_ms": 1640,
-          "prompt_tokens": 58,
-          "score": {
-            "disease_correct": 1,
-            "fn": 0,
-            "fp": 0,
-            "location_correct": 1,
-            "relevant_correct": 1,
-            "schema_failures": 0,
-            "schema_valid": true,
-            "tn": 0,
-            "tp": 1
-          },
-          "status": "accepted"
-        },
-        {
-          "actual": {
-            "confidence": 0.9,
-            "disease": "fever",
-            "location_text": "",
-            "public_health": false,
-            "relevant": true
-          },
-          "case_id": "TRIAGE-015",
-          "completion_tokens": 52,
-          "cost_usd": "0.000007",
-          "error": null,
-          "expected": {
-            "admin1": null,
-            "country": null,
-            "disease": null,
-            "relevant": false
-          },
-          "latency_ms": 1734,
-          "prompt_tokens": 56,
+          "latency_ms": 687,
+          "prompt_tokens": 813,
           "score": {
             "disease_correct": 0,
             "fn": 0,
@@ -1069,15 +1093,168 @@
         },
         {
           "actual": {
+            "confidence": 0.95,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-011",
+          "completion_tokens": 21,
+          "cost_usd": "0.000042",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": "typhoid",
+            "relevant": true
+          },
+          "latency_ms": 640,
+          "prompt_tokens": 816,
+          "score": {
+            "disease_correct": 0,
+            "fn": 0,
+            "fp": 0,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.85,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-012",
+          "completion_tokens": 21,
+          "cost_usd": "0.000042",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": "ES",
+            "disease": null,
+            "relevant": true
+          },
+          "latency_ms": 702,
+          "prompt_tokens": 816,
+          "score": {
+            "disease_correct": 1,
+            "fn": 0,
+            "fp": 0,
+            "location_correct": 0,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.85,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-013",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": null,
+            "relevant": true
+          },
+          "latency_ms": 687,
+          "prompt_tokens": 818,
+          "score": {
+            "disease_correct": 1,
+            "fn": 0,
+            "fp": 0,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.95,
+            "public_health": true,
+            "relevant": true
+          },
+          "case_id": "TRIAGE-014",
+          "completion_tokens": 21,
+          "cost_usd": "0.000042",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": "yellow fever",
+            "relevant": true
+          },
+          "latency_ms": 1140,
+          "prompt_tokens": 816,
+          "score": {
+            "disease_correct": 0,
+            "fn": 0,
+            "fp": 0,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 0,
+            "tp": 1
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
             "confidence": 0.9,
-            "disease": "cholera",
-            "location_text": "coastal region",
+            "public_health": false,
+            "relevant": false
+          },
+          "case_id": "TRIAGE-015",
+          "completion_tokens": 20,
+          "cost_usd": "0.000042",
+          "error": null,
+          "expected": {
+            "admin1": null,
+            "country": null,
+            "disease": null,
+            "relevant": false
+          },
+          "latency_ms": 670,
+          "prompt_tokens": 814,
+          "score": {
+            "disease_correct": 1,
+            "fn": 0,
+            "fp": 0,
+            "location_correct": 1,
+            "relevant_correct": 1,
+            "schema_failures": 0,
+            "schema_valid": true,
+            "tn": 1,
+            "tp": 0
+          },
+          "status": "accepted"
+        },
+        {
+          "actual": {
+            "confidence": 0.95,
             "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-016",
-          "completion_tokens": 57,
-          "cost_usd": "0.000007",
+          "completion_tokens": 21,
+          "cost_usd": "0.000042",
           "error": null,
           "expected": {
             "admin1": null,
@@ -1085,10 +1262,10 @@
             "disease": "cholera",
             "relevant": true
           },
-          "latency_ms": 3155,
-          "prompt_tokens": 57,
+          "latency_ms": 657,
+          "prompt_tokens": 815,
           "score": {
-            "disease_correct": 1,
+            "disease_correct": 0,
             "fn": 0,
             "fp": 0,
             "location_correct": 1,
@@ -1102,15 +1279,13 @@
         },
         {
           "actual": {
-            "confidence": 0.9,
-            "disease": "avian influenza",
-            "location_text": "farm",
-            "public_health": false,
+            "confidence": 0.85,
+            "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-017",
-          "completion_tokens": 56,
-          "cost_usd": "0.000007",
+          "completion_tokens": 21,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
             "admin1": null,
@@ -1118,10 +1293,10 @@
             "disease": "avian influenza",
             "relevant": true
           },
-          "latency_ms": 2750,
-          "prompt_tokens": 59,
+          "latency_ms": 686,
+          "prompt_tokens": 817,
           "score": {
-            "disease_correct": 1,
+            "disease_correct": 0,
             "fn": 0,
             "fp": 0,
             "location_correct": 1,
@@ -1135,24 +1310,22 @@
         },
         {
           "actual": {
-            "confidence": 0.9,
-            "disease": "Dengue",
-            "location_text": "Cebu",
+            "confidence": 0.95,
             "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-018",
-          "completion_tokens": 55,
-          "cost_usd": "0.000007",
+          "completion_tokens": 21,
+          "cost_usd": "0.000042",
           "error": null,
           "expected": {
             "admin1": "Cebu",
-            "country": "PH",
+            "country": null,
             "disease": "dengue",
             "relevant": true
           },
-          "latency_ms": 3077,
-          "prompt_tokens": 56,
+          "latency_ms": 703,
+          "prompt_tokens": 813,
           "score": {
             "disease_correct": 0,
             "fn": 0,
@@ -1168,15 +1341,13 @@
         },
         {
           "actual": {
-            "confidence": 0.95,
-            "disease": null,
-            "location_text": null,
+            "confidence": 0.9,
             "public_health": false,
             "relevant": false
           },
           "case_id": "TRIAGE-019",
-          "completion_tokens": 53,
-          "cost_usd": "0.000007",
+          "completion_tokens": 20,
+          "cost_usd": "0.000042",
           "error": null,
           "expected": {
             "admin1": null,
@@ -1184,8 +1355,8 @@
             "disease": null,
             "relevant": false
           },
-          "latency_ms": 2563,
-          "prompt_tokens": 54,
+          "latency_ms": 1265,
+          "prompt_tokens": 812,
           "score": {
             "disease_correct": 1,
             "fn": 0,
@@ -1202,14 +1373,12 @@
         {
           "actual": {
             "confidence": 0.8,
-            "disease": "foodborne",
-            "event_type": "outbreak_report",
             "public_health": true,
             "relevant": true
           },
           "case_id": "TRIAGE-020",
-          "completion_tokens": 48,
-          "cost_usd": "0.000007",
+          "completion_tokens": 20,
+          "cost_usd": "0.000043",
           "error": null,
           "expected": {
             "admin1": null,
@@ -1217,10 +1386,10 @@
             "disease": null,
             "relevant": true
           },
-          "latency_ms": 2421,
-          "prompt_tokens": 61,
+          "latency_ms": 639,
+          "prompt_tokens": 819,
           "score": {
-            "disease_correct": 0,
+            "disease_correct": 1,
             "fn": 0,
             "fp": 0,
             "location_correct": 1,
@@ -1236,18 +1405,18 @@
       "metrics": {
         "accepted": 20,
         "accuracy": 0.9,
-        "average_latency_ms": 2581.5,
+        "average_latency_ms": 777.55,
         "cases": 20,
-        "disease_accuracy": 0.7,
+        "disease_accuracy": 0.55,
         "false_negatives": 0,
         "false_positives": 2,
-        "location_accuracy": 0.55,
+        "location_accuracy": 0.7,
         "recall": 1.0,
         "schema_failures": 0,
-        "total_cost_usd": "0.000142"
+        "total_cost_usd": "0.000850"
       }
     }
   },
   "status": "completed",
-  "total_cost_usd": "0.000202"
+  "total_cost_usd": "0.001226"
 }
