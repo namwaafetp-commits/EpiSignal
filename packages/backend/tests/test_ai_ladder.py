@@ -19,14 +19,21 @@ from episignal_backend.ai.ladder import (
 )
 from episignal_backend.ai.protocol import ModelUnavailable, NoModelsConfigured
 from episignal_backend.ai.validate import Rejected, RejectionReason
+from episignal_backend.db.types import AiPurpose
 
 
-def spec(tier: int, prompt: str = "0", completion: str = "0") -> ModelSpec:
+def spec(
+    tier: int,
+    prompt: str = "0",
+    completion: str = "0",
+    purpose: AiPurpose | None = None,
+) -> ModelSpec:
     return ModelSpec(
         id=uuid4(),
         tier=tier,
         model_id=f"vendor/model-tier-{tier}:free",
         label=f"Tier {tier}",
+        purpose=purpose,
         prompt_price_per_million=Decimal(prompt),
         completion_price_per_million=Decimal(completion),
     )
@@ -47,6 +54,39 @@ def test_the_ladder_stops_at_the_configured_maximum() -> None:
 def test_a_ladder_with_no_rungs_is_refused() -> None:
     with pytest.raises(NoModelsConfigured):
         Ladder.build((), max_tier=3)
+
+
+def test_a_purposeless_rung_serves_every_purpose() -> None:
+    any_purpose = spec(1)
+
+    ladder = Ladder.build((any_purpose,), max_tier=3, purpose=AiPurpose.EXTRACTION)
+
+    assert ladder.rungs == (any_purpose,)
+
+
+def test_a_purposed_rung_is_hidden_from_other_purposes() -> None:
+    triage_only = spec(1, purpose=AiPurpose.TRIAGE)
+
+    with pytest.raises(NoModelsConfigured):
+        Ladder.build((triage_only,), max_tier=3, purpose=AiPurpose.EXTRACTION)
+
+
+def test_a_purposed_rung_serves_its_own_purpose() -> None:
+    any_purpose = spec(1)
+    triage_only = spec(1, purpose=AiPurpose.TRIAGE)
+
+    ladder = Ladder.build((any_purpose, triage_only), max_tier=3, purpose=AiPurpose.TRIAGE)
+
+    assert triage_only in ladder.rungs
+
+
+def test_an_unspecified_purpose_exposes_only_general_rungs() -> None:
+    any_purpose = spec(1)
+    triage_only = spec(1, purpose=AiPurpose.TRIAGE)
+
+    ladder = Ladder.build((any_purpose, triage_only), max_tier=3)
+
+    assert ladder.rungs == (any_purpose,)
 
 
 def test_two_rows_on_the_same_tier_both_stay_on_the_ladder() -> None:

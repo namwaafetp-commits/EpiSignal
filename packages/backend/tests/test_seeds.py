@@ -124,11 +124,35 @@ def test_the_seeded_roster_covers_all_three_tiers() -> None:
     assert {model.tier for model in models} == {1, 2, 3}
 
 
-def test_the_active_roster_is_gemini_with_one_openrouter_fallback() -> None:
+def test_the_seed_carries_a_triage_and_a_summary_model() -> None:
+    from episignal_backend.db.types import AiPurpose
+    from episignal_backend.seeds import load_ai_models
+
+    models = {seed.model_id: seed for seed in load_ai_models()}
+
+    assert models["meta-llama/llama-3.1-8b-instruct"].purpose is AiPurpose.TRIAGE
+    assert models["deepseek/deepseek-v4-flash-0731"].purpose is AiPurpose.EVENT_SUMMARY
+    assert models["meta-llama/llama-3.1-8b-instruct"].prompt_price_per_million == Decimal("0.02")
+    assert models["meta-llama/llama-3.1-8b-instruct"].completion_price_per_million == Decimal(
+        "0.04"
+    )
+    assert models["deepseek/deepseek-v4-flash-0731"].prompt_price_per_million == Decimal("0.03")
+    assert models["deepseek/deepseek-v4-flash-0731"].completion_price_per_million == Decimal("0.10")
+
+
+def test_every_existing_rung_stays_purposeless() -> None:
+    from episignal_backend.seeds import load_ai_models
+
+    for seed in load_ai_models():
+        if seed.model_id.startswith(("google/", "mistralai/", "anthropic/")):
+            assert seed.purpose is None
+
+
+def test_the_active_general_roster_is_gemini_with_one_openrouter_fallback() -> None:
     from episignal_backend.db.types import AiProvider
     from episignal_backend.seeds import load_ai_models
 
-    active = [model for model in load_ai_models() if model.active]
+    active = [model for model in load_ai_models() if model.active and model.purpose is None]
 
     # The operator's ladder: Gemini for everyday and harder work, one
     # OpenRouter rung as fallback only. The retired 2.5 stays in the seed,

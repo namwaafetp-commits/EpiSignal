@@ -334,9 +334,8 @@ def test_a_purposeless_rung_serves_every_purpose() -> None:
 
 
 def test_a_purposed_rung_is_hidden_from_other_purposes() -> None:
-    ladder = Ladder.build((LLAMA_TRIAGE,), max_tier=3, purpose=AiPurpose.EXTRACTION)
-
-    assert ladder.rungs == ()
+    with pytest.raises(NoModelsConfigured):
+        Ladder.build((LLAMA_TRIAGE,), max_tier=3, purpose=AiPurpose.EXTRACTION)
 
 
 def test_a_purposed_rung_serves_its_own_purpose() -> None:
@@ -393,7 +392,7 @@ In `ai/ladder.py`:
         eligible = [
             spec
             for spec in specs
-            if purpose is None or spec.purpose is None or spec.purpose is purpose
+            if spec.purpose is None or spec.purpose is purpose
         ]
         within_max = (spec for spec in eligible if spec.tier <= max_tier)
         ...

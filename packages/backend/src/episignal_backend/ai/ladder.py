@@ -84,11 +84,25 @@ class Ladder:
     rungs: tuple[ModelSpec, ...]
 
     @classmethod
-    def build(cls, specs: Sequence[ModelSpec], *, max_tier: int, min_tier: int = 1) -> "Ladder":
+    def build(
+        cls,
+        specs: Sequence[ModelSpec],
+        *,
+        max_tier: int,
+        min_tier: int = 1,
+        purpose: AiPurpose | None = None,
+    ) -> "Ladder":
+        """Build a tier-sorted roster for one purpose.
+
+        General rungs serve every pass. Purpose-scoped rungs serve only their
+        named pass. An omitted purpose exposes general rungs only, preserving
+        old callers without allowing a triage model to answer extraction.
+        """
         # Sorted by tier then model id: a stable order matters because two rows
         # may share a tier, and a run that climbs in a different order each time
         # cannot be compared with the previous one.
-        within_max = (spec for spec in specs if spec.tier <= max_tier)
+        eligible = [spec for spec in specs if spec.purpose is None or spec.purpose is purpose]
+        within_max = (spec for spec in eligible if spec.tier <= max_tier)
         rungs = tuple(
             sorted(
                 (spec for spec in within_max if spec.tier >= min_tier),
@@ -101,7 +115,7 @@ class Ladder:
             # refusing to work.
             rungs = tuple(
                 sorted(
-                    (spec for spec in specs if spec.tier <= max_tier),
+                    (spec for spec in eligible if spec.tier <= max_tier),
                     key=lambda spec: (spec.tier, spec.model_id),
                 )
             )

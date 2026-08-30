@@ -52,5 +52,25 @@
     "prompt_price_per_million": "1.00",
     "completion_price_per_million": "5.00",
     "active": false
+  },
+  {
+    "tier": 1,
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "label": "Llama 3.1 8B Instruct",
+    "provider": "openrouter",
+    "purpose": "triage",
+    "prompt_price_per_million": "0.02",
+    "completion_price_per_million": "0.04",
+    "active": true
+  },
+  {
+    "tier": 1,
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "label": "DeepSeek V4 Flash",
+    "provider": "openrouter",
+    "purpose": "event_summary",
+    "prompt_price_per_million": "0.03",
+    "completion_price_per_million": "0.10",
+    "active": true
   }
 ]

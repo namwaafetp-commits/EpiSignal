@@ -134,7 +134,7 @@ purpose-specific model routing.
 
 - [x] 1. Normalized title.
 - [x] 2. Triage vocabulary and schema columns.
-- [ ] 3. Purpose-scoped ladder.
+- [x] 3. Purpose-scoped ladder.
 - [ ] 4. The triage contract.
 - [ ] 5. The triage prompt.
 - [ ] 6. The triage pass.

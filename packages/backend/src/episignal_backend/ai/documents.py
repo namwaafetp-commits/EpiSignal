@@ -47,6 +47,7 @@ class ModelSpec(BaseModel):
     model_id: str = Field(min_length=1)
     label: str = Field(min_length=1)
     provider: AiProvider = AiProvider.OPENROUTER
+    purpose: AiPurpose | None = None
     prompt_price_per_million: Decimal = Field(ge=0)
     completion_price_per_million: Decimal = Field(ge=0)
 

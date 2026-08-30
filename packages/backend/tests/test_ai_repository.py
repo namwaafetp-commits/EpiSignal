@@ -14,6 +14,7 @@ from episignal_backend.ai.schema import (
 )
 from episignal_backend.db.types import (
     AiOutcome,
+    AiProvider,
     AiPurpose,
     ProcessingStatus,
     SignalType,
@@ -105,6 +106,25 @@ def extraction() -> Extraction:
 
 def test_it_satisfies_the_storage_boundary() -> None:
     assert isinstance(SqlAlchemyAiRepository(FakeSession()), AiRepository)
+
+
+def test_the_roster_preserves_a_models_purpose() -> None:
+    from episignal_backend.models import AiModel
+
+    row = AiModel(
+        id=uuid4(),
+        tier=1,
+        model_id="meta-llama/llama-3.1-8b-instruct",
+        label="Llama 3.1 8B Instruct",
+        provider=AiProvider.OPENROUTER,
+        purpose=AiPurpose.TRIAGE,
+        prompt_price_per_million=Decimal("0.02"),
+        completion_price_per_million=Decimal("0.04"),
+        active=True,
+    )
+    repository = SqlAlchemyAiRepository(FakeSession([FakeResult([row])]))
+
+    assert repository.models()[0].purpose is AiPurpose.TRIAGE
 
 
 def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> None:

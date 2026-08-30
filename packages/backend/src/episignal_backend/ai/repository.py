@@ -103,6 +103,7 @@ class SqlAlchemyAiRepository:
                 model_id=row.model_id,
                 label=row.label,
                 provider=row.provider,
+                purpose=row.purpose,
                 prompt_price_per_million=row.prompt_price_per_million,
                 completion_price_per_million=row.completion_price_per_million,
             )
