@@ -44,7 +44,7 @@ discover (title + url)
   -> normalized-title dedup  [new, $0, pre-fetch]
   -> exact/near dedup        [existing]
   -> Llama 3.1 8B triage     [new: relevance + disease + country + admin1 + event_type]
-  -> BGE-M3 embedding        [new, local, 1024d]
+  -> multilingual MiniLM embedding   [new, local ONNX, 384d]
   -> pre-group / cluster extraction   [O2]
   -> candidate event blocking + embedding-assisted matching  [new]
   -> attach or create event
@@ -128,7 +128,18 @@ resolves to no `disease_id`, rather than inventing one.
 
 ### E4 — Embeddings are local, batched, loaded once, and behind an abstraction
 
-`BAAI/bge-m3`, 1024 dimensions, generated locally by default.
+`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384
+dimensions, generated locally through quantized ONNX by default.
+
+**Operator lean correction (2026-08-30):** The first live BGE-M3 load was
+stopped after several minutes without completing. Before model weights, its
+Torch runtime had added about 728 MiB; the incomplete cache alone reached
+1.14 GB. The replacement is the 50-language (including Thai) multilingual
+MiniLM model that FastEmbed lists at about 0.22 GB. FastEmbed removes Torch and
+uses ONNX Runtime. This preserves local multilingual embeddings and the
+provider seam while materially reducing disk, download, startup, and memory
+cost. See the [FastEmbed supported-model table](https://qdrant.github.io/fastembed/examples/Supported_Models/)
+and the [model card](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2).
 
 - `EmbeddingProvider` is a Protocol with one method,
   `embed(texts: Sequence[str]) -> Sequence[Sequence[float]]`. Clustering never
@@ -141,11 +152,13 @@ resolves to no `disease_id`, rather than inventing one.
   already uses.
 - Vectors are L2-normalized at write time, so cosine similarity is an inner
   product and the index can use `vector_cosine_ops` honestly.
-- Storage: `signals.embedding vector(1024)`, nullable, with an HNSW index.
+- Storage: `signals.embedding vector(384)`, nullable, with an HNSW index.
   Nullable because embedding is enrichment: a signal without one still matches
   deterministically, exactly as today.
 
-Configuration: `EMBEDDING_MODEL=BAAI/bge-m3`, `EMBEDDING_PROVIDER=local`.
+Configuration:
+`EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`,
+`EMBEDDING_PROVIDER=local`.
 
 `pgvector` is enabled by migration alongside the existing PostGIS extension.
 

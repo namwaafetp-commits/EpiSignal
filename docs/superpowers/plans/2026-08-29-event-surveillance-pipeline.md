@@ -16,13 +16,13 @@ traceable to the articles that produced it.
 
 **Architecture:** Three phases, each independently shippable and separately
 verified. Phase A adds a structured triage pass after retrieval. Phase B adds
-pgvector and BGE-M3 embeddings, consulted only for pairs the existing
+pgvector and local multilingual MiniLM embeddings, consulted only for pairs the existing
 deterministic guards already permit. Phase C fills the dead `events.ai_summary`
 column from a DeepSeek pass that runs only on a material update and records its
 evidence.
 
 **Tech stack:** Python 3.12, SQLAlchemy 2, Alembic, Pydantic v2, pgvector,
-sentence-transformers (BGE-M3), pytest, mypy strict, ruff. `uv` for Python,
+FastEmbed (quantized ONNX multilingual MiniLM), pytest, mypy strict, ruff. `uv` for Python,
 `corepack pnpm` for the workspace.
 
 **Branch:** create `codex/event-surveillance` in a separate worktree from
@@ -47,7 +47,7 @@ back to the planner. Do **not** mark the roadmap item `verified`.
 | --- | --- |
 | `ingestion/normalize_title.py` | Pure title normalization for pre-fetch dedup. |
 | `ai/triage.py` | The Llama structured triage pass. |
-| `ai/embeddings.py` | `EmbeddingProvider` Protocol and the local BGE-M3 provider. |
+| `ai/embeddings.py` | `EmbeddingProvider` Protocol and the local FastEmbed ONNX provider. |
 | `events/summarize.py` | Material-update detection, representative selection, the DeepSeek pass. |
 | `events/summary_schema.py` | The event summary contract and its validator. |
 | `triage_runner.py`, `embed_runner.py`, `summarize_runner.py` | Manual entry points. |
@@ -75,7 +75,7 @@ back to the planner. Do **not** mark the roadmap item `verified`.
 | `config.py` | Every threshold in the spec. |
 | `apps/api/.env.example` | The new variables. |
 | `database/seeds/ai_models.json` | Llama and DeepSeek rows. |
-| `pyproject.toml` | `pgvector`, `sentence-transformers`. |
+| `pyproject.toml` | `pgvector`, `fastembed`. |
 
 ---
 
@@ -938,6 +938,16 @@ when pgvector is unavailable. The signal-column constant is
 Python runtime dependencies belong to the backend member's pyproject, not the
 dependency-empty workspace pyproject.
 
+**Operator lean correction (2026-08-30):** BGE-M3 was rejected at the Phase B
+checkpoint after the CPU Torch runtime added about 728 MiB and an incomplete
+first model download reached 1.14 GB without finishing. Use FastEmbed's
+quantized ONNX
+`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` instead: 384
+dimensions, 50 languages including Thai, and about 0.22 GB of model weights.
+The live `0018` migration was rolled back with zero stored embeddings before
+changing its dimension. This correction supersedes every older BGE-M3/1024d/
+sentence-transformers example in Tasks 9–11 and Task 24.
+
 **Files:**
 - Create: `database/migrations/versions/20260830_0018_pgvector_embeddings.py`
 - Modify: `models/signal.py`, `packages/backend/pyproject.toml`, `schema_check.py`
@@ -950,7 +960,7 @@ def test_the_migration_enables_pgvector_and_indexes_the_embedding() -> None:
     sql = render_offline("upgrade", "20260830_0017:20260830_0018")
 
     assert "create extension if not exists vector" in sql
-    assert "vector(1024)" in sql
+    assert "vector(384)" in sql
     assert "hnsw" in sql
 
 
@@ -967,7 +977,7 @@ def test_the_health_check_reports_pgvector() -> None:
 ```python
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    op.add_column("signals", sa.Column("embedding", Vector(1024), nullable=True))
+    op.add_column("signals", sa.Column("embedding", Vector(384), nullable=True))
     # HNSW rather than IVFFlat: the table grows continuously and IVFFlat needs
     # a rebuild to stay honest as it does.
     op.execute(
@@ -983,7 +993,7 @@ def downgrade() -> None:
     # and dropping it would be a bigger claim than this migration should make.
 ```
 
-Add `pgvector>=0.3` and `sentence-transformers>=3` to `pyproject.toml`
+Add `pgvector>=0.3` and `fastembed>=0.7` to `pyproject.toml`
 dependencies. Add `database_report(session)` to `schema_check.py`: reuse the
 existing database/PostGIS probe, query `pg_extension` for `vector`, and return
 only component states. Add `embedding` to
@@ -1025,17 +1035,17 @@ def test_the_snippet_is_bounded() -> None:
 
 
 def test_vectors_are_normalized_for_cosine() -> None:
-    vector = normalize([3.0, 4.0] + [0.0] * 1022)
+    vector = normalize([3.0, 4.0] + [0.0] * 382)
 
     assert abs(sum(value * value for value in vector) - 1.0) < 1e-6
 
 
 def test_a_zero_vector_normalizes_to_itself_rather_than_dividing_by_zero() -> None:
-    assert normalize([0.0] * 1024) == [0.0] * 1024
+    assert normalize([0.0] * 384) == [0.0] * 384
 
 
 def test_cosine_similarity_of_normalized_vectors_is_the_inner_product() -> None:
-    left = normalize([1.0, 1.0] + [0.0] * 1022)
+    left = normalize([1.0, 1.0] + [0.0] * 382)
 
     assert abs(cosine(left, left) - 1.0) < 1e-6
 ```
@@ -1057,7 +1067,7 @@ import math
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-EMBEDDING_DIMENSIONS = 1024
+EMBEDDING_DIMENSIONS = 384
 EMBEDDING_SNIPPET_CHARACTERS = 1200
 
 
@@ -1089,35 +1099,30 @@ def cosine(left: Sequence[float], right: Sequence[float]) -> float:
     return sum(a * b for a, b in zip(left, right, strict=True))
 
 
-class LocalBgeM3Provider:
-    """BAAI/bge-m3, loaded once and held for the life of the worker.
+class LocalFastEmbedProvider:
+    """Quantized multilingual MiniLM, loaded once per worker through ONNX."""
 
-    Construction is expensive -- it loads roughly two gigabytes of weights --
-    so a provider built per article is a defect, not a slow path. The
-    scheduled stage builds one per run and the runner builds one per process.
-    """
+    def __init__(
+        self,
+        model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        batch_size: int = 16,
+    ) -> None:
+        from fastembed import TextEmbedding
 
-    def __init__(self, model_name: str = "BAAI/bge-m3", batch_size: int = 16) -> None:
-        from sentence_transformers import SentenceTransformer
-
-        self._model = SentenceTransformer(model_name)
+        self._model = TextEmbedding(model_name=model_name)
         self._batch_size = batch_size
 
     def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
         if not texts:
             return ()
-        vectors = self._model.encode(
-            list(texts),
-            batch_size=self._batch_size,
-            normalize_embeddings=False,
-            show_progress_bar=False,
+        vectors = self._model.embed(
+            list(texts), batch_size=self._batch_size
         )
         return tuple(normalize(vector.tolist()) for vector in vectors)
 ```
 
-The `sentence_transformers` import is inside `__init__` deliberately: importing
-it at module scope would make every test that touches this file pay two
-gigabytes of load time.
+The `fastembed` import is inside `__init__` deliberately: importing the pure
+embedding helpers must not initialize ONNX or load model weights.
 
 - [ ] **Step 3: Run the tests, then commit**
 
@@ -1182,7 +1187,8 @@ embeddings are local and free.
 
 Add `StageName.EMBED = "embed"` after `TRIAGE`, `_embed()` in `stages.py`
 constructing **one** provider per run, and settings
-`embedding_model: str = "BAAI/bge-m3"`, `embedding_provider: Literal["local"] = "local"`,
+`embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"`,
+`embedding_provider: Literal["local"] = "local"`,
 `embedding_batch_size: int = 16`.
 
 - [ ] **Step 3: Run the tests, then commit**
@@ -1821,7 +1827,7 @@ recovery per status (`triage_status = failed`, `retrieval_failed`,
 - [ ] **Step 2: Add every new variable to `apps/api/.env.example`**
 
 ```
-EPISIGNAL_EMBEDDING_MODEL=BAAI/bge-m3
+EPISIGNAL_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 EPISIGNAL_EMBEDDING_PROVIDER=local
 EPISIGNAL_EMBEDDING_BATCH_SIZE=16
 EPISIGNAL_EVENT_LOOKBACK_DAYS=7
@@ -1949,9 +1955,9 @@ stored in Task 6, and read as the blocking key in Task 12. `EmbeddingProvider`
 is defined in Task 10 and is the only embedding type Tasks 11, 14, 19 and 25
 know. `MatchRejection` is defined in Task 13 and logged in Task 14.
 
-Two risks the worker should watch. First, `sentence-transformers` pulls torch —
-confirm the install size and CPU-only wheel resolution at Task 9 before Task 10
-depends on it, and report if the footprint is unacceptable. Second, the HNSW
+Two risks the worker should watch. First, verify the FastEmbed ONNX model's
+actual download, installed runtime footprint, and CPU wall clock at Task 16;
+the operator rejected the original Torch/BGE-M3 path as too large. Second, the HNSW
 index is created without `lists`/`ef_construction` tuning; that is deliberate
 for a table this size, and Task 16's measurement is where evidence for tuning
 would come from.
