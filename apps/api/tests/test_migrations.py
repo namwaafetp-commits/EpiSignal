@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260829_0016"]
+    assert scripts.get_heads() == ["20260829_0017"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -272,3 +272,14 @@ def test_the_filtered_downgrade_returns_rows_to_fetched() -> None:
     source = _revision_source("20260829_0016_filtered_status")
     assert "processing_status = 'fetched'" in source
     assert "processing_status = 'filtered'" in source
+
+
+def test_the_title_inclusion_widens_the_rule_group_check_constraint() -> None:
+    sql = render_offline("upgrade", "20260829_0016:20260829_0017")
+    assert "ck_filter_rules_filter_rule_group_values" in sql
+    assert "'title_inclusion'" in sql
+
+
+def test_the_title_inclusion_downgrade_deletes_inclusion_rules() -> None:
+    source = _revision_source("20260829_0017_add_title_inclusion_rule_group")
+    assert "delete from filter_rules where rule_group = 'title_inclusion'" in source.lower()

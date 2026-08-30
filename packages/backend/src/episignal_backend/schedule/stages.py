@@ -12,7 +12,6 @@ on a different connection for the whole run.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from episignal_backend.ai.classify import run_classification
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
@@ -199,14 +198,9 @@ def _extract() -> Mapping[str, int]:
             model = routed_from_settings(settings, list(repository.models()))
         except NoProviderKey as error:
             raise RuntimeError(str(error)) from error
-        classified = run_classification(
-            repository,
-            model,
-            guards=guards,
-            batch_size=settings.ai_batch_size,
-            limit=settings.ai_signal_batch_limit,
-            max_tier=settings.ai_max_tier,
-        )
+        # The relevance pass is gone from the chain: the keyword gate decides
+        # relevance in the retrieve stage, for zero model requests. The pass
+        # itself is kept in `ai/classify.py` so a rollback is one line here.
         extracted = run_extraction(
             repository,
             model,
@@ -218,13 +212,11 @@ def _extract() -> Mapping[str, int]:
             workers=settings.ai_extraction_workers,
         )
     return {
-        "classified": classified.examined,
-        "relevant": classified.relevant,
-        "irrelevant": classified.irrelevant,
+        "examined": extracted.examined,
         "extracted": extracted.extracted,
-        "review": classified.reviewed + extracted.reviewed,
-        "unavailable": classified.unavailable + extracted.unavailable,
-        "requests": classified.requests + extracted.requests,
+        "review": extracted.reviewed,
+        "unavailable": extracted.unavailable,
+        "requests": extracted.requests,
     }
 
 

@@ -110,15 +110,45 @@ class SqlAlchemyAiRepository:
         )
 
     def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
-        # Bypassed in Phase 2: relevance classification is skipped and representatives
-        # of open groups are extracted directly.
-        return ()
+        """Signals a relevance pass would read.
+
+        No stage calls this any more: the keyword gate decides relevance in the
+        retrieve stage for zero model requests. The query is kept honest rather
+        than stubbed out, so restoring the pass is one line in `stages.py` and
+        this method never lies to a caller about what is waiting.
+        """
+        stmt = (
+            select(Signal)
+            .where(
+                Signal.processing_status == ProcessingStatus.NORMALIZED,
+                Signal.raw_text.is_not(None),
+                ~_deferred_by_open_group(),
+            )
+            .order_by(Signal.first_seen_at)
+        )
+        rows = self._scan_valid_signals(stmt, limit, "classification")
+        return tuple(
+            ClassifiableSignal(
+                id=row.id,
+                title=row.title,
+                excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
+            )
+            for row in rows
+        )
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         stmt = (
             select(Signal)
             .where(
-                Signal.processing_status == ProcessingStatus.NORMALIZED,
+                # `normalized` is what the keyword gate now produces. `classified`
+                # stays selectable so the rows the retired relevance pass decided
+                # are not stranded outside the funnel forever.
+                Signal.processing_status.in_(
+                    (ProcessingStatus.NORMALIZED, ProcessingStatus.CLASSIFIED)
+                ),
+                # A signal a model called irrelevant stays out; one never asked
+                # (null) comes in.
+                Signal.public_health_relevant.isnot(False),
                 Signal.raw_text.is_not(None),
                 # Pre-group deferral: a member waiting on its open group's
                 # representative is not selectable.

@@ -107,24 +107,52 @@ def test_it_satisfies_the_storage_boundary() -> None:
     assert isinstance(SqlAlchemyAiRepository(FakeSession()), AiRepository)
 
 
-def test_classification_is_bypassed_immediately() -> None:
-    session = FakeSession()
-    res = SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
-    assert res == ()
-    assert session.executed == []
+def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> None:
+    # The keyword gate replaced this pass, but the method must still describe
+    # what it would select. A method stubbed to return () lies to its caller
+    # and makes restoring the pass more than the one line it should be.
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
+
+    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
+    assert ProcessingStatus.NORMALIZED.value in rendered
+    assert "story_group_members" in rendered.split("WHERE")[1]
 
 
-def test_only_normalized_non_deferred_signals_are_offered_for_extraction() -> None:
+def test_normalized_and_legacy_classified_signals_are_both_extractable() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
 
-    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
-    assert ProcessingStatus.NORMALIZED.value in rendered
-    assert "WHERE" in rendered
-    # Extract the WHERE clause part to ensure it does not check public_health_relevant
-    where_part = rendered.split("WHERE")[1]
-    assert "public_health_relevant" not in where_part
+    where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
+        "WHERE"
+    )[1]
+    # Both, or the rows the retired relevance pass decided are stranded outside
+    # the funnel with nothing left to move them.
+    assert ProcessingStatus.NORMALIZED.value in where_part
+    assert ProcessingStatus.CLASSIFIED.value in where_part
+
+
+def test_a_signal_a_model_called_irrelevant_is_not_extractable() -> None:
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
+
+    where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
+        "WHERE"
+    )[1]
+    assert "public_health_relevant IS NOT false" in where_part
+
+
+def test_a_deferred_member_of_an_open_group_is_not_extracted_alone() -> None:
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
+
+    where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
+        "WHERE"
+    )[1]
     assert "story_group_members" in where_part
 
 
