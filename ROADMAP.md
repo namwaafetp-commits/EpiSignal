@@ -41,9 +41,9 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [#######--] 7/9  D2b and F remain
-Band 3  Product surface         [#-----] 1/6  E verified; G, H, I, J, K remain
-Band 4  Operations              [#--]    1/3  M and N remain
+Band 2  GDELT discovery layer   [#########-] 10/11  F remains
+Band 3  Product surface         [###---] 3/6  H, J, and K remain
+Band 4  Operations              [##-]    2/3  N remains
 Band 5  Acceptance              [-]      0/1
 ```
 
@@ -89,11 +89,11 @@ Umbrella architecture and shared invariants:
 | `C2` | English title and the five-slot brief | Every extraction carries an English title and a five-bullet brief in fixed slot order, with source spans left in the language the publisher wrote. | `C` | `verified` |
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
-| `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses get a better answer from embedding similarity and, where still unclear, an escalated model judgement. **Lean MVP supersession (docs/lean-mvp-architecture.md):** embeddings/BGE-M3/pgvector deferred to Phase 2; the ambiguous band is decided by the cheap classifier rung (Llama 3.1 8B, `events/judge.py`, `event_match_judge` purpose) instead. What remains as Phase 1 load-bearing is the LLM judgement. | `D2a` | `building` |
+| `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses receive a conservative LLM judgement. **Lean MVP supersession (docs/lean-mvp-architecture.md):** embeddings/BGE-M3/pgvector are deferred to Phase 2; the ambiguous band is decided by the cheap classifier rung (Llama 3.1 8B, `events/judge.py`, `event_match_judge` purpose). | `D2a` | `verified` |
 | `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
 | `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. **Superseded for MVP (docs/lean-mvp-architecture.md):** roster selection for the MVP is Llama = cheap classifier (+ ambiguous judge), DeepSeek = event summarizer; Gemini is kept as a provider adapter but not the free-ladder's everyday model. | `C2`, `D2a`, `L` | `verified` |
 | `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `verified` |
-| `R` | Event-based surveillance: early metadata, embeddings, event summaries | An article's own disease and place are known before extraction, two reports of one outbreak match semantically without ever overriding a deterministic conflict, and each event carries one narrative summary traceable to the articles that produced it. **Lean MVP reorientation (docs/lean-mvp-architecture.md, `20260830_0019`):** embeddings deferred; the lean MVP lands (a) RapidFuzz near-exact dedup as the near-duplicate rule, (b) the ambiguous-band LLM judge, (c) observation history, and (d) DeepSeek event summaries with versioned history (`events.headline`/`summary`/`article_count`/`last_summarized_at` + `event_summaries`) regenerated only on a material change. | `O2` | `building` |
+| `R` | Event-based surveillance: Lean MVP | The funnel performs conservative deduplication and event matching, records additive observations, updates traceable versioned summaries on material change, and exposes the public event API/UI. **Lean MVP supersession (docs/lean-mvp-architecture.md):** embeddings/BGE-M3/pgvector are dormant Phase-2 scaffolding; the load-bearing runtime is RapidFuzz near-exact dedup, deterministic matching, the ambiguous-band LLM judge, observation history, and DeepSeek summaries. | `O2` | `verified` |
 
 Artifacts:
 `A` [spec](docs/superpowers/specs/2026-08-27-gdelt-discovery-design.md) ·
@@ -120,9 +120,12 @@ Artifacts:
 [report](docs/reports/2026-08-29-subproject-o-report.md) ·
 [issue #1](https://github.com/namwaafetp-commits/EpiSignal/issues/1) —
 `O2` [spec](docs/superpowers/specs/2026-08-29-pipeline-funnel-v2-design.md) ·
-[plan](docs/superpowers/plans/2026-08-29-pipeline-funnel-v2.md) —
+[plan](docs/superpowers/plans/2026-08-29-pipeline-funnel-v2.md) ·
+[reconciliation](docs/reports/2026-08-30-post-merge-reconciliation.md) —
 `R` [spec](docs/superpowers/specs/2026-08-29-event-surveillance-pipeline-design.md) ·
-[plan](docs/superpowers/plans/2026-08-29-event-surveillance-pipeline.md)
+[plan](docs/superpowers/plans/2026-08-29-event-surveillance-pipeline.md) ·
+[Lean MVP architecture](docs/lean-mvp-architecture.md) ·
+[reconciliation](docs/reports/2026-08-30-post-merge-reconciliation.md)
 
 ### Pipeline as it stands
 
@@ -135,9 +138,11 @@ Artifacts:
 [English brief]   ->  C2  backfill_runner.py     verified
 [Geocoding]       ->  D1  geocode_runner.py      verified
 [Clustering]      ->  D2a event_runner.py        verified
-[Ambiguous match] ->  D2b ---                    not started
-[Radar surface]   ->  E   radar.py + Next UI     verified
-[Manual review]   ->  M   ---                    planned
+[Ambiguous match] ->  D2b events/judge.py          verified
+[Event summary]   ->  R   summarize_runner.py      verified
+[Radar surface]   ->  E   radar.py + Next UI       verified
+[Event API/pages] -> G/I  events routes + Next UI  verified
+[Manual review]   ->  M   review queue             verified
 [Efficiency]      ->  O   lang + provider + delta verified
 
 [Runs it daily]   ->  L   pipeline_runner.py     verified
@@ -173,16 +178,17 @@ Nothing in this band can start before `D2a`, because `events`, `event_signals`,
 | ID | Item | Ends when | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | `E` | Signal Radar API, Signal Radar UI, admin monitoring | A user sees an early signal, its uncertainty, and can open the original article. | `D2a` | `verified` |
-| `G` | Public event API | Read-only events list, event detail, observations, sources, and filters are served and contract-checked. Phase 1 spec §46. | `D2a` | `not-started` |
+| `G` | Public event API | Read-only events list, event detail, observations, sources, and filters are served and contract-checked. Phase 1 spec §46. | `D2a` | `verified` |
 | `H` | Homepage world map and event feed | A usable world map and list view render real events, responsive from the first commit. Phase 1 spec §26–§28. | `G` | `not-started` |
-| `I` | Event page: overview, timeline, sources, data | Every claim on the page shows the source that made it, the time it was made, and the previous value. Phase 1 spec §30–§34. | `G` | `not-started` |
+| `I` | Event page: overview, timeline, sources, data | Every claim on the page shows the source that made it, the time it was made, and the previous value. Phase 1 spec §30–§34. | `G` | `verified` |
 | `J` | Search | Structured search over disease, place, date, and status works; natural-language parsing is optional and separate. Phase 1 spec §40. | `G` | `not-started` |
 | `K` | Data export | Structured export of events and observations is downloadable with provenance intact. Phase 1 spec §47. | `G` | `not-started` |
 
 Artifacts: `E`
 [spec](docs/superpowers/specs/2026-08-28-signal-radar-design.md) ·
 [plan](docs/superpowers/plans/2026-08-28-signal-radar.md) ·
-[report](docs/reports/2026-08-28-subproject-e-report.md)
+[report](docs/reports/2026-08-28-subproject-e-report.md) —
+`G`/`I` [Lean MVP reconciliation](docs/reports/2026-08-30-post-merge-reconciliation.md)
 
 ---
 
@@ -199,11 +205,13 @@ Artifacts:
 [plan](docs/superpowers/plans/2026-08-28-scheduler.md) ·
 [report](docs/reports/2026-08-28-subproject-l-report.md) —
 `M` [spec](docs/superpowers/specs/2026-08-29-manual-review-queue-design.md) ·
-[plan](docs/superpowers/plans/2026-08-29-manual-review-queue.md)
+[plan](docs/superpowers/plans/2026-08-29-manual-review-queue.md) ·
+[report](docs/reports/2026-08-29-subproject-m-report.md)
 
 `L` was taken ahead of Band 3 deliberately. It depends only on `D2a`, and the
 items that follow it are worth more once real events exist to build against.
-`M` stays where it is: it depends on `E`, because a review queue needs a surface.
+`M` depends on `E`, because a review queue needs a surface; both are now
+verified.
 
 ---
 
