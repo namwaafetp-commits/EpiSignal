@@ -6,7 +6,7 @@ which never imports this module.
 """
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select, update
@@ -33,6 +33,7 @@ from episignal_backend.ingestion.documents import (
     Rejection,
     StubRetrieval,
 )
+from episignal_backend.ingestion.normalize_title import normalize_title
 from episignal_backend.models import (
     Disease,
     GdeltQueryRule,
@@ -51,6 +52,7 @@ def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
         url=signal.url,
         canonical_url=signal.canonical_url,
         title=signal.title,
+        normalized_title=normalize_title(signal.title),
         raw_text=signal.raw_text,
         published_at=signal.published_at,
         retrieved_at=signal.retrieved_at,
@@ -70,6 +72,7 @@ def build_discovered_signal(signal: DiscoveredSignal, source_id: UUID) -> Signal
         url=signal.url,
         canonical_url=signal.canonical_url,
         title=signal.title,
+        normalized_title=normalize_title(signal.title),
         raw_text=signal.raw_text,
         published_at=signal.published_at,
         published_at_offset_minutes=signal.published_at_offset_minutes,
@@ -223,6 +226,30 @@ class SqlAlchemyDiscoveryRepository:
             update(Signal)
             .where(Signal.id == signal_id)
             .values(processing_status=ProcessingStatus.FILTERED)
+        )
+
+    def title_duplicate_of(self, normalized_title: str, *, within_hours: int) -> UUID | None:
+        cutoff = datetime.now(UTC) - timedelta(hours=within_hours)
+        return self._session.execute(
+            select(Signal.id)
+            .where(
+                Signal.normalized_title == normalized_title,
+                Signal.first_seen_at >= cutoff,
+                Signal.raw_text.is_not(None),
+                Signal.processing_status != ProcessingStatus.DUPLICATE,
+            )
+            .order_by(Signal.first_seen_at, Signal.id)
+            .limit(1)
+        ).scalar_one_or_none()
+
+    def mark_title_duplicate(self, signal_id: UUID, primary_id: UUID) -> None:
+        self._session.execute(
+            update(Signal)
+            .where(Signal.id == signal_id)
+            .values(
+                processing_status=ProcessingStatus.DUPLICATE,
+                duplicate_of_signal_id=primary_id,
+            )
         )
 
     def record_rejection(self, rejection: Rejection) -> None:

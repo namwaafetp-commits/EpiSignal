@@ -14,6 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from episignal_backend.db.types import FilterRuleGroup, ProcessingStatus, SignalType
+from episignal_backend.ingestion.normalize_title import normalize_title
 
 
 def _require_aware(value: datetime) -> datetime:
@@ -238,6 +239,10 @@ class StubRetrieval(BaseModel):
     article: DiscoveredArticle
     first_seen_at: datetime
     attempts: int = Field(ge=0)
+
+    @property
+    def normalized_title(self) -> str:
+        return normalize_title(self.article.title)
 
     @field_validator("first_seen_at")
     @classmethod

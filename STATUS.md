@@ -138,7 +138,7 @@ purpose-specific model routing.
 - [x] 4. The triage contract.
 - [x] 5. The triage prompt.
 - [x] 6. The triage pass.
-- [ ] 7. Pre-fetch normalized-title dedup.
+- [x] 7. Pre-fetch normalized-title dedup.
 - [ ] 8. The `triage` stage and Phase A checkpoint.
 - [ ] 9. pgvector and the embedding column.
 - [ ] 10. The embedding provider.

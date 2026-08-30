@@ -117,11 +117,13 @@ def _retrieve() -> Mapping[str, int]:
             connector,
             max_attempts=settings.gdelt_max_retrieval_attempts,
             batch_size=settings.gdelt_retry_batch_size,
+            window_hours=settings.stage0_candidate_window_hours,
         )
     return {
         "examined": result.examined,
         "filtered": result.filtered,
         "retrieved": result.retrieved,
+        "duplicates": result.duplicates,
         "redundant": result.redundant,
         "still_failing": result.still_failing,
         "failed": result.failed,

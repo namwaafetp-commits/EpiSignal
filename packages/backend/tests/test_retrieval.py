@@ -46,6 +46,11 @@ def make_stub(title: str, url: str) -> StubRetrieval:
 STADIUM = make_stub("City council approves new stadium", "https://example.vn/stadium")
 MEASLES_STORY = make_stub("Measles outbreak spreads in Hanoi", "https://example.vn/measles")
 SECOND_STORY = make_stub("Cholera outbreak declared in Capital", "https://example.vn/cholera")
+COPY = make_stub(
+    "Measles outbreak spreads in Hanoi | Example News",
+    "https://copy.example.vn/measles",
+)
+ORIGINAL_ID = uuid4()
 
 
 class FakeRetrievalRepository:
@@ -55,17 +60,21 @@ class FakeRetrievalRepository:
         rules: tuple[FilterRule, ...],
         promotable: bool = True,
         failing_ids: set[UUID] | None = None,
+        titles: dict[str, UUID] | None = None,
     ) -> None:
         self.waiting = waiting
         self.rules = rules
         self.promotable = promotable
         self.failing_ids = failing_ids or set()
+        self.titles = titles or {}
         self.filtered: list[UUID] = []
+        self.duplicated: list[tuple[UUID, UUID]] = []
         self.promoted: list[UUID] = []
         self.failed_attempts: list[UUID] = []
         self.commits = 0
         self.rollbacks = 0
         self.deleted: list[UUID] = []
+        self.title_lookups = 0
 
     def gated_awaiting_retrieval(
         self, *, max_attempts: int, limit: int
@@ -79,6 +88,13 @@ class FakeRetrievalRepository:
         if signal_id in self.failing_ids:
             raise RuntimeError("DB error")
         self.filtered.append(signal_id)
+
+    def title_duplicate_of(self, normalized_title: str, *, within_hours: int) -> UUID | None:
+        self.title_lookups += 1
+        return self.titles.get(normalized_title)
+
+    def mark_title_duplicate(self, signal_id: UUID, primary_id: UUID) -> None:
+        self.duplicated.append((signal_id, primary_id))
 
     def promote(self, signal_id: UUID, signal: DiscoveredSignal) -> bool:
         if signal_id in self.failing_ids:
@@ -198,3 +214,37 @@ def test_no_signal_is_ever_deleted() -> None:
     run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
 
     assert repository.deleted == []
+
+
+def test_a_syndicated_copy_is_marked_duplicate_before_it_is_fetched() -> None:
+    repository = FakeRetrievalRepository(
+        waiting=(COPY,), rules=(OUTBREAK,), titles={COPY.normalized_title: ORIGINAL_ID}
+    )
+    connector = CountingConnector()
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.duplicates == 1
+    assert connector.retrieved == 0
+    assert repository.duplicated == [(COPY.signal_id, ORIGINAL_ID)]
+
+
+def test_a_title_match_outside_the_window_is_still_fetched() -> None:
+    repository = FakeRetrievalRepository(waiting=(COPY,), rules=(OUTBREAK,), titles={})
+    connector = CountingConnector()
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.duplicates == 0
+    assert connector.retrieved == 1
+
+
+def test_the_gate_runs_before_the_title_check() -> None:
+    repository = FakeRetrievalRepository(waiting=(STADIUM,), rules=(OUTBREAK,), titles={})
+
+    result = run_retrieval(  # type: ignore[arg-type]
+        repository, CountingConnector(), max_attempts=3, batch_size=10
+    )
+
+    assert result.filtered == 1
+    assert repository.title_lookups == 0

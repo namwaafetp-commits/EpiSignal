@@ -62,6 +62,7 @@ def _run(arguments: Arguments) -> RetrievalResult:
             connector,
             max_attempts=arguments.max_attempts or settings.gdelt_max_retrieval_attempts,
             batch_size=arguments.batch_size or settings.gdelt_retry_batch_size,
+            window_hours=settings.stage0_candidate_window_hours,
         )
         return result
 
@@ -80,7 +81,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"examined={result.examined} filtered={result.filtered} "
-        f"retrieved={result.retrieved} redundant={result.redundant} "
+        f"retrieved={result.retrieved} duplicates={result.duplicates} redundant={result.redundant} "
         f"still_failing={result.still_failing} failed={result.failed}"
     )
 
