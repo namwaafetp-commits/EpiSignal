@@ -25,9 +25,10 @@ evidence.
 sentence-transformers (BGE-M3), pytest, mypy strict, ruff. `uv` for Python,
 `corepack pnpm` for the workspace.
 
-**Branch:** **Do not start until `O2` is verified.** Then create
-`codex/event-surveillance` in a separate worktree from the head of
-`codex/pipeline-funnel-v2`. This plan is written against the post-`O2` code
+**Branch:** create `codex/event-surveillance` in a separate worktree from
+`main`. `O2` was merged to `main` at `5590444` on 2026-08-30; its live-proof
+run and completion report were waived by operator decision, so there is no `O2`
+report to read. This plan is written against the post-`O2` code
 shape: `retrieve` and `pregroup` are chain stages, `filtered` is a status, and
 cluster extraction runs inside `run_extraction`.
 
@@ -80,16 +81,10 @@ back to the planner. Do **not** mark the roadmap item `verified`.
 
 ## Before Task 1
 
-- [ ] **Confirm `O2` is verified**
-
-Read `STATUS.md`. If item `O2` is not `verified` in `ROADMAP.md`, stop and
-report — this plan is written against the post-`O2` code shape and will
-conflict with an in-flight funnel branch.
-
 - [ ] **Create the worktree and a clean baseline**
 
 ```bash
-git worktree add ../EpiSignal-event-surveillance -b codex/event-surveillance codex/pipeline-funnel-v2
+git worktree add ../EpiSignal-event-surveillance -b codex/event-surveillance main
 ```
 
 Copy `apps/api/.env` into the new worktree — it is gitignored and nothing runs
