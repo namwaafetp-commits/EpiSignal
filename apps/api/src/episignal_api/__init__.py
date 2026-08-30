@@ -1,0 +1,2 @@
+API_VERSION = "0.1.0"
+API_NAME = "EpiSignal API"

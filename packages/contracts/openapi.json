@@ -1,0 +1,2886 @@
+{
+  "components": {
+    "schemas": {
+      "AssignDiseaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "assign_disease",
+            "default": "assign_disease",
+            "title": "Action",
+            "type": "string"
+          },
+          "disease_id": {
+            "format": "uuid",
+            "title": "Disease Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "disease_id"
+        ],
+        "title": "AssignDiseaseRequest",
+        "type": "object"
+      },
+      "BriefPoint": {
+        "additionalProperties": false,
+        "description": "One bullet of a brief.\n\n`reported` is false when the article never addressed this slot. The text\nstill has to say something \u2014 it says what is missing \u2014 because an empty\nbullet and an unreported fact would look identical to a reader.",
+        "properties": {
+          "reported": {
+            "title": "Reported",
+            "type": "boolean"
+          },
+          "slot": {
+            "$ref": "#/components/schemas/BriefSlot"
+          },
+          "text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "text",
+          "reported"
+        ],
+        "title": "BriefPoint",
+        "type": "object"
+      },
+      "BriefSlot": {
+        "description": "One of the five questions a brief answers, in the order it is asked.",
+        "enum": [
+          "what_where",
+          "counts",
+          "timing",
+          "spread",
+          "reporting"
+        ],
+        "title": "BriefSlot",
+        "type": "string"
+      },
+      "Components": {
+        "properties": {
+          "database": {
+            "enum": [
+              "up",
+              "down",
+              "unknown"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "postgis": {
+            "enum": [
+              "up",
+              "down",
+              "unknown"
+            ],
+            "title": "Postgis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "postgis"
+        ],
+        "title": "Components",
+        "type": "object"
+      },
+      "CreateEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "create_event",
+            "default": "create_event",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "default": "unverified"
+          }
+        },
+        "title": "CreateEventRequest",
+        "type": "object"
+      },
+      "CredibilityTier": {
+        "enum": [
+          "official",
+          "high",
+          "medium",
+          "unknown"
+        ],
+        "title": "CredibilityTier",
+        "type": "string"
+      },
+      "DismissRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "dismiss",
+            "default": "dismiss",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "DismissRequest",
+        "type": "object"
+      },
+      "EventContextStatus": {
+        "enum": [
+          "none",
+          "attached",
+          "ambiguous"
+        ],
+        "title": "EventContextStatus",
+        "type": "string"
+      },
+      "EventDetailResponse": {
+        "properties": {
+          "admin1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin1"
+          },
+          "admin2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin2"
+          },
+          "article_count": {
+            "title": "Article Count",
+            "type": "integer"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "disease": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease"
+          },
+          "early_signal_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early Signal Score"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "evidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Score"
+          },
+          "first_reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reported At"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "last_summarized_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Summarized At"
+          },
+          "latest_report_at": {
+            "format": "date-time",
+            "title": "Latest Report At",
+            "type": "string"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/EventObservationResponse"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EventSourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventStatus"
+          },
+          "summaries": {
+            "items": {
+              "$ref": "#/components/schemas/EventSummaryResponse"
+            },
+            "title": "Summaries",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus"
+          }
+        },
+        "required": [
+          "public_id",
+          "headline",
+          "summary",
+          "disease",
+          "event_type",
+          "status",
+          "verification_status",
+          "country_code",
+          "admin1",
+          "admin2",
+          "first_reported_at",
+          "latest_report_at",
+          "article_count",
+          "last_summarized_at",
+          "early_signal_score",
+          "evidence_score",
+          "sources",
+          "observations",
+          "summaries"
+        ],
+        "title": "EventDetailResponse",
+        "type": "object"
+      },
+      "EventListItemResponse": {
+        "properties": {
+          "admin1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin1"
+          },
+          "admin2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin2"
+          },
+          "article_count": {
+            "title": "Article Count",
+            "type": "integer"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "disease": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "first_reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reported At"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "last_summarized_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Summarized At"
+          },
+          "latest_report_at": {
+            "format": "date-time",
+            "title": "Latest Report At",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventStatus"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus"
+          }
+        },
+        "required": [
+          "public_id",
+          "headline",
+          "summary",
+          "disease",
+          "event_type",
+          "status",
+          "verification_status",
+          "country_code",
+          "admin1",
+          "admin2",
+          "first_reported_at",
+          "latest_report_at",
+          "article_count",
+          "last_summarized_at"
+        ],
+        "title": "EventListItemResponse",
+        "type": "object"
+      },
+      "EventListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventListItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "EventListResponse",
+        "type": "object"
+      },
+      "EventObservationResponse": {
+        "properties": {
+          "confirmed_cases": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Cases"
+          },
+          "deaths": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deaths"
+          },
+          "extraction_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Confidence"
+          },
+          "hospitalizations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hospitalizations"
+          },
+          "new_cases": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Cases"
+          },
+          "new_deaths": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Deaths"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "observation_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Date"
+          },
+          "probable_cases": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probable Cases"
+          },
+          "reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported At"
+          },
+          "suspected_cases": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspected Cases"
+          },
+          "total_cases": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cases"
+          }
+        },
+        "required": [
+          "observation_date",
+          "reported_at",
+          "suspected_cases",
+          "probable_cases",
+          "confirmed_cases",
+          "total_cases",
+          "new_cases",
+          "deaths",
+          "new_deaths",
+          "hospitalizations",
+          "notes",
+          "extraction_confidence"
+        ],
+        "title": "EventObservationResponse",
+        "type": "object"
+      },
+      "EventSourceResponse": {
+        "properties": {
+          "credibility_tier": {
+            "title": "Credibility Tier",
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "is_official": {
+            "title": "Is Official",
+            "type": "boolean"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signal_id",
+          "source_name",
+          "is_official",
+          "credibility_tier",
+          "title",
+          "url",
+          "published_at",
+          "first_seen_at",
+          "relationship_type",
+          "is_primary"
+        ],
+        "title": "EventSourceResponse",
+        "type": "object"
+      },
+      "EventStatus": {
+        "enum": [
+          "monitoring",
+          "ongoing",
+          "expanding",
+          "stable",
+          "declining",
+          "resolved",
+          "unknown"
+        ],
+        "title": "EventStatus",
+        "type": "string"
+      },
+      "EventSummaryResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "latest_development": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Development"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventStatus"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "uncertainties": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainties"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "headline",
+          "summary",
+          "status",
+          "latest_development",
+          "uncertainties",
+          "model_id",
+          "created_at"
+        ],
+        "title": "EventSummaryResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LinkEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "link_event",
+            "default": "link_event",
+            "title": "Action",
+            "type": "string"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "target_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Event Id"
+          }
+        },
+        "title": "LinkEventRequest",
+        "type": "object"
+      },
+      "LivenessResponse": {
+        "properties": {
+          "status": {
+            "const": "alive",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LivenessResponse",
+        "type": "object"
+      },
+      "LocationRole": {
+        "enum": [
+          "primary",
+          "exposure",
+          "diagnosis",
+          "travel",
+          "reporting",
+          "affected_area"
+        ],
+        "title": "LocationRole",
+        "type": "string"
+      },
+      "NotReadyResponse": {
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/Components"
+          },
+          "error_code": {
+            "const": "DATABASE_NOT_READY",
+            "title": "Error Code",
+            "type": "string"
+          },
+          "status": {
+            "const": "not_ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "components",
+          "error_code"
+        ],
+        "title": "NotReadyResponse",
+        "type": "object"
+      },
+      "PipelineChain": {
+        "enum": [
+          "daily"
+        ],
+        "title": "PipelineChain",
+        "type": "string"
+      },
+      "PipelineFailureResponse": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/StageName"
+          }
+        },
+        "required": [
+          "stage",
+          "error"
+        ],
+        "title": "PipelineFailureResponse",
+        "type": "object"
+      },
+      "PipelineRunListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit"
+        ],
+        "title": "PipelineRunListResponse",
+        "type": "object"
+      },
+      "PipelineRunResponse": {
+        "properties": {
+          "backlog": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Backlog",
+            "type": "object"
+          },
+          "chain": {
+            "$ref": "#/components/schemas/PipelineChain"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineFailureResponse"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_stale": {
+            "title": "Is Stale",
+            "type": "boolean"
+          },
+          "stage_counts": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Stage Counts",
+            "type": "object"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PipelineRunStatus"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PipelineTrigger"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "id",
+          "chain",
+          "trigger",
+          "status",
+          "started_at",
+          "finished_at",
+          "window_start",
+          "window_end",
+          "stage_counts",
+          "backlog",
+          "failures",
+          "is_stale"
+        ],
+        "title": "PipelineRunResponse",
+        "type": "object"
+      },
+      "PipelineRunStatus": {
+        "enum": [
+          "running",
+          "succeeded",
+          "failed"
+        ],
+        "title": "PipelineRunStatus",
+        "type": "string"
+      },
+      "PipelineTrigger": {
+        "enum": [
+          "scheduled",
+          "manual"
+        ],
+        "title": "PipelineTrigger",
+        "type": "string"
+      },
+      "Precision": {
+        "description": "How specific a resolved location actually is.\n\nOrdered from most to least specific. `unresolved` is a real answer, not a\nmissing one: the article named a place the gazetteer could not match, which\nis different from the article naming no place at all.",
+        "enum": [
+          "place",
+          "admin2",
+          "admin1",
+          "country",
+          "unresolved"
+        ],
+        "title": "Precision",
+        "type": "string"
+      },
+      "ProcessingStatus": {
+        "enum": [
+          "fetched",
+          "normalized",
+          "classified",
+          "extracted",
+          "geocoded",
+          "matched",
+          "published",
+          "duplicate",
+          "failed",
+          "needs_review",
+          "filtered",
+          "dismissed"
+        ],
+        "title": "ProcessingStatus",
+        "type": "string"
+      },
+      "RadarEventContextResponse": {
+        "properties": {
+          "early_signal_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early Signal Score"
+          },
+          "evidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Score"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus"
+          }
+        },
+        "required": [
+          "public_id",
+          "verification_status",
+          "early_signal_score",
+          "evidence_score"
+        ],
+        "title": "RadarEventContextResponse",
+        "type": "object"
+      },
+      "RadarEventGroupResponse": {
+        "properties": {
+          "all_source_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "All Source Names",
+            "type": "array"
+          },
+          "earliest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Published At"
+          },
+          "event": {
+            "$ref": "#/components/schemas/RadarEventContextResponse"
+          },
+          "event_public_id": {
+            "title": "Event Public Id",
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "latest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Published At"
+          },
+          "representative_brief": {
+            "items": {
+              "$ref": "#/components/schemas/BriefPoint"
+            },
+            "title": "Representative Brief",
+            "type": "array"
+          },
+          "representative_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarLocationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "representative_source": {
+            "$ref": "#/components/schemas/RadarSourceResponse"
+          },
+          "representative_title": {
+            "title": "Representative Title",
+            "type": "string"
+          },
+          "signal_count": {
+            "title": "Signal Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_public_id",
+          "event",
+          "signal_count",
+          "representative_title",
+          "representative_brief",
+          "representative_location",
+          "representative_source",
+          "all_source_names",
+          "earliest_published_at",
+          "latest_published_at",
+          "first_seen_at"
+        ],
+        "title": "RadarEventGroupResponse",
+        "type": "object"
+      },
+      "RadarItemResponse": {
+        "properties": {
+          "brief": {
+            "items": {
+              "$ref": "#/components/schemas/BriefPoint"
+            },
+            "title": "Brief",
+            "type": "array"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarEventContextResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_context_status": {
+            "$ref": "#/components/schemas/EventContextStatus"
+          },
+          "extraction_confidence": {
+            "title": "Extraction Confidence",
+            "type": "number"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarLocationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/ProcessingStatus"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "signal_type": {
+            "$ref": "#/components/schemas/SignalType"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RadarSourceResponse"
+          },
+          "title_english": {
+            "title": "Title English",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title_english",
+          "brief",
+          "signal_type",
+          "processing_status",
+          "published_at",
+          "first_seen_at",
+          "source",
+          "extraction_confidence",
+          "location",
+          "event_context_status",
+          "event"
+        ],
+        "title": "RadarItemResponse",
+        "type": "object"
+      },
+      "RadarLocationResponse": {
+        "properties": {
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/Precision"
+          },
+          "role": {
+            "$ref": "#/components/schemas/LocationRole"
+          }
+        },
+        "required": [
+          "role",
+          "precision",
+          "label",
+          "country_code",
+          "latitude",
+          "longitude"
+        ],
+        "title": "RadarLocationResponse",
+        "type": "object"
+      },
+      "RadarResponse": {
+        "properties": {
+          "event_groups": {
+            "items": {
+              "$ref": "#/components/schemas/RadarEventGroupResponse"
+            },
+            "title": "Event Groups",
+            "type": "array"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RadarItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_groups",
+          "items",
+          "window_start",
+          "window_end",
+          "hours",
+          "limit"
+        ],
+        "title": "RadarResponse",
+        "type": "object"
+      },
+      "RadarSourceResponse": {
+        "properties": {
+          "credibility_tier": {
+            "$ref": "#/components/schemas/CredibilityTier"
+          },
+          "is_official": {
+            "title": "Is Official",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "is_official",
+          "credibility_tier"
+        ],
+        "title": "RadarSourceResponse",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/Components"
+          },
+          "status": {
+            "const": "ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "components"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RetryExtractionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "retry_extraction",
+            "default": "retry_extraction",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RetryExtractionRequest",
+        "type": "object"
+      },
+      "RetryGeocodingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "retry_geocoding",
+            "default": "retry_geocoding",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RetryGeocodingRequest",
+        "type": "object"
+      },
+      "RetryRetrievalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "retry_retrieval",
+            "default": "retry_retrieval",
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RetryRetrievalRequest",
+        "type": "object"
+      },
+      "ReviewCandidateEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "match_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Match Score",
+            "type": "number"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus"
+          }
+        },
+        "required": [
+          "event_id",
+          "public_id",
+          "title",
+          "verification_status",
+          "match_score"
+        ],
+        "title": "ReviewCandidateEvent",
+        "type": "object"
+      },
+      "ReviewCaseResult": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/ProcessingStatus"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/ReviewResolution"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "selected_disease_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Disease Id"
+          },
+          "selected_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Id"
+          },
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "signal_id",
+          "resolution",
+          "processing_status",
+          "resolved_at"
+        ],
+        "title": "ReviewCaseResult",
+        "type": "object"
+      },
+      "ReviewDiseaseOption": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name"
+        ],
+        "title": "ReviewDiseaseOption",
+        "type": "object"
+      },
+      "ReviewQueueItem": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewResolution"
+            },
+            "title": "Allowed Resolutions",
+            "type": "array"
+          },
+          "candidate_events": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewCandidateEvent"
+            },
+            "title": "Candidate Events",
+            "type": "array"
+          },
+          "canonical_disease": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Disease"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "extracted_disease_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Disease Text"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewSignalLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReviewReason"
+          },
+          "retrieval_attempts": {
+            "title": "Retrieval Attempts",
+            "type": "integer"
+          },
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "signal_id",
+          "reason",
+          "opened_at",
+          "title",
+          "source_name",
+          "source_url",
+          "first_seen_at",
+          "retrieval_attempts"
+        ],
+        "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "ReviewQueuePage": {
+        "additionalProperties": false,
+        "properties": {
+          "disease_options": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDiseaseOption"
+            },
+            "title": "Disease Options",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total_open_cases": {
+            "title": "Total Open Cases",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_open_cases",
+          "disease_options",
+          "limit",
+          "offset"
+        ],
+        "title": "ReviewQueuePage",
+        "type": "object"
+      },
+      "ReviewReason": {
+        "enum": [
+          "retrieval_failed",
+          "extraction_rejected",
+          "disease_unresolved",
+          "location_unresolved",
+          "event_match_ambiguous",
+          "content_integrity",
+          "legacy_unclassified"
+        ],
+        "title": "ReviewReason",
+        "type": "string"
+      },
+      "ReviewResolution": {
+        "enum": [
+          "retry_retrieval",
+          "retry_extraction",
+          "assign_disease",
+          "retry_geocoding",
+          "link_event",
+          "create_event",
+          "dismiss",
+          "recovered_automatically"
+        ],
+        "title": "ReviewResolution",
+        "type": "string"
+      },
+      "ReviewSignalLocation": {
+        "additionalProperties": false,
+        "properties": {
+          "admin1_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin1 Name"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Name"
+          },
+          "location_role": {
+            "$ref": "#/components/schemas/LocationRole"
+          },
+          "place_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Name"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/Precision"
+          },
+          "resolved_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Name"
+          }
+        },
+        "required": [
+          "location_role",
+          "precision"
+        ],
+        "title": "ReviewSignalLocation",
+        "type": "object"
+      },
+      "SignalEvidenceResponse": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "raw_text": {
+            "title": "Raw Text",
+            "type": "string"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_name",
+          "title",
+          "raw_text",
+          "url",
+          "published_at",
+          "retrieved_at"
+        ],
+        "title": "SignalEvidenceResponse",
+        "type": "object"
+      },
+      "SignalListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SignalEvidenceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "source_count": {
+            "title": "Source Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "source_count",
+          "limit",
+          "offset"
+        ],
+        "title": "SignalListResponse",
+        "type": "object"
+      },
+      "SignalType": {
+        "enum": [
+          "outbreak_report",
+          "surveillance_update",
+          "case_report",
+          "imported_case",
+          "public_health_action",
+          "vaccination_campaign",
+          "risk_assessment",
+          "situation_report",
+          "research",
+          "rumor",
+          "unknown"
+        ],
+        "title": "SignalType",
+        "type": "string"
+      },
+      "StageName": {
+        "description": "One step of the pipeline. Never a rung of the model ladder: that is a tier.",
+        "enum": [
+          "ingest_who",
+          "ingest_ecdc",
+          "discover",
+          "retrieve",
+          "dedupe",
+          "triage",
+          "embed",
+          "pregroup",
+          "extract",
+          "geocode",
+          "match",
+          "summarize"
+        ],
+        "title": "StageName",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerificationStatus": {
+        "enum": [
+          "officially_confirmed",
+          "high_credibility",
+          "signal",
+          "unverified",
+          "rumor_monitoring"
+        ],
+        "title": "VerificationStatus",
+        "type": "string"
+      },
+      "VersionResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "VersionResponse",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "EpiSignal API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "operationId": "version_api_v1_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Version",
+        "tags": [
+          "version"
+        ]
+      }
+    },
+    "/api/v1/admin/pipeline-runs": {
+      "get": {
+        "operationId": "list_pipeline_runs_api_v1_admin_pipeline_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Pipeline Runs",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews": {
+      "get": {
+        "description": "Retrieve filtered review cases awaiting administrator action.",
+        "operationId": "list_review_queue_api_v1_admin_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueuePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Review Queue",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{case_id}/resolve": {
+      "post": {
+        "description": "Resolve an open review case with a valid action and transition signal state.",
+        "operationId": "resolve_case_api_v1_admin_reviews__case_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "assign_disease": "#/components/schemas/AssignDiseaseRequest",
+                    "create_event": "#/components/schemas/CreateEventRequest",
+                    "dismiss": "#/components/schemas/DismissRequest",
+                    "link_event": "#/components/schemas/LinkEventRequest",
+                    "retry_extraction": "#/components/schemas/RetryExtractionRequest",
+                    "retry_geocoding": "#/components/schemas/RetryGeocodingRequest",
+                    "retry_retrieval": "#/components/schemas/RetryRetrievalRequest"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RetryRetrievalRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RetryExtractionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AssignDiseaseRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RetryGeocodingRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinkEventRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreateEventRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissRequest"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewCaseResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Case",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "operationId": "list_events_api_v1_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disease",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disease"
+            }
+          },
+          {
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Country"
+            }
+          },
+          {
+            "in": "query",
+            "name": "admin1",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Admin1"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verification_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verification Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/events/{public_id}": {
+      "get": {
+        "operationId": "get_event_detail_api_v1_events__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Detail",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/events/{public_id}/observations": {
+      "get": {
+        "operationId": "get_event_observations_api_v1_events__public_id__observations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventObservationResponse"
+                  },
+                  "title": "Response Get Event Observations Api V1 Events  Public Id  Observations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Observations",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/events/{public_id}/sources": {
+      "get": {
+        "operationId": "get_event_sources_api_v1_events__public_id__sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventSourceResponse"
+                  },
+                  "title": "Response Get Event Sources Api V1 Events  Public Id  Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Sources",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/radar": {
+      "get": {
+        "operationId": "get_radar_api_v1_radar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 48,
+              "maximum": 168,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RadarResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Radar",
+        "tags": [
+          "radar"
+        ]
+      }
+    },
+    "/api/v1/signals": {
+      "get": {
+        "operationId": "list_signals_api_v1_signals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Signals",
+        "tags": [
+          "signals"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotReadyResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

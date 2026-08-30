@@ -1,0 +1,317 @@
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+from types import ModuleType
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+VERSIONS = Path(__file__).parents[3] / "database" / "migrations" / "versions"
+
+
+def _revision_source(name: str) -> str:
+    return (VERSIONS / f"{name}.py").read_text(encoding="utf-8")
+
+
+def _load_revision(name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_migrations_have_one_linear_head() -> None:
+    root = Path(__file__).parents[3]
+    config = Config(root / "database" / "alembic.ini")
+    scripts = ScriptDirectory.from_config(config)
+    assert scripts.get_heads() == ["20260830_0019"]
+
+
+def render_offline(*arguments: str) -> str:
+    root = Path(__file__).parents[3]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            "database/alembic.ini",
+            *arguments,
+            "--sql",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.lower()
+
+
+def test_offline_upgrade_declares_every_core_invariant() -> None:
+    sql = render_offline("upgrade", "head")
+    for table in (
+        "sources",
+        "signals",
+        "diseases",
+        "pathogens",
+        "events",
+        "event_signals",
+        "event_observations",
+        "event_locations",
+    ):
+        assert f"create table {table}" in sql
+    for fragment in (
+        "gen_random_uuid()",
+        "uq_sources_name",
+        "uq_sources_base_url",
+        "uq_sources_feed_url",
+        "uq_diseases_slug",
+        "uq_pathogens_slug",
+        "uq_events_public_id",
+        "uq_events_slug",
+        "pk_event_signals",
+        "source_type_values",
+        "credibility_tier_values",
+        "signal_type_values",
+        "processing_status_values",
+        "event_type_values",
+        "event_status_values",
+        "verification_status_values",
+        "relationship_type_values",
+        "location_role_values",
+        "ck_signals_relevance_score_range",
+        "early_signal_score_range",
+        "evidence_score_range",
+        "ck_event_signals_match_score_range",
+        "ck_event_observations_suspected_cases_non_negative",
+        "ck_event_observations_probable_cases_non_negative",
+        "ck_event_observations_confirmed_cases_non_negative",
+        "ck_event_observations_total_cases_non_negative",
+        "ck_event_observations_new_cases_non_negative",
+        "ck_event_observations_deaths_non_negative",
+        "ck_event_observations_new_deaths_non_negative",
+        "ck_event_observations_recoveries_non_negative",
+        "ck_event_observations_hospitalizations_non_negative",
+        "ck_event_observations_affected_admin_areas_non_negative",
+        "ck_event_observations_cfr_range",
+        "ck_event_observations_extraction_confidence_range",
+        "ck_event_locations_geocoding_confidence_range",
+        "ix_events_status",
+        "ix_events_verification_status",
+        "ix_events_disease_id",
+        "ix_events_country_code",
+        "ix_events_last_updated_at",
+        "ix_signals_source_id",
+        "ix_signals_published_at",
+        "ix_signals_processing_status",
+        "ix_signals_canonical_url",
+        "ix_signals_content_hash",
+        "ix_event_observations_event_date",
+        "ix_events_geometry",
+        "ix_event_locations_geometry",
+    ):
+        assert fragment in sql
+
+
+def test_offline_downgrade_drops_dependents_before_parents() -> None:
+    sql = render_offline("downgrade", "20260826_0001:base")
+    assert sql.index("drop table event_locations") < sql.index("drop table events")
+    assert sql.index("drop table event_observations") < sql.index("drop table events")
+    assert "drop extension postgis" not in sql
+
+
+def test_second_revision_versions_signals_by_content_hash() -> None:
+    sql = render_offline("upgrade", "head")
+    assert "uq_signals_url_content_hash" in sql
+    assert "drop constraint uq_signals_url" in sql
+
+
+def test_third_revision_adds_gdelt_discovery() -> None:
+    sql = render_offline("upgrade", "head")
+    assert "create table gdelt_query_rules" in sql
+    assert "uq_gdelt_query_rules_query" in sql
+    assert "discovery_method_values" in sql
+    assert "ix_signals_discovered_via" in sql
+    assert "ix_signals_first_seen_at" in sql
+    assert "uq_sources_domain" in sql
+    for column in (
+        "discovered_via",
+        "first_seen_at",
+        "gdelt_seen_at",
+        "published_at_offset_minutes",
+        "retrieval_attempts",
+        "query_rule_id",
+    ):
+        assert f"add column {column}" in sql
+
+
+def test_third_revision_backfills_first_seen_at_before_enforcing_it() -> None:
+    sql = render_offline("upgrade", "head")
+    # The column is added nullable, filled from retrieved_at, and only then made
+    # NOT NULL. Reordering these would fail on any database holding signals.
+    assert sql.index("set first_seen_at = retrieved_at") < sql.index(
+        "alter column first_seen_at set not null"
+    )
+
+
+def test_fifth_revision_adds_the_model_roster_and_the_request_ledger() -> None:
+    sql = render_offline("upgrade", "head")
+
+    assert "create table ai_models" in sql
+    assert "create table ai_requests" in sql
+    assert "uq_ai_models_model_id" in sql
+    assert "ck_ai_models_tier_range" in sql
+    assert "ai_purpose_values" in sql
+    assert "ai_outcome_values" in sql
+    assert "ix_ai_requests_requested_at" in sql
+    assert "add column disease_id" in sql
+    assert "ix_signals_disease_id" in sql
+
+
+def test_the_ledger_survives_retiring_a_model_or_deleting_a_signal() -> None:
+    sql = render_offline("upgrade", "head")
+
+    assert "fk_ai_requests_ai_model_id_ai_models" in sql
+    assert "fk_ai_requests_signal_id_signals" in sql
+    assert "on delete cascade" not in sql.split("create table ai_requests")[1][:2000]
+
+
+def test_the_ai_downgrade_refuses_to_discard_the_ledger() -> None:
+    root = Path(__file__).parents[3]
+    source = (
+        root / "database" / "migrations" / "versions" / "20260827_0005_ai_extraction.py"
+    ).read_text(encoding="utf-8")
+
+    assert "EPISIGNAL_ALLOW_AI_AUDIT_LOSS" in source
+    assert "select count(*) from ai_requests" in source.lower()
+
+
+def test_the_offline_downgrade_still_renders_through_the_ledger_guard() -> None:
+    # The guard reads a table, which is impossible while rendering SQL offline.
+    # If it ever runs in that mode, this test fails and so does the pre-existing
+    # downgrade-ordering test.
+    sql = render_offline("downgrade", "20260827_0005:20260827_0004")
+
+    assert "drop table ai_requests" in sql
+    assert "drop table ai_models" in sql
+
+
+def test_the_geocoding_revision_follows_the_ai_extraction_revision() -> None:
+    module = _load_revision("20260827_0006_geocoding")
+    assert module.revision == "20260827_0006"
+    assert module.down_revision == "20260827_0005"
+
+
+def test_the_geocoding_downgrade_drops_both_tables_it_created() -> None:
+    source = _revision_source("20260827_0006_geocoding")
+    assert 'op.drop_table("signal_locations")' in source
+    assert 'op.drop_table("gazetteer_places")' in source
+
+
+def test_the_geocoding_migration_does_not_touch_the_extraction_column() -> None:
+    # `signals.ai_extraction` is Sub-project C's record of what the model said.
+    # This sub-project records its answer beside it and never edits it.
+    source = _revision_source("20260827_0006_geocoding")
+    assert "ai_extraction" not in source
+
+
+def test_the_event_scores_revision_follows_geocoding_revision() -> None:
+    module = _load_revision("20260828_0007_event_scores")
+    assert module.revision == "20260828_0007"
+    assert module.down_revision == "20260827_0006"
+
+
+def test_the_event_scores_migration_renames_columns_and_constraints() -> None:
+    sql = render_offline("upgrade", "head")
+    assert "early_signal_score" in sql
+    assert "evidence_score" in sql
+
+
+def test_the_quarantine_revision_follows_pipeline_runs_revision() -> None:
+    module = _load_revision("20260828_0009_quarantine_corrupted_signal")
+    assert module.revision == "20260828_0009"
+    assert module.down_revision == "20260828_0008"
+
+
+def test_the_quarantine_migration_preserves_text_and_sets_needs_review() -> None:
+    source = _revision_source("20260828_0009_quarantine_corrupted_signal")
+    assert "852aa204-846d-4aa6-a256-82c187fdeaef" in source
+    assert "needs_review" in source
+    assert "extracted" in source
+
+
+def test_manual_review_migration_is_ordered_and_non_destructive() -> None:
+    module = _load_revision("20260829_0014_manual_review_cases")
+    source = _revision_source("20260829_0014_manual_review_cases")
+    sql = render_offline("upgrade", "20260829_0014")
+    assert module.down_revision == "20260829_0013"
+    assert "create table signal_review_cases" in sql
+    assert "create table signal_review_candidates" in sql
+    assert "uq_signal_review_cases_one_open" in sql
+    assert "dismissed" in sql
+    assert "legacy_unclassified" in source
+    assert "ON CONFLICT (signal_id) WHERE status = 'open' DO NOTHING" in source
+    assert "delete from signals" not in source.lower()
+    assert "drop table signals" not in source.lower()
+
+
+def test_manual_review_downgrade_refuses_to_erase_audit_history() -> None:
+    source = _revision_source("20260829_0014_manual_review_cases")
+    assert "Cannot downgrade manual review schema after review data exists" in source
+
+
+def test_the_filtered_status_widens_the_check_constraint() -> None:
+    sql = render_offline("upgrade", "20260829_0015:20260829_0016")
+    assert "processing_status_values" in sql
+    assert "'filtered'" in sql
+
+
+def test_the_filtered_downgrade_returns_rows_to_fetched() -> None:
+    source = _revision_source("20260829_0016_filtered_status")
+    assert "processing_status = 'fetched'" in source
+    assert "processing_status = 'filtered'" in source
+
+
+def test_the_title_inclusion_widens_the_rule_group_check_constraint() -> None:
+    sql = render_offline("upgrade", "20260829_0016:20260829_0017")
+    assert "ck_filter_rules_filter_rule_group_values" in sql
+    assert "'title_inclusion'" in sql
+
+
+def test_the_title_inclusion_downgrade_deletes_inclusion_rules() -> None:
+    source = _revision_source("20260829_0017_add_title_inclusion_rule_group")
+    assert "delete from filter_rules where rule_group = 'title_inclusion'" in source.lower()
+
+
+def test_the_migration_widens_the_purpose_constraint() -> None:
+    sql = render_offline("upgrade", "20260829_0017:20260830_0017")
+    assert "'triage'" in sql
+    assert "'event_summary'" in sql
+    assert "normalized_title" in sql
+
+
+def test_the_migration_enables_pgvector_and_indexes_the_embedding() -> None:
+    sql = render_offline("upgrade", "20260830_0017:20260830_0018")
+
+    assert "create extension if not exists vector" in sql
+    assert "vector(1024)" in sql
+    assert "hnsw" in sql
+
+
+def test_the_summary_revision_adds_event_summary_fields_and_history() -> None:
+    sql = render_offline("upgrade", "20260830_0018:20260830_0019")
+
+    assert "create table event_summaries" in sql
+    assert "uq_event_summaries_event_version" in sql
+    assert "headline" in sql
+    assert "last_summarized_at" in sql
+    assert "article_count" in sql
+    assert "'event_match_judge'" in sql
+
+
+def test_the_summary_downgrade_refuses_to_erase_judge_cost_rows() -> None:
+    source = _revision_source("20260830_0019_event_summaries")
+    assert "event_match_judge" in source
+    assert "raise RuntimeError" in source

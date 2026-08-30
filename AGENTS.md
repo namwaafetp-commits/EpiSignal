@@ -2,6 +2,14 @@
 
 These instructions apply to every coding agent working in this repository.
 
+## Read this first
+
+1. `STATUS.md` — where the build is right now, and what the next action is.
+2. `ROADMAP.md` — the whole road from foundation to the Phase 1 MVP.
+3. `docs/agents/workflow.md` — the planner and worker contract: who writes which
+   file, the status state machine, and the gate an item passes before it is done.
+4. `HANDOFF.md` — the deep briefing for the item currently being built.
+
 ## Project skills
 
 Project-local skills live in `.agents/skills/`. Agents with skill discovery must load every applicable skill before acting. Agents without skill discovery must read the relevant `.agents/skills/<skill>/SKILL.md` files directly and follow them as process instructions.
@@ -52,6 +60,13 @@ Escalate immediately if the task becomes ambiguous, architectural, security-sens
 - Token savings must never weaken tests, provenance, security, review, or verification.
 
 ## Agent skills
+
+### Workflow and tracking
+
+The planner owns `ROADMAP.md`, `HANDOFF.md`, specs, and plans. The worker owns
+code, tests, the `STATUS.md` task ledger, and the completion report. No item is
+marked `verified` without the real output of `corepack pnpm verify` recorded in
+its report. See `docs/agents/workflow.md`.
 
 ### Issue tracker
 

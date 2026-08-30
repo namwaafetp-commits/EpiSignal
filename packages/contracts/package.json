@@ -1,0 +1,12 @@
+{
+  "name": "@episignal/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "types": "src/index.d.ts",
+  "scripts": {
+    "generate": "openapi-typescript openapi.json -o src/index.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.9.1"
+  }
+}

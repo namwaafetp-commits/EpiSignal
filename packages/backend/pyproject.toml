@@ -1,0 +1,27 @@
+[project]
+name = "episignal-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "geoalchemy2>=0.18,<1",
+  "httpx>=0.28,<1",
+  "pgvector>=0.3",
+  "pydantic-settings>=2.10,<3",
+  "psycopg[binary]>=3.2,<4",
+  "rapidfuzz>=3.9,<4",
+  "sentence-transformers>=3",
+  "sqlalchemy>=2.0,<2.1",
+  "torch>=2",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"

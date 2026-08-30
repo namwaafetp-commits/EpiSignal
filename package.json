@@ -1,0 +1,49 @@
+{
+  "name": "episignal",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "22.19.0"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"corepack pnpm --filter @episignal/web dev\" \"uv run --package episignal-api python -m episignal_api.run\"",
+    "build": "corepack pnpm --filter @episignal/web build",
+    "lint": "corepack pnpm lint:web && corepack pnpm lint:python",
+    "lint:web": "corepack pnpm --filter @episignal/web lint",
+    "lint:python": "uv run ruff check .",
+    "format:check": "uv run ruff format --check . && corepack pnpm --filter @episignal/web exec prettier --check .",
+    "typecheck": "corepack pnpm typecheck:web && uv run mypy apps/api/src packages/backend/src",
+    "typecheck:web": "corepack pnpm --filter @episignal/web typecheck",
+    "test": "corepack pnpm test:web && uv run pytest",
+    "test:web": "corepack pnpm --filter @episignal/web test",
+    "contracts:generate": "uv run --package episignal-api python -m episignal_api.export_openapi && corepack pnpm --filter @episignal/contracts generate",
+    "contracts:check": "corepack pnpm contracts:generate && git diff --exit-code -- packages/contracts",
+    "db:check": "uv run --package episignal-api python -m episignal_api.database_check",
+    "db:migrate": "uv run --package episignal-api alembic -c database/alembic.ini upgrade head",
+    "db:rollback": "uv run --package episignal-api alembic -c database/alembic.ini downgrade -1",
+    "db:seed": "uv run --package episignal-backend python -m episignal_backend.seed_runner",
+    "discover:gdelt": "uv run --package episignal-backend python -m episignal_backend.discover_runner",
+    "retrieve:gdelt": "uv run --package episignal-backend python -m episignal_backend.retrieve_runner",
+    "dedupe:signals": "uv run --package episignal-backend python -m episignal_backend.dedupe_runner",
+    "triage:signals": "uv run --package episignal-backend python -m episignal_backend.triage_runner",
+    "embed:signals": "uv run --package episignal-backend python -m episignal_backend.embed_runner",
+    "pregroup:signals": "uv run --package episignal-backend python -m episignal_backend.pregroup_runner",
+    "spend:report": "uv run --package episignal-backend python -m episignal_backend.spend_runner",
+    "extract:signals": "uv run --package episignal-backend python -m episignal_backend.extract_runner",
+    "extract:backfill": "uv run --package episignal-backend python -m episignal_backend.backfill_runner",
+    "geocode:signals": "uv run --package episignal-backend python -m episignal_backend.geocode_runner",
+    "match:events": "uv run --package episignal-backend python -m episignal_backend.event_runner",
+    "summarize:events": "uv run --package episignal-backend python -m episignal_backend.summarize_runner",
+    "test:pipeline": "uv run pytest packages/backend/tests/test_pipeline_fixture.py packages/backend/tests/test_dedupe.py -v",
+    "pipeline:run": "uv run --package episignal-backend python -m episignal_backend.pipeline_runner",
+    "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
+
+
+    "ingest:ecdc": "uv run --package episignal-backend python -m episignal_backend.ingest_runner ecdc-epi",
+    "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm contracts:check && corepack pnpm build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

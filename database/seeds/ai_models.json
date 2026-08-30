@@ -1,0 +1,76 @@
+[
+  {
+    "tier": 1,
+    "model_id": "google/gemini-3.1-flash-lite",
+    "label": "Gemini 3.1 Flash-Lite",
+    "provider": "gemini",
+    "prompt_price_per_million": "0.25",
+    "completion_price_per_million": "1.50",
+    "active": true
+  },
+  {
+    "tier": 2,
+    "model_id": "google/gemini-3.5-flash-lite",
+    "label": "Gemini 3.5 Flash-Lite",
+    "provider": "gemini",
+    "prompt_price_per_million": "0.30",
+    "completion_price_per_million": "2.50",
+    "active": true
+  },
+  {
+    "tier": 3,
+    "model_id": "mistralai/mistral-small-24b-instruct-2501",
+    "label": "Mistral Small 24B",
+    "provider": "openrouter",
+    "prompt_price_per_million": "0.05",
+    "completion_price_per_million": "0.08",
+    "active": true
+  },
+  {
+    "tier": 1,
+    "model_id": "google/gemini-2.5-flash-lite",
+    "label": "Gemini 2.5 Flash-Lite",
+    "provider": "gemini",
+    "prompt_price_per_million": "0.10",
+    "completion_price_per_million": "0.40",
+    "active": false
+  },
+  {
+    "tier": 1,
+    "model_id": "deepseek/deepseek-chat",
+    "label": "DeepSeek V3",
+    "provider": "openrouter",
+    "prompt_price_per_million": "0.26",
+    "completion_price_per_million": "1.03",
+    "active": false
+  },
+  {
+    "tier": 3,
+    "model_id": "anthropic/claude-haiku-4.5",
+    "label": "Claude Haiku 4.5",
+    "provider": "openrouter",
+    "prompt_price_per_million": "1.00",
+    "completion_price_per_million": "5.00",
+    "active": false
+  },
+  {
+    "tier": 1,
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "label": "Llama 3.1 8B Instruct",
+    "provider": "openrouter",
+    "purpose": "triage",
+    "prompt_price_per_million": "0.02",
+    "completion_price_per_million": "0.04",
+    "active": true
+  },
+  {
+    "tier": 1,
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "label": "DeepSeek V4 Flash",
+    "provider": "openrouter",
+    "purpose": "event_summary",
+    "prompt_price_per_million": "0.03",
+    "completion_price_per_million": "0.10",
+    "active": true
+  }
+]

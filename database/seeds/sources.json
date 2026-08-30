@@ -1,0 +1,24 @@
+[
+  {
+    "name": "WHO Disease Outbreak News",
+    "source_type": "international_organization",
+    "country_code": null,
+    "base_url": "https://www.who.int/emergencies/disease-outbreak-news",
+    "feed_url": "https://www.who.int/api/news/diseaseoutbreaknews",
+    "credibility_tier": "official",
+    "is_official": true,
+    "language": "en",
+    "active": false
+  },
+  {
+    "name": "ECDC",
+    "source_type": "regional_public_health_agency",
+    "country_code": null,
+    "base_url": "https://www.ecdc.europa.eu/en/threats-and-outbreaks",
+    "feed_url": "https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed",
+    "credibility_tier": "official",
+    "is_official": true,
+    "language": "en",
+    "active": false
+  }
+]

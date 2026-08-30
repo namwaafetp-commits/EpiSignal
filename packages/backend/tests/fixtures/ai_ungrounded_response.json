@@ -1,0 +1,24 @@
+{
+  "signal_type": "outbreak_report",
+  "source_language": "en",
+  "title_english": "Angola reports growing cholera outbreak in Luanda province",
+  "brief": [
+    { "slot": "what_where", "text": "Cholera in Luanda province, Angola.", "reported": true },
+    { "slot": "counts", "text": "327 confirmed of 400 total cases, 14 deaths.", "reported": true },
+    { "slot": "timing", "text": "Figures are as of 25 August 2026.", "reported": true },
+    { "slot": "spread", "text": "All cases were acquired locally.", "reported": true },
+    {
+      "slot": "reporting",
+      "text": "Reported by Angola's health ministry.",
+      "reported": true
+    }
+  ],
+  "disease": { "name": "Cholera", "confidence": 0.97 },
+  "locations": [{ "role": "primary", "country": "Angola", "place_name": "Luanda" }],
+  "epidemiology": {
+    "confirmed_cases": { "value": 327, "source_span": "327 confirmed cases" },
+    "deaths": { "value": 51, "source_span": "51 people have died" }
+  },
+  "dates": { "data_as_of": "2026-08-25" },
+  "confidence": 0.96
+}
