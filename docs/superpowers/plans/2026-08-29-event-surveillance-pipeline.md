@@ -1247,6 +1247,17 @@ git add -A && git commit -m "feat(events): bound candidate retrieval by lookback
 
 ## Task 13: Similarity as an additive term
 
+> **Worker correction — 2026-08-30:** O2's `decide` accepts a sequence of
+> candidates and resolves the attach/create/refuse ambiguity across that
+> sequence. The original examples below treated it as a single-candidate
+> boolean API and referred to fields that do not exist. Keep the O2 batch API.
+> Add per-candidate rejection reasons to `MatchDecision`, and accept a lazy
+> `similarity_for(cluster, candidate)` callback. `decide` must call that
+> callback only after the candidate passes every deterministic guard. This
+> also corrects Task 14's original instruction to compute cosine before
+> calling `decide`, which would violate E5 even if `decide` later refused the
+> pair.
+
 **Files:**
 - Modify: `events/match.py`, `events/documents.py`
 - Test: `packages/backend/tests/test_event_match.py`
@@ -1256,46 +1267,66 @@ git add -A && git commit -m "feat(events): bound candidate retrieval by lookback
 ```python
 def test_conflicting_admin1_is_refused_before_similarity_is_consulted() -> None:
     # Dengue in Chiang Mai and dengue in Phuket read almost identically.
-    decision = decide(CHIANG_MAI_CLUSTER, PHUKET_EVENT, similarity=0.99, threshold=0.80)
+    calls = []
+    decision = decide(
+        CHIANG_MAI_CLUSTER,
+        [PHUKET_EVENT],
+        similarity_for=lambda cluster, event: calls.append(event.event_id) or 0.99,
+        threshold=0.80,
+    )
 
-    assert decision.matched is False
-    assert decision.reason is RejectionReason.CONFLICTING_ADMIN1
+    assert decision.action is MatchAction.CREATE
+    assert decision.candidate_rejections[PHUKET_EVENT.event_id] is MatchRejection.CONFLICTING_ADMIN1
+    assert calls == []
 
 
 def test_similarity_cannot_veto_a_deterministic_match() -> None:
     # A terse official bulletin shares little vocabulary with the reporting it
     # confirms, and must still attach.
-    decision = decide(CHIANG_MAI_CLUSTER, CHIANG_MAI_EVENT, similarity=0.10, threshold=0.80)
+    decision = decide(
+        CHIANG_MAI_CLUSTER,
+        [CHIANG_MAI_EVENT],
+        similarity_for=lambda cluster, event: 0.10,
+        threshold=0.80,
+    )
 
-    assert decision.matched is True
+    assert decision.action is MatchAction.ATTACH
 
 
 def test_similarity_raises_the_score_of_a_permitted_pair() -> None:
-    low = decide(CHIANG_MAI_CLUSTER, CHIANG_MAI_EVENT, similarity=0.10, threshold=0.80)
-    high = decide(CHIANG_MAI_CLUSTER, CHIANG_MAI_EVENT, similarity=0.95, threshold=0.80)
+    low = decide(CHIANG_MAI_CLUSTER, [CHIANG_MAI_EVENT], similarity_for=lambda c, e: 0.10, threshold=0.80)
+    high = decide(CHIANG_MAI_CLUSTER, [CHIANG_MAI_EVENT], similarity_for=lambda c, e: 0.95, threshold=0.80)
 
-    assert high.score > low.score
+    assert high.candidate_scores[CHIANG_MAI_EVENT.event_id] > low.candidate_scores[CHIANG_MAI_EVENT.event_id]
 
 
 def test_a_missing_embedding_falls_back_to_the_deterministic_score() -> None:
-    decision = decide(CHIANG_MAI_CLUSTER, CHIANG_MAI_EVENT, similarity=None, threshold=0.80)
+    decision = decide(CHIANG_MAI_CLUSTER, [CHIANG_MAI_EVENT], threshold=0.80)
 
-    assert decision.matched is True
-    assert decision.reason is None
+    assert decision.action is MatchAction.ATTACH
+    assert decision.candidate_rejections[CHIANG_MAI_EVENT.event_id] is None
 
 
 def test_a_different_disease_is_refused_with_its_own_reason() -> None:
-    decision = decide(DENGUE_CLUSTER, MEASLES_EVENT, similarity=0.99, threshold=0.80)
+    calls = []
+    decision = decide(
+        DENGUE_CLUSTER,
+        [MEASLES_EVENT],
+        similarity_for=lambda cluster, event: calls.append(event.event_id) or 0.99,
+        threshold=0.80,
+    )
 
-    assert decision.matched is False
-    assert decision.reason is RejectionReason.DISEASE_MISMATCH
+    assert decision.action is MatchAction.CREATE
+    assert decision.candidate_rejections[MEASLES_EVENT.event_id] is MatchRejection.DISEASE_MISMATCH
+    assert calls == []
 ```
 
 - [ ] **Step 2: Implement**
 
 Add a `MatchRejection` StrEnum: `DISEASE_MISMATCH`, `CONFLICTING_ADMIN1`,
-`OUTSIDE_TIME_WINDOW`, `TOO_FAR`, `SCORE_BELOW_THRESHOLD`. `decide` gains
-`similarity: float | None` and returns the reason alongside the verdict.
+`OUTSIDE_TIME_WINDOW`, `TOO_FAR`, `SCORE_BELOW_THRESHOLD`. `MatchDecision`
+gains a `candidate_rejections` mapping parallel to `candidate_scores`. `decide`
+gains the optional lazy `similarity_for` callback described above.
 
 The order is the invariant:
 
@@ -1305,15 +1336,19 @@ The order is the invariant:
     # these rules accept must not be split because two publishers chose
     # different words for one outbreak.
     if not disease_compatible(...):
-        return Decision(matched=False, reason=MatchRejection.DISEASE_MISMATCH)
+        reject(candidate, MatchRejection.DISEASE_MISMATCH)
+        continue
     if both_admin1_known_and_different(...):
-        return Decision(matched=False, reason=MatchRejection.CONFLICTING_ADMIN1)
+        reject(candidate, MatchRejection.CONFLICTING_ADMIN1)
+        continue
     if not temporally_compatible(...):
-        return Decision(matched=False, reason=MatchRejection.OUTSIDE_TIME_WINDOW)
+        reject(candidate, MatchRejection.OUTSIDE_TIME_WINDOW)
+        continue
     ...
     score = deterministic_score
+    similarity = similarity_for(cluster, candidate) if similarity_for else None
     if similarity is not None:
-        score = score + SIMILARITY_WEIGHT * similarity
+        score = min(1.0, score + SIMILARITY_WEIGHT * max(0.0, similarity))
 ```
 
 - [ ] **Step 3: Run the tests, then commit**
@@ -1344,10 +1379,12 @@ def test_every_match_decision_is_logged_with_its_reason(caplog) -> None:
 
 - [ ] **Step 2: Implement**
 
-`signals_to_match` returns the signal's embedding. Assembly computes cosine
-against each candidate event's representative embedding and passes it to
-`decide`. Every decision is logged at INFO with the event id, the similarity,
-and the reason on refusal. Event creation and attachment log likewise.
+`signals_to_match` returns the signal's embedding. Assembly gives `decide` a
+lazy provider that computes cosine against each candidate event's
+representative embedding. Because `decide` invokes it only after deterministic
+guards pass, refused pairs never consult embeddings. Every decision is logged
+at INFO with the event id, the similarity, and the reason on refusal. Event
+creation and attachment log likewise.
 
 - [ ] **Step 3: Run the tests, then commit**
 
