@@ -38,7 +38,7 @@ configuration warnings. No test failure or unexpected xfail occurred. The
 full record is in
 [the post-merge reconciliation report](docs/reports/2026-08-30-post-merge-reconciliation.md).
 
-F Lite final verification passed with 95 web tests, 1184 Python tests, and 0
+F Lite final verification passed with 95 web tests, 1193 Python tests, and 0
 xfails; `test:pipeline` passed with 16 tests; the offline model-check suite
 passed 9 tests. Live triage evidence is stored in `benchmarks/results/`;
 extraction live smoke was attempted but timed out and is explicitly recorded as

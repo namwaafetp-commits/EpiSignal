@@ -46,7 +46,7 @@ flag, route, threshold, scheduler, or embedding setting was changed.
 
 ## Verification
 
-- `corepack pnpm verify`: PASS — 95 web tests, 1184 Python tests, 0 xfails;
+- `corepack pnpm verify`: PASS — 95 web tests, 1193 Python tests, 0 xfails;
   existing deprecation/Vite warnings only.
 - `corepack pnpm test:pipeline`: PASS — 16 tests.
 - `uv run pytest packages/backend/tests/test_model_check.py -q`: PASS — 9
