@@ -55,12 +55,17 @@ def test_lite_fixtures_have_twenty_stable_cases_per_purpose() -> None:
 def test_ambiguous_triage_gold_does_not_infer_disease_or_geography() -> None:
     cases = {case.case_id: case for case in load_cases("triage")}
 
+    assert cases["TRIAGE-001"].expected["admin1"] is None
+    assert cases["TRIAGE-003"].expected["admin1"] is None
+    assert cases["TRIAGE-004"].expected["admin1"] is None
     assert cases["TRIAGE-006"].expected["disease"] is None
     assert cases["TRIAGE-006"].expected["country"] is None
     assert cases["TRIAGE-006"].expected["admin1"] is None
     assert cases["TRIAGE-011"].expected["country"] is None
     assert cases["TRIAGE-011"].expected["admin1"] is None
     assert cases["TRIAGE-012"].expected["admin1"] is None
+    assert cases["TRIAGE-008"].expected["admin1"] == "Kano"
+    assert cases["TRIAGE-018"].expected["admin1"] == "Cebu"
 
 
 def test_model_check_uses_production_prompt_seams_and_request_contract() -> None:
