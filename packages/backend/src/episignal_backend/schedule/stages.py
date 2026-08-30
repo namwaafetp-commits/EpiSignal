@@ -324,6 +324,8 @@ def _match() -> Mapping[str, int]:
             match_threshold=settings.event_match_threshold,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
+            candidate_lookback_days=settings.event_lookback_days,
+            candidate_limit=settings.event_candidate_limit,
             delta_model=wiring.model,
             delta_spec=wiring.spec,
             followup_window_days=wiring.window_days,

@@ -240,6 +240,8 @@ def test_event_matching_defaults_are_set() -> None:
     assert settings.event_match_distance_km == 50.0
     assert settings.event_match_batch_size == 100
     assert settings.event_match_stale is False
+    assert settings.event_lookback_days == 7
+    assert settings.event_candidate_limit == 20
 
 
 def test_event_match_threshold_must_be_between_zero_and_one() -> None:

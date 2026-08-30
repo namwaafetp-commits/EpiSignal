@@ -42,7 +42,8 @@ class EventRepository(Protocol):
         self,
         cluster: StoryCluster,
         *,
-        recency_days: float = 90.0,
+        lookback_days: int = 7,
+        limit: int = 20,
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
         """Retrieve candidate events matching the cluster's disease and spatial scope."""

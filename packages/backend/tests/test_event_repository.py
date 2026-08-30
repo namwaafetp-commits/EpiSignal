@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -249,7 +249,7 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     )
 
     repo_place = SqlAlchemyEventRepository(session_place)
-    cands_place = repo_place.candidate_events(cluster_place, recency_days=90.0, distance_km=50.0)
+    cands_place = repo_place.candidate_events(cluster_place, lookback_days=7, distance_km=50.0)
 
     assert len(cands_place) == 1
     assert cands_place[0].event_id == ev_id
@@ -293,6 +293,97 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     sql_admin1 = str(session_admin1.executed[0]).lower()
     assert "st_dwithin" not in sql_admin1
     assert "country_code" in sql_admin1
+
+
+def test_candidates_are_bounded_by_lookback_and_limit() -> None:
+    from episignal_backend.events.documents import StoryCluster
+
+    disease_id = uuid4()
+    now = datetime.now(UTC)
+    cluster = StoryCluster(
+        signals=(
+            SignalForMatching(
+                signal_id=uuid4(),
+                disease_id=disease_id,
+                source_id=uuid4(),
+                source_is_official=True,
+                credibility_tier=CredibilityTier.OFFICIAL,
+                published_at=now,
+                first_seen_at=now,
+                locations=(),
+            ),
+        )
+    )
+    session = FakeSession([FakeResult([])])
+    before = datetime.now(UTC)
+
+    SqlAlchemyEventRepository(session).candidate_events(cluster, lookback_days=7, limit=20)
+
+    after = datetime.now(UTC)
+    statement = session.executed[0]
+    parameters = statement.compile().params.values()
+    cutoffs = [value for value in parameters if isinstance(value, datetime)]
+    assert len(cutoffs) == 1
+    assert before - timedelta(days=7, seconds=1) <= cutoffs[0]
+    assert cutoffs[0] <= after - timedelta(days=7)
+    assert statement._limit_clause.value == 20
+    assert "events.last_updated_at desc" in str(statement).lower()
+
+
+def test_a_different_disease_is_never_a_candidate() -> None:
+    from episignal_backend.events.documents import StoryCluster
+
+    disease_id = uuid4()
+    now = datetime.now(UTC)
+    cluster = StoryCluster(
+        signals=(
+            SignalForMatching(
+                signal_id=uuid4(),
+                disease_id=disease_id,
+                source_id=uuid4(),
+                source_is_official=True,
+                credibility_tier=CredibilityTier.OFFICIAL,
+                published_at=now,
+                first_seen_at=now,
+                locations=(),
+            ),
+        )
+    )
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyEventRepository(session).candidate_events(cluster, lookback_days=7, limit=20)
+
+    parameters = session.executed[0].compile().params.values()
+    assert disease_id in parameters
+
+
+def test_a_cluster_without_geography_still_gets_candidates() -> None:
+    from episignal_backend.events.documents import StoryCluster
+
+    disease_id = uuid4()
+    now = datetime.now(UTC)
+    cluster = StoryCluster(
+        signals=(
+            SignalForMatching(
+                signal_id=uuid4(),
+                disease_id=disease_id,
+                source_id=uuid4(),
+                source_is_official=True,
+                credibility_tier=CredibilityTier.OFFICIAL,
+                published_at=now,
+                first_seen_at=now,
+                locations=(),
+            ),
+        )
+    )
+    event = FakeEvent(uuid4(), disease_id, now, now, country_code=None, admin1=None)
+    session = FakeSession([FakeResult([event]), FakeResult([])])
+
+    candidates = SqlAlchemyEventRepository(session).candidate_events(
+        cluster, lookback_days=7, limit=20
+    )
+
+    assert [candidate.event_id for candidate in candidates] == [event.id]
 
 
 def test_create_event_inserts_event_row_and_returns_candidate() -> None:

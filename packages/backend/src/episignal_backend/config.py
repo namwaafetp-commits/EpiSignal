@@ -126,6 +126,8 @@ class Settings(BaseSettings):
     event_match_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
     event_match_batch_size: int = Field(default=100, ge=1, le=5000)
     event_match_stale: bool = False
+    event_lookback_days: int = Field(default=7, ge=1, le=3650)
+    event_candidate_limit: int = Field(default=20, ge=1, le=5000)
     # How recent an event's latest report must be for a follow-up attach to
     # run the delta pass. Ten days: the operator's window for stateful
     # follow-up, kept configurable like every other matching bound.

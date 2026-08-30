@@ -43,7 +43,8 @@ class InMemoryEventRepository:
         self,
         cluster: StoryCluster,
         *,
-        recency_days: float = 90.0,
+        lookback_days: int = 7,
+        limit: int = 20,
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
         return ()

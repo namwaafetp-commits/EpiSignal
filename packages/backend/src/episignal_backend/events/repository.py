@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from geoalchemy2.elements import WKTElement
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, func, select, update
+from sqlalchemy import ColumnElement, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from episignal_backend.ai.documents import AiRequestRecord
@@ -148,25 +148,32 @@ class SqlAlchemyEventRepository:
         self,
         cluster: StoryCluster,
         *,
-        recency_days: float = 90.0,
+        lookback_days: int = 7,
+        limit: int = 20,
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
         if cluster.disease_id is None:
             return ()
 
         rep_loc = cluster.representative_location
-        if rep_loc is None or rep_loc.country_code is None:
-            return ()
-
-        cutoff = cluster.span[0] - timedelta(days=recency_days)
+        cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
 
         conditions: list[ColumnElement[bool]] = [
             Event.disease_id == cluster.disease_id,
             Event.last_updated_at >= cutoff,
         ]
 
+        if rep_loc is not None and rep_loc.country_code is not None:
+            conditions.append(
+                or_(
+                    Event.country_code.is_(None),
+                    Event.country_code == rep_loc.country_code,
+                )
+            )
+
         if (
-            rep_loc.precision in (Precision.PLACE, Precision.ADMIN2)
+            rep_loc is not None
+            and rep_loc.precision in (Precision.PLACE, Precision.ADMIN2)
             and rep_loc.latitude is not None
             and rep_loc.longitude is not None
         ):
@@ -174,10 +181,9 @@ class SqlAlchemyEventRepository:
                 func.ST_MakePoint(rep_loc.longitude, rep_loc.latitude), 4326
             )
             conditions.append(func.ST_DWithin(Event.geometry, ref_point, distance_km * 1000.0))
-        else:
-            conditions.append(Event.country_code == rep_loc.country_code)
-
-        event_query = select(Event).where(*conditions)
+        event_query = (
+            select(Event).where(*conditions).order_by(Event.last_updated_at.desc()).limit(limit)
+        )
         events = self._session.execute(event_query).scalars().all()
         if not events:
             return ()

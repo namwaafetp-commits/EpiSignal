@@ -114,6 +114,8 @@ def run_event_assembly(
     match_weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     match_recency_days: float = 90.0,
     match_distance_km: float = 50.0,
+    candidate_lookback_days: int = 7,
+    candidate_limit: int = 20,
     early_signal_weights: Mapping[str, float] = DEFAULT_EARLY_SIGNAL_WEIGHTS,
     evidence_weights: Mapping[str, float] = DEFAULT_EVIDENCE_WEIGHTS,
     now: datetime | None = None,
@@ -154,7 +156,8 @@ def run_event_assembly(
     for cluster in clusters:
         candidates = repo.candidate_events(
             cluster,
-            recency_days=match_recency_days,
+            lookback_days=candidate_lookback_days,
+            limit=candidate_limit,
             distance_km=match_distance_km,
         )
         decision = decide(
