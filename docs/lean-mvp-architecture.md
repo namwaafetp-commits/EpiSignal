@@ -69,7 +69,7 @@ Elasticsearch, Kubernetes, or microservices. The chain is:
 
 ```
 INGEST_WHO -> INGEST_ECDC -> DISCOVER -> RETRIEVE -> DEDUPE -> TRIAGE
-  -> EMBED (scaffolding; not load-bearing) -> PREGROUP (default-off)
+  -> PREGROUP (default-off)
   -> EXTRACT -> GEOCODE -> MATCH -> SUMMARIZE
 ```
 
@@ -127,13 +127,13 @@ The matching engine stays the deterministic scorer of the verified build, not a 
   * `temporal` (0.20, recency-overlap in days, `max(0, 1 - gap/recency_days)`)
   * `precision` (0.15, `precision_weight` of the cluster's best primary location)
   * embedding `similarity` as an additive term (`SIMILARITY_WEIGHT = 0.15`) remains in `decide` — it can only add to, never veto, a deterministic score.
-* `decide(cluster, candidates, *, threshold=0.70, review_threshold=None)` with an optional deterministic review band:
+* `decide(cluster, candidates, *, threshold=0.75, review_threshold=None)` with an optional deterministic review band:
   * `score >= auto_threshold` → qualifies (existing threshold)
   * `[review_threshold, auto_threshold)` → ambiguous (when the band is configured): exactly one such candidate → `AMBIGUOUS`
   * `score < review_threshold` or no candidate → `CREATE`
   * 2+ qualifiers → `REFUSE` → `needs_review` via the review queue (existing verified behavior; human as escape hatch)
 * Configurable bounds (all on a 0–1 scale; the plan describes 75/55 on a 0–100 scale):
-  * `event_match_threshold` (auto) — default 0.60; operator sets 0.75 when the plan's 75 is wanted.
+  * `event_match_threshold` (auto) — default 0.75.
   * `event_match_review_threshold` — default 0.55 (the plan's 55).
   * `event_match_recency_days` / `event_match_distance_km` / `event_lookback_days` / `event_candidate_limit` / `event_followup_window_days` — as in the verified code. The plan's `EVENT_MATCH_LOOKBACK_DAYS=10` maps to `event_lookback_days=10` here.
 * `events/judge.py` runs only on the ambiguous band, via the cheap classifier rung (Llama `purpose=triage`) unless benchmarking proves otherwise. Output `{same_event, confidence, reason}`. The `assemble` stage then attaches on `same_event: true`, and prefers a new event on any other outcome (false merge is worse than a duplicate event). Every judged candidate is costed with purpose `event_match_judge`.
@@ -174,8 +174,8 @@ The DAILY chain runs under an advisory lock and advances each stage independentl
 1. `run_ingestion` — `(url, content_hash)` unique constraint: a duplicate document is a counted `skipped`, never an insert.
 2. `run_discovery` / `run_retry` — GDELT sightings are idempotent by `canonical_url` and a per-rule reach; the `published_at_offset_minutes` + retry attempts are finite.
 3. `run_retrieval` — `stubs_awaiting_retrieval` now excludes `needs_review`; every failed retrieval opens a `RETRIEVAL_FAILED` review case (typed, not an inferred `needs_review`).
-4. `run_dedupe` — `content_hash` equality, Jaccard title similarity as a gate, body shingle Jaccard on the normalized bodies — and, since `20260830_0019`, an additional RapidFuzz near-exact title rule (`stage0_near_exact_title_similarity >= 0.92` within `stage0_near_exact_window_hours = 48`) that catches syndicated copies without depending on body extraction having succeeded. A `duplicate_of_signal_id` always points to the flattened terminal primary; `primary_of` chains are resolved to depth one at write time and are never recursed at read time.
-5. `run_triage` / `run_extraction` / `run_embedding` — all costed, climbing the relevant ladder rung(s) with `RunBudget(max_requests, max_cost_usd)` guards and a one-repair pass on triage/extraction rejection.
+4. `run_dedupe` — `content_hash` equality, Jaccard title similarity as a gate, body shingle Jaccard on the normalized bodies — and, since `20260830_0019`, an additional RapidFuzz near-exact title rule (`stage0_near_exact_title_similarity >= 92.0` on RapidFuzz's 0–100 scale within `stage0_near_exact_window_hours = 48`) that catches syndicated copies without depending on body extraction having succeeded. A `duplicate_of_signal_id` always points to the flattened terminal primary; `primary_of` chains are resolved to depth one at write time and are never recursed at read time.
+5. `run_triage` / `run_extraction` — all costed, climbing the relevant ladder rung(s) with `RunBudget(max_requests, max_cost_usd)` guards and a one-repair pass on triage/extraction rejection. `run_embedding` remains explicit Phase 2 scaffolding and is not in the daily chain.
 6. `run_geocoding` — local gazetteer first, Nominatim only when `nominatim_enabled` and cached on success.
 7. `run_event_assembly` — clustering, candidate retrieval with `candidate_lookback_days` + `candidate_limit` + `ST_DWithin`, score + hard guard (disease mismatch, conflicting admin1, far/too-old time window), optional `AMBIGUOUS` → judge, then `finalize_event_creation`/`finalize_event_link`, then a per-event score apply (early_signal, evidence, verification status). Every decision is logged (`event match candidate event_id=... similarity=... score=... reason=...`; `matched event ...`; `judged event ... same_event=...`). `open_review(event_match_ambiguous, candidate_scores=...)` snapshots the deciding scores for the queue.
 8. `run_summarization` — the summarize runner selects events whose `last_summarized_at` is null, behind `last_updated_at`, or older than `resummary_max_age_hours`, calls `should_resummarize(...)` (counts mismatch, 3+ unsummarized supporting articles, 24h wall-clock age), then, when the DeepSeek wiring exists, asks for a new `{headline, summary, status, latest_development, uncertainties}`. An accepted answer appends a versioned row to `event_summaries` and bumps `events.article_count`/`last_summarized_at`; the history is never overwritten.
@@ -201,7 +201,7 @@ Aggregations:
 ## Known limitations
 
 * No multilingual ingestion: the GDELT query library is pinned to `language = English` (query rules hold the language; flipping one configuration value brings multilingual, not a code change — deliberately deferred to Phase 2).
-* No BGE-M3 / pgvector retrieval: the lean MVP does not run semantic story-group search. The `embed` stage still exists in the chain to avoid a destructive migration but its output is not load-bearing for matching (matching similarity is at most an additive term; the ambiguous band is decided by the judge, not by an embedding). A future Phase 2 embedding would reintroduce a purpose-scoped `local` provider behind the existing `EmbeddingProvider` seam without touching matching invariants.
+* No BGE-M3 / pgvector retrieval: the lean MVP does not run semantic story-group search. Embedding storage and the explicit runner remain dormant Phase 2 scaffolding; the daily chain never instantiates `LocalBgeM3Provider`. Matching uses deterministic guards plus the ambiguous judge, so no embedding is needed for surveillance quality. A future Phase 2 embedding would reintroduce a purpose-scoped `local` provider behind the existing `EmbeddingProvider` seam without touching matching invariants.
 * No natural-language search: event retrieval is keyword plus structured filters (disease, country, admin1, status, verification_status, date window). `/search` on natural language is a separate, sequenced item (`G`/`J`).
 * No personalized alerts, subscriptions, mobile app, forecasting, AI chat, or risk scoring. Those are itemized as non-goals in the operator's brief and are deliberately omitted.
 * No Elasticsearch/OpenSearch. No Kafka. No Celery/RQ. No Kubernetes. The product runs on one 2–4 vCPU / 4–8 GB RAM VPS.

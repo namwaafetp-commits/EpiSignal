@@ -454,8 +454,10 @@ def test_a_recent_attach_runs_the_delta_pass_and_costs_it() -> None:
     disease_id = uuid4()
     loc = LocationForMatching(
         location_role=LocationRole.PRIMARY,
-        precision=Precision.COUNTRY,
+        precision=Precision.PLACE,
         country_code="YE",
+        admin1="Sana'a",
+        place_name="Sana'a",
         latitude=15.37,
         longitude=44.19,
     )

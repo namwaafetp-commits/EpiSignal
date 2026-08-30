@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
@@ -68,6 +69,57 @@ def test_events_list_endpoint_returns_shaped_json() -> None:
     # No raw text, prompt, or patient fields leak onto the public surface.
     assert "raw_text" not in response.text
     assert "patient" not in response.text
+
+
+def test_accepted_summary_status_is_visible_on_list_and_detail_endpoints() -> None:
+    state = {"status": EventStatus.MONITORING.value}
+    detail = EventDetail(
+        public_id=PUBLIC_ID,
+        headline=None,
+        summary=None,
+        disease="Dengue",
+        event_type=EventType.OUTBREAK.value,
+        status=EventStatus.MONITORING.value,
+        verification_status=VerificationStatus.SIGNAL.value,
+        country_code="TH",
+        admin1="Chiang Mai",
+        admin2=None,
+        first_reported_at=NOW,
+        latest_report_at=NOW,
+        article_count=1,
+        last_summarized_at=None,
+        early_signal_score=None,
+        evidence_score=None,
+        sources=(),
+        observations=(),
+        summaries=(),
+    )
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_event_page] = lambda: EventListPage(
+        items=(replace(_list_item(), status=state["status"]),),
+        total=1,
+        limit=20,
+        offset=0,
+    )
+    app.dependency_overrides[get_session] = lambda: object()
+    original_detail = events_route.query_event_detail
+    events_route.query_event_detail = lambda session, public_id: replace(  # type: ignore[assignment]
+        detail,
+        status=state["status"],
+    )
+    try:
+        # This is the API seam after the repository has accepted the summary
+        # and changed the event from monitoring to ongoing.
+        state["status"] = EventStatus.ONGOING.value
+        list_response = TestClient(app).get("/api/v1/events")
+        detail_response = TestClient(app).get(f"/api/v1/events/{PUBLIC_ID}")
+    finally:
+        events_route.query_event_detail = original_detail
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["status"] == EventStatus.ONGOING.value
+    assert detail_response.status_code == 200
+    assert detail_response.json()["status"] == EventStatus.ONGOING.value
 
 
 def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> None:

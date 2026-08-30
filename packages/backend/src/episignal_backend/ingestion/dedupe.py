@@ -35,8 +35,12 @@ class DedupeThresholds:
     # upper bound is deliberately exclusive of an exact title match: an exact
     # match keeps the verified conservative path (identical headline with a
     # genuinely independent body is corroboration, not a duplicate).
-    near_exact_title: float = 0.92
+    near_exact_title: float = 92.0
     near_exact_window_hours: int = 48
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.near_exact_title <= 100.0:
+            raise ValueError("near_exact_title must be between 0 and 100")
 
 
 @dataclass(frozen=True)

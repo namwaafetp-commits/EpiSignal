@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import pytest
 from episignal_backend.ingestion.dedupe import DedupeThresholds, run_dedupe
 from episignal_backend.ingestion.documents import ComparableSignal
 
@@ -303,3 +304,31 @@ def test_an_identical_title_outside_the_near_exact_band_needs_the_body() -> None
 
     assert repository.duplicates == []
     assert repository.normalized == [independent.id]
+
+
+def test_unrelated_titles_inside_the_near_exact_window_are_not_duplicates() -> None:
+    primary = signal(
+        title="Dengue cases rise in Chiang Mai",
+        body=read("syndicated_body_a.txt"),
+        content_hash="a" * 64,
+        published_at=FIRST,
+    )
+    unrelated = signal(
+        title="Dengue cases rise in Phuket",
+        body=read("independent_body.txt"),
+        content_hash="b" * 64,
+        first_seen_at=LATER,
+        published_at=LATER,
+    )
+    repository = FakeRepository(queue=(unrelated,), pool=(primary, unrelated))
+
+    run_dedupe(repository)
+
+    assert repository.duplicates == []
+    assert repository.normalized == [unrelated.id]
+
+
+@pytest.mark.parametrize("value", [-0.1, 100.1])
+def test_near_exact_threshold_rejects_values_outside_rapidfuzz_scale(value: float) -> None:
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        DedupeThresholds(near_exact_title=value)

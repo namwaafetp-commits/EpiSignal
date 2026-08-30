@@ -11,7 +11,6 @@ def test_triage_runs_after_dedupe_and_before_grouping() -> None:
         StageName.RETRIEVE,
         StageName.DEDUPE,
         StageName.TRIAGE,
-        StageName.EMBED,
         StageName.PREGROUP,
         StageName.EXTRACT,
         StageName.GEOCODE,
@@ -36,7 +35,8 @@ def test_grouping_precedes_extraction() -> None:
 
 def test_every_stage_appears_exactly_once() -> None:
     assert len(set(DAILY_CHAIN)) == len(DAILY_CHAIN)
-    assert set(DAILY_CHAIN) == set(StageName)
+    assert set(DAILY_CHAIN) == set(StageName) - {StageName.EMBED}
+    assert StageName.EMBED not in DAILY_CHAIN
 
 
 def test_a_chain_is_looked_up_by_name() -> None:

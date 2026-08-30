@@ -54,6 +54,15 @@ def _candidate_representative_location(
     return max(candidates, key=lambda loc: _PRECISION_RANK.get(loc.precision, -1))
 
 
+def _is_country_only(location: LocationForMatching | None) -> bool:
+    """Whether a location supplies no administrative or place-level identity."""
+    if location is None:
+        return False
+    return location.precision == Precision.COUNTRY or not any(
+        (location.admin1, location.admin2, location.place_name)
+    )
+
+
 def match_score(
     cluster: StoryCluster,
     candidate: CandidateEvent,
@@ -187,7 +196,7 @@ def decide(
     cluster: StoryCluster,
     candidates: Sequence[CandidateEvent],
     *,
-    threshold: float = 0.70,
+    threshold: float = 0.75,
     review_threshold: float | None = None,
     weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     distance_km: float = 50.0,
@@ -236,7 +245,10 @@ def decide(
         if similarity is not None:
             score = min(1.0, score + SIMILARITY_WEIGHT * max(0.0, similarity))
         candidate_scores[cand.event_id] = score
-        if score >= threshold:
+        country_only = _is_country_only(cluster.representative_location) and _is_country_only(
+            _candidate_representative_location(cand)
+        )
+        if score >= threshold and not country_only:
             qualifiers.append((cand, score))
             candidate_rejections[cand.event_id] = None
         elif review_threshold is not None and score >= review_threshold:

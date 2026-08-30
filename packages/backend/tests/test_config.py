@@ -132,7 +132,7 @@ def test_stage0_defaults_are_strict() -> None:
     assert settings.stage0_shingle_size == 5
     assert settings.stage0_candidate_window_hours == 72
     assert settings.stage0_batch_size == 200
-    assert settings.stage0_near_exact_title_similarity == 0.92
+    assert settings.stage0_near_exact_title_similarity == 92.0
     assert settings.stage0_near_exact_window_hours == 48
 
 
@@ -141,6 +141,18 @@ def test_a_similarity_threshold_above_one_is_rejected() -> None:
         Settings(  # type: ignore[call-arg, arg-type]
             database_url=DATABASE_URL,
             stage0_title_similarity=1.5,
+            _env_file=None,
+        )
+
+
+@pytest.mark.parametrize("value", [-0.1, 100.1])
+def test_a_near_exact_title_threshold_outside_zero_to_one_hundred_is_rejected(
+    value: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url=DATABASE_URL,
+            stage0_near_exact_title_similarity=value,
             _env_file=None,
         )
 
@@ -237,7 +249,7 @@ def test_event_matching_defaults_are_set() -> None:
     settings = build_settings()
     assert settings.event_cluster_window_days == 7
     assert settings.event_cluster_distance_km == 50.0
-    assert settings.event_match_threshold == 0.6
+    assert settings.event_match_threshold == 0.75
     assert settings.event_match_recency_days == 90.0
     assert settings.event_match_distance_km == 50.0
     assert settings.event_match_batch_size == 100

@@ -140,9 +140,40 @@ def test_match_score_country_precision_only_cannot_reach_accept_threshold():
     )
 
     score = match_score(cluster, candidate)
-    # With default threshold 0.70, country precision alone must not reach it
-    assert score < 0.70
+    # With default threshold 0.75, country precision alone must not reach it
+    assert score < 0.75
     assert 0.0 < score <= 0.65
+
+
+def test_same_disease_same_country_without_admin1_is_ambiguous_not_attached():
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    country = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="CD",
+        latitude=-4.03,
+        longitude=21.75,
+    )
+    cluster = _make_cluster(disease_id, country, now)
+    candidate = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(country,),
+        first_signal_at=now - timedelta(days=1),
+        last_updated_at=now,
+    )
+
+    decision = decide(
+        cluster,
+        [candidate],
+        threshold=0.75,
+        review_threshold=0.55,
+        similarity_for=lambda _cluster, _candidate: 1.0,
+    )
+
+    assert decision.action is MatchAction.AMBIGUOUS
+    assert decision.event_id == candidate.event_id
 
 
 def test_match_score_bounds_and_weights():

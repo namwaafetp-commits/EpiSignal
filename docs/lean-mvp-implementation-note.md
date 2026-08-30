@@ -14,7 +14,6 @@ ruff/eslint/mypy/tsc clean, and a production build. The working pipeline is:
 ingest WHO/ECDC -> GDELT discover (English-only query rules)
   -> keyword gate -> retrieve body
   -> dedupe -> triage (Llama 3.1 8B, purpose-scoped rung)
-  -> embed (pgvector, BGE-M3, default-off in chain order but wired)
   -> pregroup (story_groups, default-off)
   -> cluster extraction -> geocode -> event assembly -> observations
 ```
@@ -91,11 +90,10 @@ verified tables, so the plan's concepts are implemented on the existing schema.
 The following Phase 1 decisions are explicitly **superseded** for the MVP and
 are marked so in the docs and the roadmap (not deleted — history is preserved):
 
-- **Embeddings and pgvector** (`signals.embedding`, the embed stage, BGE-M3,
-  HNSW index). The MVP does not use semantic similarity; the match
-  deterministic guards plus the ambiguous judge replace it. The `embed` stage
-  is left in the chain only to avoid a destructive migration; it is documented
-  as non-load-bearing and deferred to Phase 2 multilingual work.
+- **Embeddings and pgvector** (`signals.embedding`, the explicit embed runner,
+  BGE-M3, HNSW index). The MVP does not use semantic similarity; deterministic
+  match guards plus the ambiguous judge replace it. The embedding code remains
+  dormant Phase 2 scaffolding and is excluded from the daily chain.
 - **Gemini-first ladder** — resolved per the plan: Llama is the classifier,
   DeepSeek is the summarizer. The Gemini adapters and roster rows stay
   (providers remain configurable), but the MVP's model selection is

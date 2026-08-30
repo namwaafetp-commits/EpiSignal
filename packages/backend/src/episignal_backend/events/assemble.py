@@ -147,7 +147,7 @@ def run_event_assembly(
     stale: bool = False,
     cluster_window_days: int = 7,
     cluster_distance_km: float = 50.0,
-    match_threshold: float = 0.6,
+    match_threshold: float = 0.75,
     review_threshold: float | None = None,
     match_weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     match_recency_days: float = 90.0,

@@ -630,6 +630,7 @@ class SqlAlchemyEventRepository:
             select(
                 EventSignal.signal_id,
                 Signal.title,
+                Signal.published_at,
                 Signal.first_seen_at,
                 Source.name,
                 Source.is_official,
@@ -646,6 +647,7 @@ class SqlAlchemyEventRepository:
         for (
             signal_id,
             title,
+            published_at,
             first_seen_at,
             source_name,
             is_official,
@@ -663,6 +665,7 @@ class SqlAlchemyEventRepository:
                     title=title,
                     source_name=source_name or "unknown",
                     is_official=is_official,
+                    published_at=published_at,
                     brief=brief,
                 )
             )
@@ -701,13 +704,14 @@ class SqlAlchemyEventRepository:
         ).scalar_one_or_none()
         version = (version_row or 0) + 1
 
+        summary_status = EventStatus(status)
         row = EventSummary(
             id=uuid4(),
             event_id=event_id,
             version=version,
             headline=headline,
             summary=summary,
-            status=EventStatus(status),
+            status=summary_status,
             latest_development=latest_development,
             uncertainties=uncertainties,
             model_id=model_id,
@@ -725,6 +729,7 @@ class SqlAlchemyEventRepository:
             .values(
                 headline=headline,
                 summary=summary,
+                status=summary_status,
                 article_count=article_count,
                 last_summarized_at=moment,
             )

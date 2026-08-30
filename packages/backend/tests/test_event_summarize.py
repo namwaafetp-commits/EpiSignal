@@ -111,7 +111,13 @@ def test_a_summary_older_than_the_max_age_is_refreshed() -> None:
     )
 
 
-def _source(title: str, *, official: bool = False, brief: int = 0) -> SummarySource:
+def _source(
+    title: str,
+    *,
+    official: bool = False,
+    brief: int = 0,
+    published_at: datetime | None = None,
+) -> SummarySource:
     from episignal_backend.ai.schema import BriefPoint, BriefSlot
 
     points = tuple(
@@ -123,6 +129,7 @@ def _source(title: str, *, official: bool = False, brief: int = 0) -> SummarySou
         title=title,
         source_name=title,
         is_official=official,
+        published_at=published_at,
         brief=points,
     )
 
@@ -154,6 +161,21 @@ def test_brief_carrying_sources_precede_silent_ones() -> None:
 def test_picking_respects_the_maximum() -> None:
     sources = tuple(_source(f"S{i}") for i in range(10))
     assert len(pick_representative_sources(sources, max_sources=6)) == 6
+
+
+def test_picking_preserves_the_newest_useful_report_after_official_sources() -> None:
+    old = datetime(2026, 8, 25, tzinfo=UTC)
+    newest = datetime(2026, 8, 30, tzinfo=UTC)
+    sources = (
+        _source("Old official", official=True, published_at=old, brief=5),
+        _source("Older official", official=True, published_at=old - timedelta(days=1), brief=5),
+        _source("Newest useful report", published_at=newest, brief=5),
+    )
+
+    picked = pick_representative_sources(sources, max_sources=2)
+
+    assert picked[0].source_name == "Old official"
+    assert any(source.source_name == "Newest useful report" for source in picked)
 
 
 _SUMMARY_JSON = """{

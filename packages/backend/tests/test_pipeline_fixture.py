@@ -1,90 +1,194 @@
-"""End-to-end pipeline fixture: the lean MVP acceptance fixture.
+"""Synthetic acceptance fixture routed through the real pure pipeline seams.
 
-Runs the 30 candidates of ``fixtures/lean_mvp/30_candidates.json`` through:
-
-1. Title-based near-exact dedup (RapidFuzz + 48h window).
-2. The fixture's declared ``relevant`` judgement (the cheap classifier, faked).
-3. The real deterministic event matching (conservative score + hard guards) with
-   a short lookback so only recent events are candidates.
-4. Observation history (one row per relevant representative).
-
-No network call, no database. Every judgement the pipeline would ask a model
-for is declared in the fixture, so the test is deterministic and cheap and
-remains valid as the model prompt evolves.
-
-The expected report is exactly the one the plan examples:
-
-30 candidates
-5 exact/near duplicates
-25 representative stories
-10 relevant
-6 events created
-4 follow-ups attached
-8 observations inserted
-3 summaries generated
+The classifier is a fake model boundary. Deduplication, clustering, matching,
+event finalization, and observation recording are the production domain
+functions used by the scheduled pipeline.
 """
 
 import json
+from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
+from episignal_backend.events.assemble import run_event_assembly
+from episignal_backend.events.documents import LocationForMatching, SignalForMatching
+from episignal_backend.ingestion.dedupe import DedupeThresholds, run_dedupe
+from episignal_backend.ingestion.documents import ComparableSignal
+from test_event_assemble import FakeAssemblyRepository
 
 FIXTURE = Path(__file__).parent / "fixtures" / "lean_mvp" / "30_candidates.json"
 
 
-def test_the_lean_mvp_fixture_collapses_duplicates_and_groups_events() -> None:
+class FakeClassifier:
+    """Scripted model boundary: only the model answer comes from fixture data."""
+
+    def __init__(self, articles: list[dict]) -> None:
+        self._answers = {article["id"]: article["relevant"] for article in articles}
+        self.calls = 0
+
+    def classify(self, article: dict) -> bool:
+        self.calls += 1
+        return self._answers[article["id"]]
+
+
+class InMemoryDedupeRepository:
+    def __init__(self, signals: list[ComparableSignal]) -> None:
+        self._signals = tuple(signals)
+        self.duplicates: list[tuple[UUID, UUID]] = []
+        self.normalized: list[UUID] = []
+
+    def pending(self, *, limit: int) -> tuple[ComparableSignal, ...]:
+        return self._signals[:limit]
+
+    def candidates(
+        self, signal: ComparableSignal, *, window_hours: int
+    ) -> tuple[ComparableSignal, ...]:
+        return tuple(candidate for candidate in self._signals if candidate.id != signal.id)
+
+    def primary_of(self, signal_id: UUID) -> UUID:
+        for duplicate_id, primary_id in self.duplicates:
+            if duplicate_id == signal_id:
+                return self.primary_of(primary_id)
+        return signal_id
+
+    def mark_duplicate(self, signal_id: UUID, primary_id: UUID) -> None:
+        self.duplicates.append((signal_id, primary_id))
+
+    def mark_normalized(self, signal_id: UUID) -> None:
+        self.normalized.append(signal_id)
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
+
+def _timestamp(article: dict) -> datetime:
+    return datetime.fromisoformat(article["published_at"].replace("Z", "+00:00"))
+
+
+def _signal(article: dict) -> ComparableSignal:
+    body = article["snippet"]
+    return ComparableSignal(
+        id=uuid5(NAMESPACE_URL, f"fixture:signal:{article['id']}"),
+        canonical_url=article["url"],
+        title=article["title"],
+        raw_text=body,
+        content_hash=sha256(f"{article['id']}:{body}".encode()).hexdigest(),
+        first_seen_at=_timestamp(article),
+        published_at=_timestamp(article),
+    )
+
+
+def _country_for(place: str) -> str:
+    return {
+        "Chiang Mai": "TH",
+        "Phuket": "TH",
+        "Bangkok": "TH",
+        "Lusaka": "ZM",
+        "Lampung": "ID",
+        "Hanoi": "VN",
+        "Piraeus": "GR",
+        "Sao Paulo": "BR",
+        "Yunnan": "CN",
+        "Sylhet": "BD",
+    }[place]
+
+
+def _matching_signal(article: dict) -> SignalForMatching:
+    place = article["place"]
+    coordinates = {
+        "Chiang Mai": (18.79, 98.98),
+        "Phuket": (7.88, 98.39),
+        "Bangkok": (13.76, 100.50),
+        "Lusaka": (-15.39, 28.32),
+        "Lampung": (-5.43, 105.26),
+        "Hanoi": (21.03, 105.85),
+        "Piraeus": (37.94, 23.65),
+        "Sao Paulo": (-23.55, -46.63),
+        "Yunnan": (25.04, 102.71),
+        "Sylhet": (24.89, 91.87),
+    }[place]
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code=_country_for(place),
+        admin1=place,
+        place_name=place,
+        latitude=coordinates[0],
+        longitude=coordinates[1],
+    )
+    return SignalForMatching(
+        signal_id=uuid5(NAMESPACE_URL, f"fixture:signal:{article['id']}"),
+        disease_id=uuid5(NAMESPACE_URL, f"fixture:disease:{article['disease']}"),
+        source_id=uuid5(NAMESPACE_URL, f"fixture:source:{article['id']}"),
+        source_is_official=True,
+        credibility_tier=CredibilityTier.OFFICIAL,
+        published_at=_timestamp(article),
+        first_seen_at=_timestamp(article),
+        title=article["title"],
+        locations=(location,),
+    )
+
+
+def test_the_lean_mvp_fixture_runs_real_dedupe_matching_and_observations() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     articles: list[dict] = payload["articles"]
     assert len(articles) == 30
 
-    # --- dedup
+    dedupe_repository = InMemoryDedupeRepository([_signal(article) for article in articles])
+    dedupe = run_dedupe(
+        dedupe_repository,
+        thresholds=DedupeThresholds(near_exact_title=92.0),
+        window_hours=48,
+    )
 
-    # The first story has 4 syndicated copies (near-exact RapidFuzz titles
-    # within the 48h window) plus the primary; the remaining 26 each stand
-    # alone as representative stories.
-    representatives: list[dict] = []
-    for article in articles:
-        if article.get("syndicated_of") is not None:
-            continue
-        representatives.append(article)
+    assert dedupe.examined == 30
+    assert dedupe.duplicates == 5
+    assert dedupe.primaries == 25
+    representatives_by_id = {
+        article["id"]: article
+        for article in articles
+        if uuid5(NAMESPACE_URL, f"fixture:signal:{article['id']}") in dedupe_repository.normalized
+    }
+    assert len(representatives_by_id) == 25
 
-    assert len(representatives) == 26
-    relevant = [article for article in representatives if article["relevant"]]
-    # The fixture keeps the plan's "relevant" shape: an unknown illness and
-    # enteric, vaccine-preventable, and zoonotic signals are kept as relevant,
-    # so the relevant set is larger than 10; the exact count is documented in
-    # the fixture rather than pinned here.
-    assert len(relevant) >= 10
-    assert all(article["relevant"] in (True, False) for article in representatives)
-
-    # --- duplicate observation (the 3 dengue Chiang Mai follow-ups carry
-    # distinct counts: 42, 68, 91. They are one event with three observations.)
-
-    chiang_mai_followups = [
-        a
-        for a in relevant
-        if a.get("disease") == "dengue"
-        and a.get("place") == "Chiang Mai"
-        and a.get("cases") is not None
-        and a["id"] in (6, 7, 8)
+    classifier = FakeClassifier(articles)
+    relevant = [
+        article for article in representatives_by_id.values() if classifier.classify(article)
     ]
-    chiang_mai_followups_sorted = sorted(chiang_mai_followups, key=lambda a: a["cases"])
-    assert len(chiang_mai_followups_sorted) == 3
-    assert [a["cases"] for a in chiang_mai_followups_sorted] == [42, 68, 91]
+    assert classifier.calls == 25
+    assert len(relevant) == 15
 
-    # --- same disease different geography stays separate
-    dengue_places = {a["place"] for a in relevant if a.get("disease") == "dengue"}
-    assert "Chiang Mai" in dengue_places
-    assert "Phuket" in dengue_places
+    candidates_by_disease: dict[UUID, list] = {}
+    events_created = 0
+    signals_attached = 0
+    observations = 0
+    for article in sorted(relevant, key=_timestamp):
+        signal = _matching_signal(article)
+        disease_id = signal.disease_id
+        assert disease_id is not None
+        candidates = candidates_by_disease.setdefault(disease_id, [])
+        repository = FakeAssemblyRepository([signal], {disease_id: list(candidates)})
+        summary = run_event_assembly(
+            repository,
+            now=signal.published_at,
+            match_threshold=0.75,
+            review_threshold=0.55,
+        )
+        events_created += summary.events_created
+        signals_attached += summary.signals_attached
+        observations += len(repository.recorded_observations)
+        candidates.extend(repository.created_events)
+        for index, candidate in enumerate(candidates):
+            if any(event_id == candidate.event_id for event_id, *_ in repository.attached_signals):
+                candidates[index] = candidate.model_copy(
+                    update={"last_updated_at": signal.published_at}
+                )
 
-    # --- different diseases same place stays separate
-    chiang_mai_diseases = {a["disease"] for a in relevant if a.get("place") == "Chiang Mai"}
-    assert "dengue" in chiang_mai_diseases
-    assert "measles" in chiang_mai_diseases
-
-    # --- non-public-health story is rejected (the football fever story)
-    football = next(a for a in articles if a["id"] == 14)
-    assert football["relevant"] is False  # "Football fever: Angers SCO thrilled before Reims clash"
-
-    # --- unexplained cluster is kept as relevant with an unknown disease
-    unexplained = next(a for a in articles if a["id"] == 12)
-    assert unexplained["relevant"] is True
-    assert "unknown" in unexplained["disease"]
+    assert events_created == 11
+    assert signals_attached == 15
+    assert observations == 15

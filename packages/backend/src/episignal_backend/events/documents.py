@@ -203,6 +203,7 @@ class SummarySource(BaseModel):
     title: str = Field(min_length=1)
     source_name: str = Field(min_length=1)
     is_official: bool = False
+    published_at: datetime | None = None
     brief: tuple[BriefPoint, ...] = ()
 
 

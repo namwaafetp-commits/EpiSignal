@@ -9,7 +9,8 @@
       "place_name": "Chiang Mai",
       "latitude": 18.79,
       "longitude": 98.98,
-      "embedding": [1.0, 0.0]
+      "embedding": [1.0, 0.0],
+      "total_cases": 42
     },
     {
       "signal_id": "40000000-0000-0000-0000-000000000002",
@@ -20,7 +21,8 @@
       "place_name": "Chiang Mai",
       "latitude": 18.79,
       "longitude": 98.98,
-      "embedding": [0.8, 0.6]
+      "embedding": [0.8, 0.6],
+      "total_cases": 68
     }
   ]
 }

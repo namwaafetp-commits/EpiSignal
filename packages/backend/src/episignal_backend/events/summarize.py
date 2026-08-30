@@ -136,6 +136,9 @@ def run_summary(
                         "title": source.title,
                         "source_name": source.source_name,
                         "is_official": source.is_official,
+                        "published_at": source.published_at.isoformat()
+                        if source.published_at is not None
+                        else None,
                         "brief": [point.model_dump(mode="json") for point in source.brief],
                     }
                     for source in sources
@@ -218,15 +221,28 @@ def pick_representative_sources(
     Official sources first, then recency, then sources that carry a brief.
     The order is stable: a deterministic sort, never model judgement.
     """
+
+    def publication_timestamp(source: SummarySource) -> datetime:
+        return source.published_at or datetime.min.replace(tzinfo=UTC)
+
     ordered = sorted(
         sources,
         key=lambda source: (
             0 if source.is_official else 1,
+            datetime.max.replace(tzinfo=UTC) - publication_timestamp(source),
             -len(source.brief),
             source.title,
         ),
     )
-    return tuple(ordered[:max_sources])
+    selected = list(ordered[:max_sources])
+    useful = [source for source in sources if source.brief]
+    if selected and useful:
+        newest_useful = max(useful, key=publication_timestamp)
+        if newest_useful not in selected:
+            selected[-1] = newest_useful
+            order = {id(source): index for index, source in enumerate(ordered)}
+            selected.sort(key=lambda source: order[id(source)])
+    return tuple(selected)
 
 
 def _counts_equals(left: dict[str, object] | None, right: dict[str, object] | None) -> bool:
