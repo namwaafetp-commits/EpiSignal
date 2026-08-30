@@ -11,6 +11,7 @@ def test_triage_runs_after_dedupe_and_before_grouping() -> None:
         StageName.RETRIEVE,
         StageName.DEDUPE,
         StageName.TRIAGE,
+        StageName.EMBED,
         StageName.PREGROUP,
         StageName.EXTRACT,
         StageName.GEOCODE,

@@ -27,6 +27,7 @@
     "retrieve:gdelt": "uv run --package episignal-backend python -m episignal_backend.retrieve_runner",
     "dedupe:signals": "uv run --package episignal-backend python -m episignal_backend.dedupe_runner",
     "triage:signals": "uv run --package episignal-backend python -m episignal_backend.triage_runner",
+    "embed:signals": "uv run --package episignal-backend python -m episignal_backend.embed_runner",
     "pregroup:signals": "uv run --package episignal-backend python -m episignal_backend.pregroup_runner",
     "spend:report": "uv run --package episignal-backend python -m episignal_backend.spend_runner",
     "extract:signals": "uv run --package episignal-backend python -m episignal_backend.extract_runner",

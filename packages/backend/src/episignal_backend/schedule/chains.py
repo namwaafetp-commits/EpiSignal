@@ -14,6 +14,7 @@ DAILY_CHAIN: tuple[StageName, ...] = (
     StageName.RETRIEVE,
     StageName.DEDUPE,
     StageName.TRIAGE,
+    StageName.EMBED,
     StageName.PREGROUP,
     StageName.EXTRACT,
     StageName.GEOCODE,

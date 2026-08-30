@@ -12,6 +12,8 @@ on a different connection for the whole run.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
+from episignal_backend.ai.embed import run_embedding
+from episignal_backend.ai.embeddings import LocalBgeM3Provider
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
@@ -219,6 +221,25 @@ def _triage() -> Mapping[str, int]:
     }
 
 
+def _embed() -> Mapping[str, int]:
+    settings = get_settings()
+    provider = LocalBgeM3Provider(
+        model_name=settings.embedding_model,
+        batch_size=settings.embedding_batch_size,
+    )
+    with session_scope() as session:
+        result = run_embedding(
+            SqlAlchemyAiRepository(session),
+            provider,
+            batch_size=settings.embedding_batch_size,
+        )
+    return {
+        "examined": result.examined,
+        "embedded": result.embedded,
+        "failed": result.failed,
+    }
+
+
 def _extract() -> Mapping[str, int]:
     settings = get_settings()
     guards = Guards(
@@ -327,6 +348,7 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
         StageName.RETRIEVE: _retrieve,
         StageName.DEDUPE: _dedupe,
         StageName.TRIAGE: _triage,
+        StageName.EMBED: _embed,
         StageName.PREGROUP: _pregroup,
         StageName.EXTRACT: _extract,
         StageName.GEOCODE: _geocode,

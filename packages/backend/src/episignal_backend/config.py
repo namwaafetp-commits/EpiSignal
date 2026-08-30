@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     # The repository stays single-threaded; only the model calls move.
     ai_extraction_workers: int = Field(default=8, ge=1, le=32)
 
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_provider: Literal["local"] = "local"
+    embedding_batch_size: int = Field(default=16, ge=1, le=512)
+
     geocode_batch_size: int = Field(default=200, ge=1, le=5000)
     geocode_max_signals_per_run: int = Field(default=2000, ge=1, le=100000)
     # Stamped onto every row this run writes, and the value `--stale` compares

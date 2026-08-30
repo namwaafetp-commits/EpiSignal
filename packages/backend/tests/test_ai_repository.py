@@ -192,6 +192,18 @@ def test_a_final_triage_failure_is_recorded_without_changing_processing_status()
     assert not any(isinstance(value, ProcessingStatus) for value in params.values())
 
 
+def test_awaiting_embeddings_requires_relevant_completed_triage_and_no_vector() -> None:
+    session = FakeSession([FakeResult([])])
+
+    SqlAlchemyAiRepository(session).awaiting_embeddings(limit=16)
+
+    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
+    assert ProcessingStatus.NORMALIZED.value in rendered
+    assert TriageStatus.DONE.value in rendered
+    assert "public_health_relevant IS true" in rendered
+    assert "embedding IS NULL" in rendered
+
+
 def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> None:
     # The keyword gate replaced this pass, but the method must still describe
     # what it would select. A method stubbed to return () lies to its caller

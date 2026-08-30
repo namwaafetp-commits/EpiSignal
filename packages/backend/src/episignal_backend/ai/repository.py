@@ -190,6 +190,25 @@ class SqlAlchemyAiRepository:
 
         return tuple(pending)
 
+    def awaiting_embeddings(self, *, limit: int) -> Sequence[ExtractableSignal]:
+        stmt = (
+            select(Signal)
+            .where(
+                Signal.processing_status == ProcessingStatus.NORMALIZED,
+                Signal.triage_status == TriageStatus.DONE,
+                Signal.public_health_relevant.is_(True),
+                Signal.embedding.is_(None),
+                Signal.raw_text.is_not(None),
+                ~_deferred_by_open_group(),
+            )
+            .order_by(Signal.first_seen_at)
+        )
+        rows = self._scan_valid_signals(stmt, limit, "embedding")
+        return tuple(
+            ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
+            for row in rows
+        )
+
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         stmt = (
             select(Signal)
@@ -351,6 +370,12 @@ class SqlAlchemyAiRepository:
         self._session.execute(
             update(Signal).where(Signal.id == signal_id).values(triage_status=TriageStatus.FAILED)
         )
+
+    def record_embeddings(self, embeddings: Mapping[UUID, Sequence[float]]) -> None:
+        for signal_id, vector in embeddings.items():
+            self._session.execute(
+                update(Signal).where(Signal.id == signal_id).values(embedding=list(vector))
+            )
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         # The version is stamped here and never by the model: a version a model

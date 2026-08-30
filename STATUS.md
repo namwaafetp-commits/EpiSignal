@@ -142,7 +142,7 @@ purpose-specific model routing.
 - [x] 8. The `triage` stage and Phase A checkpoint.
 - [x] 9. pgvector and the embedding column.
 - [x] 10. The embedding provider.
-- [ ] 11. The embedding pass and stage.
+- [x] 11. The embedding pass and stage.
 - [ ] 12. Candidate blocking.
 - [ ] 13. Similarity as an additive term.
 - [ ] 14. Wire similarity into assembly, with decision logging.

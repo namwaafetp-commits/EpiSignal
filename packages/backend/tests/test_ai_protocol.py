@@ -36,6 +36,9 @@ class StubRepository:
     def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]:
         return ()
 
+    def awaiting_embeddings(self, *, limit: int) -> Sequence[ExtractableSignal]:
+        return ()
+
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
         return ()
 
@@ -67,6 +70,9 @@ class StubRepository:
         return None
 
     def record_triage_failure(self, signal_id: UUID) -> None:
+        return None
+
+    def record_embeddings(self, embeddings: Mapping[UUID, Sequence[float]]) -> None:
         return None
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
