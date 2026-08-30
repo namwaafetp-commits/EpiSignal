@@ -3,13 +3,14 @@ from episignal_backend.schedule.chains import CHAINS, DAILY_CHAIN, chain_for
 from episignal_backend.schedule.documents import StageName
 
 
-def test_a_body_is_fetched_before_dedupe_needs_one() -> None:
+def test_triage_runs_after_dedupe_and_before_grouping() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
         StageName.INGEST_ECDC,
         StageName.DISCOVER,
         StageName.RETRIEVE,
         StageName.DEDUPE,
+        StageName.TRIAGE,
         StageName.PREGROUP,
         StageName.EXTRACT,
         StageName.GEOCODE,

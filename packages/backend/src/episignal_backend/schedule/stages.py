@@ -16,6 +16,7 @@ from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
 from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
+from episignal_backend.ai.triage import run_triage
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import run_event_assembly
@@ -187,6 +188,37 @@ def _pregroup() -> Mapping[str, int]:
     }
 
 
+def _triage() -> Mapping[str, int]:
+    settings = get_settings()
+    guards = Guards(
+        max_requests=settings.ai_max_requests_per_run,
+        max_cost_usd=settings.ai_max_cost_usd_per_run,
+    )
+
+    with session_scope() as session:
+        repository = SqlAlchemyAiRepository(session)
+        try:
+            model = routed_from_settings(settings, list(repository.models()))
+        except NoProviderKey as error:
+            raise RuntimeError(str(error)) from error
+        result = run_triage(
+            repository,
+            model,
+            guards=guards,
+            limit=settings.ai_triage_batch_limit,
+            max_tier=settings.ai_max_tier,
+        )
+    return {
+        "examined": result.examined,
+        "triaged": result.triaged,
+        "repaired": result.repaired,
+        "filtered": result.filtered,
+        "failed": result.failed,
+        "unavailable": result.unavailable,
+        "requests": result.requests,
+    }
+
+
 def _extract() -> Mapping[str, int]:
     settings = get_settings()
     guards = Guards(
@@ -294,6 +326,7 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
         StageName.DISCOVER: lambda: _discover(window),
         StageName.RETRIEVE: _retrieve,
         StageName.DEDUPE: _dedupe,
+        StageName.TRIAGE: _triage,
         StageName.PREGROUP: _pregroup,
         StageName.EXTRACT: _extract,
         StageName.GEOCODE: _geocode,

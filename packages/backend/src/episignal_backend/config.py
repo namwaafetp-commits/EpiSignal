@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     review_admin_token: SecretStr | None = None
 
     ai_signal_batch_limit: int = Field(default=100, ge=1, le=5000)
+    ai_triage_batch_limit: int = Field(default=200, ge=1, le=5000)
     ai_batch_size: int = Field(default=20, ge=1, le=200)
     # The binding guard under a free ladder: free endpoints are rated per
     # request and per day, so a run that respects a dollar cap can still burn a

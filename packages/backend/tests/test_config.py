@@ -156,6 +156,7 @@ def test_the_ai_defaults_describe_a_free_ladder() -> None:
 
     assert settings.ai_max_tier == 3
     assert settings.ai_batch_size == 20
+    assert settings.ai_triage_batch_limit == 200
     assert settings.ai_max_requests_per_run == 200
     assert settings.ai_min_confidence == 0.60
 

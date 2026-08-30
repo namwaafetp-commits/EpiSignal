@@ -19,6 +19,7 @@ class StageName(StrEnum):
     DISCOVER = "discover"
     RETRIEVE = "retrieve"
     DEDUPE = "dedupe"
+    TRIAGE = "triage"
     PREGROUP = "pregroup"
     EXTRACT = "extract"
     GEOCODE = "geocode"

@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from episignal_backend.ai.documents import (
@@ -12,9 +13,11 @@ from episignal_backend.ai.documents import (
     ModelSpec,
     StoredExtraction,
     TokenUsage,
+    TriageableSignal,
     Verdict,
 )
 from episignal_backend.ai.protocol import AiRepository, ChatModel
+from episignal_backend.ai.schema import TriageVerdict
 from episignal_backend.db.types import ReviewReason
 
 
@@ -28,6 +31,9 @@ class StubRepository:
         return ()
 
     def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
+        return ()
+
+    def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]:
         return ()
 
     def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
@@ -49,6 +55,18 @@ class StubRepository:
         return None
 
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None:
+        return None
+
+    def record_triage(
+        self,
+        signal_id: UUID,
+        verdict: TriageVerdict,
+        disease_id: UUID | None,
+        at: datetime,
+    ) -> None:
+        return None
+
+    def record_triage_failure(self, signal_id: UUID) -> None:
         return None
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
