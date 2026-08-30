@@ -81,22 +81,21 @@ _Avoid_: section, field, category.
 
 **Pre-group**:
 A bounded grouping of normalized signals by query rule group, publisher
-country, and a one-to-two-day window, made before any AI call so that one
-representative speaks for the group. Not a story cluster: it uses only facts
-that exist before extraction.
+country, and a one-to-two-day window, made before any AI call. Under funnel v2, the
+entire pre-group is extracted as a single cluster using a multi-article prompt, rather
+than selecting only one representative signal for extraction.
 _Avoid_: story gate, pre-cluster, batch.
 
 **Representative**:
-The one signal in a pre-group chosen for classification and extraction,
-ranking official publishers and credibility first, then earliest sighted. The
-others wait as deferred; none of them is deleted or promoted to evidence by
-this choice.
+The member of a pre-group (always member zero) that acts as the lead signal for cluster extraction.
+If cluster extraction succeeds, the representative gets the extracted facts, and the other members are
+stored as duplicates of the representative.
 _Avoid_: primary, canonical pick.
 
 **Deferred**:
-A member of a pre-group waiting while its representative is processed.
-Deferral is membership, not a processing status; it ends when the group
-resolves or expires, and a deferred signal is never counted as corroboration.
+A member of a pre-group waiting for cluster extraction. If cluster extraction succeeds,
+deferred members are marked as duplicates of the representative. If it fails or is rejected,
+deferred members are returned to the pool while the representative falls back to single-article extraction.
 _Avoid_: skipped, dropped, queued.
 
 ### Human review
