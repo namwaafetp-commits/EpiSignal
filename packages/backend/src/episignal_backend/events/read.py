@@ -12,12 +12,15 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.models import (
     Disease,
     Event,
+    EventLocation,
     EventObservation,
     EventSignal,
     EventSummary,
+    GazetteerPlace,
     Signal,
     Source,
 )
@@ -47,6 +50,31 @@ class EventListPage:
     total: int
     limit: int
     offset: int
+
+
+@dataclass(frozen=True)
+class DashboardEventItem:
+    public_id: str
+    headline: str
+    summary: str
+    disease: str | None
+    event_type: str
+    status: str
+    country_code: str | None
+    town: str | None
+    first_reported_at: datetime | None
+    latest_report_at: datetime
+    article_count: int
+    last_summarized_at: datetime
+    latitude: float | None
+    longitude: float | None
+    map_level: str | None
+
+
+@dataclass(frozen=True)
+class DashboardEventPage:
+    items: tuple[DashboardEventItem, ...]
+    total: int
 
 
 @dataclass(frozen=True)
@@ -112,6 +140,112 @@ class EventDetail:
     sources: tuple[EventSourceItem, ...]
     observations: tuple[EventObservationItem, ...]
     summaries: tuple[EventSummaryItem, ...]
+
+
+def _dashboard_location(
+    locations: tuple[EventLocation, ...],
+    country_centroids: dict[str, tuple[float, float]],
+    country_code: str | None,
+) -> tuple[str | None, float | None, float | None, str | None]:
+    place_locations = [
+        location
+        for location in locations
+        if location.place_name and location.latitude is not None and location.longitude is not None
+    ]
+    place_locations.sort(
+        key=lambda location: (
+            location.location_role is not LocationRole.PRIMARY,
+            str(location.id),
+        )
+    )
+    if place_locations:
+        place = place_locations[0]
+        latitude = place.latitude
+        longitude = place.longitude
+        assert latitude is not None and longitude is not None
+        return place.place_name, float(latitude), float(longitude), "town"
+
+    if country_code is not None and country_code in country_centroids:
+        latitude, longitude = country_centroids[country_code]
+        return None, latitude, longitude, "country"
+
+    return None, None, None, None
+
+
+def query_dashboard_events(session: Session) -> DashboardEventPage:
+    """Return every stored event with a completed, non-empty summary."""
+    conditions = [
+        Event.summary.is_not(None),
+        func.btrim(Event.summary) != "",
+        Event.last_summarized_at.is_not(None),
+    ]
+    rows = session.execute(
+        select(Event, Disease.canonical_name)
+        .outerjoin(Disease, Disease.id == Event.disease_id)
+        .where(*conditions)
+        .order_by(Event.last_updated_at.desc(), Event.id.desc())
+    ).all()
+
+    if not rows:
+        return DashboardEventPage(items=(), total=0)
+
+    event_ids = [event.id for event, _ in rows]
+    location_rows = (
+        session.execute(
+            select(EventLocation)
+            .where(EventLocation.event_id.in_(event_ids))
+            .order_by(EventLocation.event_id, EventLocation.id)
+        )
+        .scalars()
+        .all()
+    )
+    locations_by_event: dict[UUID, list[EventLocation]] = {}
+    for location in location_rows:
+        locations_by_event.setdefault(location.event_id, []).append(location)
+
+    country_codes = {event.country_code for event, _ in rows if event.country_code is not None}
+    country_centroids: dict[str, tuple[float, float]] = {}
+    if country_codes:
+        centroid_rows = session.execute(
+            select(GazetteerPlace.country_code, GazetteerPlace.latitude, GazetteerPlace.longitude)
+            .where(
+                GazetteerPlace.country_code.in_(country_codes),
+                GazetteerPlace.precision == Precision.COUNTRY,
+                GazetteerPlace.admin1_code.is_(None),
+            )
+            .order_by(GazetteerPlace.country_code, GazetteerPlace.geonames_id)
+        ).all()
+        for code, latitude, longitude in centroid_rows:
+            country_centroids.setdefault(code, (float(latitude), float(longitude)))
+
+    items = tuple(
+        DashboardEventItem(
+            public_id=event.public_id,
+            headline=event.headline,
+            summary=event.summary,
+            disease=disease_name,
+            event_type=event.event_type.value,
+            status=event.status.value,
+            country_code=event.country_code,
+            town=location[0],
+            first_reported_at=event.first_signal_at,
+            latest_report_at=event.last_updated_at,
+            article_count=event.article_count,
+            last_summarized_at=event.last_summarized_at,
+            latitude=location[1],
+            longitude=location[2],
+            map_level=location[3],
+        )
+        for event, disease_name in rows
+        for location in (
+            _dashboard_location(
+                tuple(locations_by_event.get(event.id, [])),
+                country_centroids,
+                event.country_code,
+            ),
+        )
+    )
+    return DashboardEventPage(items=items, total=len(items))
 
 
 def query_event_list(

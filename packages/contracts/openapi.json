@@ -139,6 +139,161 @@
         "title": "CredibilityTier",
         "type": "string"
       },
+      "DashboardEventResponse": {
+        "properties": {
+          "article_count": {
+            "title": "Article Count",
+            "type": "integer"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "disease": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "first_reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reported At"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "last_summarized_at": {
+            "format": "date-time",
+            "title": "Last Summarized At",
+            "type": "string"
+          },
+          "latest_report_at": {
+            "format": "date-time",
+            "title": "Latest Report At",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "map_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Map Level"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventStatus"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "town": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Town"
+          }
+        },
+        "required": [
+          "public_id",
+          "headline",
+          "summary",
+          "disease",
+          "event_type",
+          "status",
+          "country_code",
+          "town",
+          "first_reported_at",
+          "latest_report_at",
+          "article_count",
+          "last_summarized_at",
+          "latitude",
+          "longitude",
+          "map_level"
+        ],
+        "title": "DashboardEventResponse",
+        "type": "object"
+      },
+      "DashboardEventsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardEventResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DashboardEventsResponse",
+        "type": "object"
+      },
       "DismissRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2578,6 +2733,27 @@
           }
         },
         "summary": "List Events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/events/dashboard": {
+      "get": {
+        "operationId": "dashboard_events_api_v1_events_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardEventsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard Events",
         "tags": [
           "events"
         ]

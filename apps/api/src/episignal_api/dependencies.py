@@ -118,6 +118,13 @@ def get_event_page(
         )
 
 
+def get_dashboard_events_page() -> Any:
+    from episignal_backend.events.read import query_dashboard_events
+
+    with session_scope() as session:
+        return query_dashboard_events(session)
+
+
 def get_pipeline_runs_page(
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> PipelineRunPage:
