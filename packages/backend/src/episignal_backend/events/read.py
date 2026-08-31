@@ -7,20 +7,26 @@ mutate an event, an observation, or a source link.
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from episignal_backend.db.types import Precision
+from episignal_backend.geocode.normalize import ascii_form, normalized_form
 from episignal_backend.models import (
     Disease,
     Event,
     EventObservation,
     EventSignal,
     EventSummary,
+    GazetteerPlace,
     Signal,
     Source,
 )
+
+DashboardMapLevel = Literal["admin1", "country"]
 
 
 @dataclass(frozen=True)
@@ -47,6 +53,31 @@ class EventListPage:
     total: int
     limit: int
     offset: int
+
+
+@dataclass(frozen=True)
+class DashboardEventItem:
+    public_id: str
+    headline: str
+    summary: str
+    disease: str | None
+    event_type: str
+    status: str
+    country_code: str | None
+    admin1: str | None
+    first_reported_at: datetime | None
+    latest_report_at: datetime
+    article_count: int
+    last_summarized_at: datetime
+    latitude: float | None
+    longitude: float | None
+    map_level: DashboardMapLevel | None
+
+
+@dataclass(frozen=True)
+class DashboardEventPage:
+    items: tuple[DashboardEventItem, ...]
+    total: int
 
 
 @dataclass(frozen=True)
@@ -112,6 +143,126 @@ class EventDetail:
     sources: tuple[EventSourceItem, ...]
     observations: tuple[EventObservationItem, ...]
     summaries: tuple[EventSummaryItem, ...]
+
+
+def _dashboard_location(
+    admin1: str | None,
+    country_centroids: dict[str, tuple[float, float]],
+    admin1_centroids: dict[tuple[str, str], tuple[str, float, float]],
+    country_code: str | None,
+) -> tuple[str | None, float | None, float | None, DashboardMapLevel | None]:
+    if admin1 is not None and country_code is not None:
+        centroid = admin1_centroids.get((country_code, admin1))
+        if centroid is None:
+            centroid = admin1_centroids.get((country_code, normalized_form(admin1)))
+        if centroid is None:
+            centroid = admin1_centroids.get((country_code, ascii_form(admin1)))
+        if centroid is not None:
+            resolved_name, latitude, longitude = centroid
+            return resolved_name, latitude, longitude, "admin1"
+
+    if country_code is not None and country_code in country_centroids:
+        latitude, longitude = country_centroids[country_code]
+        return admin1, latitude, longitude, "country"
+
+    return admin1, None, None, None
+
+
+def query_dashboard_events(session: Session) -> DashboardEventPage:
+    """Return every stored event with a completed, non-empty summary."""
+    conditions = [
+        Event.summary.is_not(None),
+        func.btrim(Event.summary) != "",
+        Event.last_summarized_at.is_not(None),
+    ]
+    rows = session.execute(
+        select(Event, Disease.canonical_name)
+        .outerjoin(Disease, Disease.id == Event.disease_id)
+        .where(*conditions)
+        .order_by(Event.last_updated_at.desc(), Event.id.desc())
+    ).all()
+
+    if not rows:
+        return DashboardEventPage(items=(), total=0)
+
+    country_codes = {event.country_code for event, _ in rows if event.country_code is not None}
+    admin1_centroids: dict[tuple[str, str], tuple[str, float, float]] = {}
+    if country_codes:
+        admin1_rows = session.execute(
+            select(
+                GazetteerPlace.country_code,
+                GazetteerPlace.admin1_code,
+                GazetteerPlace.name,
+                GazetteerPlace.normalized_name,
+                GazetteerPlace.ascii_name,
+                GazetteerPlace.latitude,
+                GazetteerPlace.longitude,
+            )
+            .where(
+                GazetteerPlace.country_code.in_(country_codes),
+                GazetteerPlace.precision == Precision.ADMIN1,
+                GazetteerPlace.admin1_code.is_not(None),
+            )
+            .order_by(GazetteerPlace.country_code, GazetteerPlace.geonames_id)
+        ).all()
+        for (
+            code,
+            admin1_code,
+            name,
+            normalized_name,
+            ascii_name,
+            latitude,
+            longitude,
+        ) in admin1_rows:
+            centroid = (name, float(latitude), float(longitude))
+            if admin1_code is not None:
+                admin1_centroids.setdefault((code, admin1_code), centroid)
+            admin1_centroids.setdefault((code, normalized_name), centroid)
+            admin1_centroids.setdefault((code, ascii_name), centroid)
+
+    country_centroids: dict[str, tuple[float, float]] = {}
+    if country_codes:
+        centroid_rows = session.execute(
+            select(GazetteerPlace.country_code, GazetteerPlace.latitude, GazetteerPlace.longitude)
+            .where(
+                GazetteerPlace.country_code.in_(country_codes),
+                GazetteerPlace.precision == Precision.COUNTRY,
+                GazetteerPlace.admin1_code.is_(None),
+            )
+            .order_by(GazetteerPlace.country_code, GazetteerPlace.geonames_id)
+        ).all()
+        for code, latitude, longitude in centroid_rows:
+            country_centroids.setdefault(code, (float(latitude), float(longitude)))
+
+    items = tuple(
+        DashboardEventItem(
+            public_id=event.public_id,
+            headline=event.headline,
+            summary=event.summary,
+            disease=disease_name,
+            event_type=event.event_type.value,
+            status=event.status.value,
+            country_code=event.country_code,
+            admin1=location[0],
+            first_reported_at=event.first_signal_at,
+            latest_report_at=event.last_updated_at,
+            article_count=event.article_count,
+            last_summarized_at=event.last_summarized_at,
+            latitude=location[1],
+            longitude=location[2],
+            map_level=location[3],
+        )
+        for event, disease_name in rows
+        for location in (
+            _dashboard_location(
+                event.admin1,
+                country_centroids,
+                admin1_centroids,
+                event.country_code,
+            ),
+        )
+    )
+    return DashboardEventPage(items=items, total=len(items))
 
 
 def query_event_list(

@@ -95,6 +95,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Events */
+        get: operations["dashboard_events_api_v1_events_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{public_id}": {
         parameters: {
             query?: never;
@@ -284,6 +301,51 @@ export interface components {
          * @enum {string}
          */
         CredibilityTier: "official" | "high" | "medium" | "unknown";
+        /** DashboardEventResponse */
+        DashboardEventResponse: {
+            /** Admin1 */
+            admin1: string | null;
+            /** Article Count */
+            article_count: number;
+            /** Country Code */
+            country_code: string | null;
+            /** Disease */
+            disease: string | null;
+            /** Event Type */
+            event_type: string;
+            /** First Reported At */
+            first_reported_at: string | null;
+            /** Headline */
+            headline: string;
+            /**
+             * Last Summarized At
+             * Format: date-time
+             */
+            last_summarized_at: string;
+            /**
+             * Latest Report At
+             * Format: date-time
+             */
+            latest_report_at: string;
+            /** Latitude */
+            latitude: number | null;
+            /** Longitude */
+            longitude: number | null;
+            /** Map Level */
+            map_level: ("admin1" | "country") | null;
+            /** Public Id */
+            public_id: string;
+            status: components["schemas"]["EventStatus"];
+            /** Summary */
+            summary: string;
+        };
+        /** DashboardEventsResponse */
+        DashboardEventsResponse: {
+            /** Items */
+            items: components["schemas"]["DashboardEventResponse"][];
+            /** Total */
+            total: number;
+        };
         /** DismissRequest */
         DismissRequest: {
             /**
@@ -1103,6 +1165,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_events_api_v1_events_dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardEventsResponse"];
                 };
             };
         };

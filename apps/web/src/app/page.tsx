@@ -1,11 +1,11 @@
 import { HomeShell } from "@/components/home-shell";
 import { getApiStatus } from "@/lib/api-health";
-import { getRadarFeed } from "@/lib/api-radar";
+import { getDashboardEvents } from "@/lib/api-dashboard";
 
 export default async function Home() {
-  const [apiStatus, radarFeed] = await Promise.all([
+  const [apiStatus, eventFeed] = await Promise.all([
     getApiStatus(),
-    getRadarFeed({ hours: 48, limit: 50 }),
+    getDashboardEvents(),
   ]);
-  return <HomeShell apiStatus={apiStatus} radarFeed={radarFeed} />;
+  return <HomeShell apiStatus={apiStatus} eventFeed={eventFeed} />;
 }

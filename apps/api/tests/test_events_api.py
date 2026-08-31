@@ -2,7 +2,11 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
-from episignal_api.dependencies import get_event_page, get_session
+from episignal_api.dependencies import (
+    get_dashboard_events_page,
+    get_event_page,
+    get_session,
+)
 from episignal_api.factory import create_app
 from episignal_api.routes import events as events_route
 from episignal_backend.config import Settings
@@ -12,6 +16,8 @@ from episignal_backend.db.types import (
     VerificationStatus,
 )
 from episignal_backend.events.read import (
+    DashboardEventItem,
+    DashboardEventPage,
     EventDetail,
     EventListItem,
     EventListPage,
@@ -69,6 +75,42 @@ def test_events_list_endpoint_returns_shaped_json() -> None:
     # No raw text, prompt, or patient fields leak onto the public surface.
     assert "raw_text" not in response.text
     assert "patient" not in response.text
+
+
+def test_dashboard_endpoint_returns_summarized_event_map_fields() -> None:
+    page = DashboardEventPage(
+        items=(
+            DashboardEventItem(
+                public_id=PUBLIC_ID,
+                headline="Dengue outbreak in Chiang Mai",
+                summary="Ongoing dengue outbreak in Chiang Mai.",
+                disease="Dengue",
+                event_type=EventType.OUTBREAK.value,
+                status=EventStatus.ONGOING.value,
+                country_code="TH",
+                admin1="Chiang Mai",
+                first_reported_at=NOW,
+                latest_report_at=NOW,
+                article_count=3,
+                last_summarized_at=NOW,
+                latitude=18.7883,
+                longitude=98.9853,
+                map_level="admin1",
+            ),
+        ),
+        total=1,
+    )
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_dashboard_events_page] = lambda: page
+
+    response = TestClient(app).get("/api/v1/events/dashboard")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["admin1"] == "Chiang Mai"
+    assert data["items"][0]["map_level"] == "admin1"
+    assert data["items"][0]["latitude"] == 18.7883
 
 
 def test_accepted_summary_status_is_visible_on_list_and_detail_endpoints() -> None:

@@ -4,6 +4,8 @@ from uuid import UUID
 
 from episignal_backend.db.types import EventStatus, VerificationStatus
 from episignal_backend.events.read import (
+    DashboardEventPage,
+    DashboardMapLevel,
     EventDetail,
     EventListPage,
     query_event_detail,
@@ -13,7 +15,7 @@ from episignal_backend.events.read import (
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from episignal_api.dependencies import get_event_page, get_session
+from episignal_api.dependencies import get_dashboard_events_page, get_event_page, get_session
 
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
 
@@ -44,6 +46,31 @@ class EventListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DashboardEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: str
+    headline: str
+    summary: str
+    disease: str | None
+    event_type: str
+    status: EventStatus
+    country_code: str | None
+    admin1: str | None
+    first_reported_at: datetime | None
+    latest_report_at: datetime
+    article_count: int
+    last_summarized_at: datetime
+    latitude: float | None
+    longitude: float | None
+    map_level: DashboardMapLevel | None
+
+
+class DashboardEventsResponse(BaseModel):
+    items: list[DashboardEventResponse]
+    total: int
 
 
 class EventSourceResponse(BaseModel):
@@ -122,6 +149,16 @@ def list_events(page: Annotated[EventListPage, Depends(get_event_page)]) -> Even
         total=page.total,
         limit=page.limit,
         offset=page.offset,
+    )
+
+
+@router.get("/dashboard", response_model=DashboardEventsResponse)
+def dashboard_events(
+    page: Annotated[DashboardEventPage, Depends(get_dashboard_events_page)],
+) -> DashboardEventsResponse:
+    return DashboardEventsResponse(
+        items=[DashboardEventResponse.model_validate(item) for item in page.items],
+        total=page.total,
     )
 
 
