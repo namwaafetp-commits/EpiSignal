@@ -115,22 +115,48 @@ PR: https://github.com/namwaafetp-commits/EpiSignal/pull/7
 
 Do not merge.
 
-## Recovery reconciliation attempt
+## Recovery reconciliation
 
-The recovery identity assertions passed before mutation: 131 recovery signals,
+Safety assertions passed before mutation: 131 recovery signals,
 131 recovery-created events, and 14 baseline events. Only those 131 recovery
-events' summaries, observations, locations, associations, and event rows were
-removed; the 14 baseline events were preserved. The 131 recovery signals were
-reset to `EXTRACTED`.
+event artifacts were removed; the 14 baseline events were preserved. The 131
+recovery signals were reset to `EXTRACTED`.
 
-The subsequent MATCH-only run failed with a database `OperationalError` after
-the configured connection timeout. A follow-up read-only check confirmed the
-database endpoint was unreachable at TCP level. The last verified persisted
-state is 14 total events, 17 baseline event associations/observations, 14
-baseline summaries, 131 recovery signals at `EXTRACTED`, and zero recovery
-events. Since MATCH did not complete, no recovery events were rebuilt and
-SUMMARIZE was not run. No GDELT, retrieval, dedupe, triage, extraction, or full
-pipeline run was performed.
+MATCH ran only for the recovery set in two batches:
 
-Reconciliation status: blocked by database connectivity; retry only after the
-database endpoint is available.
+- Batch 1: examined 100, attached existing 100, created 95 events.
+- Batch 2: examined 31, attached existing 31, created 30 events.
+
+All 131 recovery signals were processed. Eight recovery signals are grouped
+across two multi-signal recovery events. Zero recovery signals attached to a
+baseline event.
+
+SUMMARIZE ran only after MATCH completed. Two SUMMARIZE-only runs processed 100
+and 25 events. All 125 recovery summaries were accepted and persisted; no
+failure or unavailable result occurred. Live read-only checks observed
+per-completion persistence while the first run was still active.
+
+Final persisted verification:
+
+- Baseline events preserved: 14/14
+- Recovery signals processed: 131
+- Attached to baseline events: 0
+- Recovery signals grouped together: 8 signals across 2 events
+- New recovery events: 125
+- Total events: 139
+- Mapped: 38
+- Admin1: 21
+- Country: 17
+- Unmapped: 101
+- Summaries: 139
+- Unsummarized events: 0
+- Dashboard events: 139
+- Potential duplicate groups remaining: 2, both baseline-only; recovery-only 0
+
+GDELT run: NO
+
+Extraction rerun: NO
+
+Full pipeline run: NO
+
+Reset/requeue repeated: NO
