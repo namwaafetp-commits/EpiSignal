@@ -7,11 +7,12 @@ import type { DashboardEvent } from "../lib/api-dashboard";
 
 export interface EventMapProps {
   events: DashboardEvent[];
+  selectedId: string | null;
   onSelect: (publicId: string) => void;
 }
 
-const CARTO_POSITRON_STYLE =
-  "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+const CARTO_DARK_STYLE =
+  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
 function isMappedEvent(
   event: DashboardEvent,
@@ -38,17 +39,29 @@ function toGeoJson(events: readonly DashboardEvent[]) {
         location: event.admin1
           ? `${event.admin1}, ${event.country_code ?? "Unknown country"}`
           : (event.country_code ?? "Unknown location"),
-        map_level: event.map_level,
       },
     })),
   };
 }
 
-export function EventMap({ events, onSelect }: EventMapProps) {
+function tooltipContent(headline: string, location: string) {
+  const content = document.createElement("div");
+  content.className = "map-tooltip";
+  const title = document.createElement("strong");
+  title.textContent = headline;
+  const place = document.createElement("span");
+  place.textContent = location;
+  content.append(title, place);
+  return content;
+}
+
+export function EventMap({ events, selectedId, onSelect }: EventMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
   const onSelectRef = useRef(onSelect);
   const eventsRef = useRef(events);
+  const selectedIdRef = useRef(selectedId);
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const mappedCount = events.filter(isMappedEvent).length;
@@ -56,14 +69,15 @@ export function EventMap({ events, onSelect }: EventMapProps) {
   useEffect(() => {
     onSelectRef.current = onSelect;
     eventsRef.current = events;
-  }, [events, onSelect]);
+    selectedIdRef.current = selectedId;
+  }, [events, onSelect, selectedId]);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
     try {
       const map = new maplibregl.Map({
         container: mapContainerRef.current,
-        style: CARTO_POSITRON_STYLE,
+        style: CARTO_DARK_STYLE,
         center: [15, 5],
         zoom: 1.8,
         minZoom: 1,
@@ -81,31 +95,60 @@ export function EventMap({ events, onSelect }: EventMapProps) {
           type: "circle",
           source: "events",
           paint: {
-            "circle-radius": 7,
-            "circle-color": [
+            "circle-radius": [
               "case",
-              ["==", ["get", "map_level"], "admin1"],
-              "#d97706",
-              "#2563eb",
+              ["==", ["get", "id"], selectedIdRef.current || ""],
+              10,
+              6,
             ],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
+            "circle-color": "#41d5d0",
+            "circle-opacity": 0.92,
+            "circle-stroke-width": [
+              "case",
+              ["==", ["get", "id"], selectedIdRef.current || ""],
+              3,
+              1.5,
+            ],
+            "circle-stroke-color": "#b8fffa",
           },
         });
+
         map.on("click", "events-circles", (event) => {
           const publicId = event.features?.[0]?.properties?.id;
           if (typeof publicId === "string") onSelectRef.current(publicId);
         });
-        map.on("mouseenter", "events-circles", () => {
+        map.on("mouseenter", "events-circles", (event) => {
           map.getCanvas().style.cursor = "pointer";
+          const feature = event.features?.[0];
+          const properties = feature?.properties;
+          if (!properties || !event.lngLat) return;
+          popupRef.current?.remove();
+          popupRef.current = new maplibregl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 12,
+            className: "event-map-popup",
+          })
+            .setLngLat(event.lngLat)
+            .setDOMContent(
+              tooltipContent(
+                String(properties.headline ?? "Event"),
+                String(properties.location ?? "Location unresolved"),
+              ),
+            )
+            .addTo(map);
         });
         map.on("mouseleave", "events-circles", () => {
           map.getCanvas().style.cursor = "";
+          popupRef.current?.remove();
+          popupRef.current = null;
         });
       });
       map.on("error", () => setMapError(true));
       mapRef.current = map;
       return () => {
+        popupRef.current?.remove();
+        popupRef.current = null;
         map.remove();
         mapRef.current = null;
       };
@@ -121,24 +164,55 @@ export function EventMap({ events, onSelect }: EventMapProps) {
     source?.setData(toGeoJson(events));
   }, [events, isLoaded]);
 
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded) return;
+    const map = mapRef.current;
+    if (map.getLayer("events-circles")) {
+      map.setPaintProperty("events-circles", "circle-radius", [
+        "case",
+        ["==", ["get", "id"], selectedId || ""],
+        10,
+        6,
+      ]);
+      map.setPaintProperty("events-circles", "circle-stroke-width", [
+        "case",
+        ["==", ["get", "id"], selectedId || ""],
+        3,
+        1.5,
+      ]);
+    }
+    const selectedEvent = events.find(
+      (event) => event.public_id === selectedId,
+    );
+    if (selectedEvent && isMappedEvent(selectedEvent)) {
+      map.flyTo({
+        center: [selectedEvent.longitude, selectedEvent.latitude],
+        zoom: Math.max(map.getZoom(), 4),
+        duration: 700,
+      });
+    }
+  }, [events, isLoaded, selectedId]);
+
   return (
     <section
       role="region"
       aria-label="Epidemiological Event Map"
-      className="relative w-full h-80 sm:h-96 md:h-[450px] bg-slate-100 rounded-lg overflow-hidden border border-slate-200"
+      className="event-map"
     >
       <div className="sr-only" aria-live="polite">
         {mappedCount} of {events.length} events mapped.
       </div>
-      <div className="absolute top-2 left-2 z-10 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded text-xs font-medium text-slate-700 shadow-sm border border-slate-200">
-        {mappedCount} mapped / {events.length} events
+      <div className="map-legend">
+        <span className="map-legend__dot" aria-hidden="true" />
+        {mappedCount} mapped · {events.length} events
       </div>
       {mapError ? (
-        <div className="flex h-full items-center justify-center text-sm text-slate-500">
-          Map unavailable. All events remain accessible in the list below.
+        <div className="map-fallback">
+          Map unavailable. All events remain accessible in the recent events
+          list.
         </div>
       ) : (
-        <div ref={mapContainerRef} className="w-full h-full" />
+        <div ref={mapContainerRef} className="event-map__canvas" />
       )}
     </section>
   );
