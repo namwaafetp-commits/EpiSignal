@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     env: Literal["development", "test", "production"] = "development"
     api_host: str = Field(
         default="127.0.0.1",
+        # EPISIGNAL_API_HOST is a legacy compatibility alias; Compose routing
+        # requires EPISIGNAL_API_PUBLIC_HOST and never reads this alias.
         validation_alias=AliasChoices("EPISIGNAL_API_BIND_HOST", "EPISIGNAL_API_HOST"),
     )
     api_port: int = Field(default=8000, ge=1, le=65535)

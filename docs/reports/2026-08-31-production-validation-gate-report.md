@@ -56,8 +56,8 @@ Lint is separate from formatting: Ruff lint, ESLint, and Python lint all pass.
 - issues found: Docker Compose runtime validation unavailable because Docker is not installed locally; YAML and static contract validation pass
 
 ## 6. Environment Contract
-- API bind host variable: `EPISIGNAL_API_BIND_HOST`, default `0.0.0.0`; legacy `EPISIGNAL_API_HOST` remains accepted by Settings for compatibility
-- public API hostname variable: `EPISIGNAL_API_PUBLIC_HOST`, with old `EPISIGNAL_API_HOST` accepted only as a Compose routing fallback
+- API bind host variable: `EPISIGNAL_API_BIND_HOST`, default `0.0.0.0`; legacy `EPISIGNAL_API_HOST` remains accepted by Settings only for compatibility
+- public API hostname variable: `EPISIGNAL_API_PUBLIC_HOST`, required directly by Compose routing; `EPISIGNAL_API_HOST` is not used for routing
 - collision found: yes in the initial containerization contract; fixed by separating public routing and bind variables and wiring the bind value into API startup
 - CORS: `EPISIGNAL_CORS_ORIGINS` is the HTTPS web origin
 - frontend API URL: `NEXT_PUBLIC_EPISIGNAL_API_URL` is the HTTPS API URL baked into the web build
