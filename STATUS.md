@@ -142,6 +142,18 @@ the summary JSONB fix, event-detail regression test, and updated evidence.
 | `corepack pnpm test:pipeline` | PASS; 16 tests, 0 xfails |
 | MVP verdict | `MVP READY WITH MINOR FIXES`; see validation report |
 
+## Post-merge project state
+
+Lean MVP real-data validation: COMPLETE
+
+MVP verdict: MVP READY WITH MINOR FIXES
+
+Post-MVP follow-up only: one GDELT rule may intermittently return
+`GdeltUnavailable`, triage precision can improve later, and extraction
+benchmarking remains deferred. Model benchmarking, extraction benchmarking,
+event matching thresholds, embeddings, and GDELT query redesign are not being
+reopened.
+
 ## Other roadmap state
 
 - `D2b` is verified for the Lean MVP's LLM-judge scope; embeddings are deferred
