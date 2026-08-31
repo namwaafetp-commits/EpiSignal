@@ -11,7 +11,8 @@ import type { EventDetailResponse } from "../lib/api-events";
 import { HomeShell } from "./home-shell";
 
 const getEventDetail = vi.fn();
-vi.mock("../lib/api-events", () => ({
+vi.mock("../lib/api-events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/api-events")>()),
   getEventDetail: (...args: unknown[]) => getEventDetail(...args),
 }));
 
@@ -103,7 +104,56 @@ const detail = {
   last_summarized_at: EVENTS[0].last_summarized_at,
   early_signal_score: 0.8,
   evidence_score: 0.7,
-  sources: [],
+  sources: [
+    {
+      signal_id: "11111111-1111-1111-1111-111111111111",
+      title: "WHO AFRO cholera update",
+      source_name: "WHO AFRO",
+      url: "https://example.org/who-afro-cholera",
+      published_at: "2026-08-30T12:00:00Z",
+      first_seen_at: "2026-08-30T12:05:00Z",
+      is_official: true,
+      is_primary: true,
+      credibility_tier: "official",
+      relationship_type: "primary",
+    },
+    {
+      signal_id: "22222222-2222-2222-2222-222222222222",
+      title: "Angola health bulletin",
+      source_name: "Angola Health Ministry",
+      url: "https://example.org/angola-health",
+      published_at: "2026-08-30T11:00:00Z",
+      first_seen_at: "2026-08-30T11:05:00Z",
+      is_official: true,
+      is_primary: false,
+      credibility_tier: "official",
+      relationship_type: "corroborating",
+    },
+    {
+      signal_id: "33333333-3333-3333-3333-333333333333",
+      title: "Local cholera report",
+      source_name: "Luanda News",
+      url: "https://example.org/luanda-news",
+      published_at: null,
+      first_seen_at: "2026-08-30T10:00:00Z",
+      is_official: false,
+      is_primary: false,
+      credibility_tier: "medium",
+      relationship_type: "corroborating",
+    },
+    {
+      signal_id: "44444444-4444-4444-4444-444444444444",
+      title: "District situation report",
+      source_name: "Cacuaco District",
+      url: "https://example.org/cacuaco-report",
+      published_at: null,
+      first_seen_at: "2026-08-30T09:00:00Z",
+      is_official: false,
+      is_primary: false,
+      credibility_tier: "medium",
+      relationship_type: "corroborating",
+    },
+  ],
   observations: [],
   summaries: [
     {
@@ -170,6 +220,20 @@ describe("HomeShell", () => {
         screen.getByText("Two additional districts reported cases."),
       ).toBeInTheDocument(),
     );
+    const dialog = screen.getByRole("dialog", { name: /event details/i });
+    expect(dialog.querySelector(".event-detail-panel__summary")).toHaveClass(
+      "event-detail-panel__summary",
+    );
+    expect(
+      within(dialog).getByRole("link", { name: /WHO AFRO/ }),
+    ).toHaveAttribute("target", "_blank");
+    expect(
+      within(dialog).getByRole("link", { name: /WHO AFRO/ }),
+    ).toHaveAttribute("href", "https://example.org/who-afro-cholera");
+    expect(
+      dialog.querySelectorAll(".event-detail-panel__source-links a"),
+    ).toHaveLength(3);
+    expect(within(dialog).getByText("+1 more sources")).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Close event details" }),

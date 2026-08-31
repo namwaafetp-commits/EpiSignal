@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getEventDetail, type EventDetailResponse } from "../lib/api-events";
+import {
+  getEventDetail,
+  relativeTimeLabel,
+  type EventDetailResponse,
+} from "../lib/api-events";
 import type { DashboardEvent, DashboardFeedState } from "../lib/api-dashboard";
+import { formatCountryLocation } from "../lib/country";
 import { EventMap, type EventMapRegion } from "./event-map";
 
 export type ApiShellStatus = "loading" | "ready" | "unavailable";
@@ -93,10 +98,7 @@ function formatLabel(value: string) {
 }
 
 function eventLocation(event: DashboardEvent) {
-  if (event.admin1) {
-    return `${event.admin1}, ${event.country_code ?? "Unknown country"}`;
-  }
-  return event.country_code ?? "Location unresolved";
+  return formatCountryLocation(event.admin1, event.country_code);
 }
 
 function dateTimeLabel(value: string | null) {
@@ -109,16 +111,6 @@ function dateTimeLabel(value: string | null) {
     minute: "2-digit",
     timeZone: "UTC",
   }).format(new Date(value));
-}
-
-function relativeTimeLabel(value: string) {
-  const minutes = Math.round((Date.now() - Date.parse(value)) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.round(hours / 24);
-  return `${days} d ago`;
 }
 
 function isMapped(event: DashboardEvent) {
@@ -236,6 +228,7 @@ function EventDetailPanel({
           <span className={`status-label status-label--${event.status}`}>
             {formatLabel(event.status)}
           </span>
+          <span aria-hidden="true">·</span>
           <span>{event.disease ?? "Unknown disease"}</span>
         </div>
         <button
@@ -252,14 +245,40 @@ function EventDetailPanel({
       <p className="event-detail-panel__summary">{event.summary}</p>
       <div className="event-detail-panel__development">
         <span>Latest development</span>
-        <p>
+        <p className="line-clamp-2">
           {detailLoading
             ? "Loading latest development…"
             : (latestDevelopment ?? "No latest development recorded.")}
         </p>
       </div>
+      <div className="event-detail-panel__sources">
+        <span>Sources</span>
+        {detailLoading ? (
+          <p>Loading source links…</p>
+        ) : detail?.sources.length ? (
+          <>
+            <div className="event-detail-panel__source-links">
+              {detail.sources.slice(0, 3).map((source) => (
+                <a
+                  key={source.signal_id}
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {source.source_name} ↗
+                </a>
+              ))}
+            </div>
+            {detail.sources.length > 3 && (
+              <p>+{detail.sources.length - 3} more sources</p>
+            )}
+          </>
+        ) : (
+          <p>No source links available.</p>
+        )}
+      </div>
       <div className="event-detail-panel__footer">
-        <span>{event.article_count} sources</span>
+        <span>{detail?.sources.length ?? event.article_count} sources</span>
         <span>Updated {relativeTimeLabel(eventDate(event))}</span>
       </div>
       <Link

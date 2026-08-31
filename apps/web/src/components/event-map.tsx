@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
+import { formatCountryLocation } from "../lib/country";
 
 export type EventMapRegion =
   | ""
@@ -80,9 +81,7 @@ function toGeoJson(events: readonly DashboardEvent[]) {
       properties: {
         id: event.public_id,
         headline: event.headline,
-        location: event.admin1
-          ? `${event.admin1}, ${event.country_code ?? "Unknown country"}`
-          : (event.country_code ?? "Unknown location"),
+        location: formatCountryLocation(event.admin1, event.country_code),
       },
     })),
   };
