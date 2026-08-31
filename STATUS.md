@@ -12,7 +12,7 @@ position and evidence ledger.
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
 | Item | Real-data end-to-end surveillance validation |
-| Status | `building` |
+| Status | `verified` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [Lean MVP real-data validation design](docs/superpowers/specs/2026-08-31-real-data-mvp-validation-design.md) |
 | Plan | [Lean MVP real-data validation plan](docs/superpowers/plans/2026-08-31-real-data-mvp-validation.md) |
@@ -119,16 +119,28 @@ ledger against the superseding Lean MVP architecture:
 
 ## Task ledger — real-data end-to-end surveillance validation
 
-- [ ] Make Mistral Small 24B first for TRIAGE only, with fallback and adjacent
+- [x] Make Mistral Small 24B first for TRIAGE only, with fallback and adjacent
   purpose routing unchanged.
-- [ ] Run one bounded 2026-08-30 to 2026-08-31 UTC real-data window under the
+- [x] Run one bounded 2026-08-30 to 2026-08-31 UTC real-data window under the
   200-candidate and $1.00 AI caps.
-- [ ] Inspect real triage, extraction, event matching, observation history,
+- [x] Inspect real triage, extraction, event matching, observation history,
   summaries, provenance, and API/UI surfaces.
-- [ ] Write `docs/reports/2026-08-31-real-data-mvp-validation.md` with funnel,
+- [x] Write `docs/reports/2026-08-31-real-data-mvp-validation.md` with funnel,
   quality, cost, verdict, deviations, and no more than three blockers.
-- [ ] Run `corepack pnpm verify` and `corepack pnpm test:pipeline`; record exact
+- [x] Run `corepack pnpm verify` and `corepack pnpm test:pipeline`; record exact
   outputs and zero unexpected xfails.
+
+## Verified validation baseline
+
+The real-data validation code and report were verified on this branch. The
+verification commit is recorded in the validation report and contains the
+triage ordering change plus the event-detail read-path correction.
+
+| Fact | Value |
+| --- | --- |
+| `corepack pnpm verify` | PASS; 95 web tests, 1,196 Python tests, 0 xfails |
+| `corepack pnpm test:pipeline` | PASS; 16 tests, 0 xfails |
+| MVP verdict | `MVP BLOCKED`; see validation report |
 
 ## Other roadmap state
 
@@ -141,11 +153,11 @@ ledger against the superseding Lean MVP architecture:
 
 ## Next action
 
-**Worker:** implement and execute bounded validation on branch
-`codex/real-data-mvp-validation`. Preserve existing production thresholds,
-queries, source roster, embedding exclusion, and public surfaces.
+Validation complete on branch `codex/real-data-mvp-validation`. The MVP is
+blocked by live-data/schema/roster evidence recorded in the validation report;
+next item should address only its highest-value blocker.
 
 ## Blockers
 
-None. The known live-proof limitation is historical validation scope, not a
-blocked implementation dependency.
+MVP blockers are recorded in
+[the real-data validation report](docs/reports/2026-08-31-real-data-mvp-validation.md).

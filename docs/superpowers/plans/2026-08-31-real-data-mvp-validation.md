@@ -57,15 +57,15 @@ Run `uv run pytest packages/backend/tests/test_ai_triage.py packages/backend/tes
 - No production source changes.
 - Evidence source: database `pipeline_runs`, `signals`, `event_signals`, `event_observations`, `event_summaries`, and `ai_requests`.
 
-- [ ] **Step 1: Check prerequisites without printing secrets**
+- [x] **Step 1: Check prerequisites without printing secrets**
 
 Run `corepack pnpm db:check` and verify required provider/database configuration exists by exit status only. Record failure type, not secret values.
 
-- [ ] **Step 2: Run existing stages with fixed caps**
+- [x] **Step 2: Run existing stages with fixed caps**
 
 Use the existing scheduled pipeline runner with environment overrides for a 1,440-minute GDELT window, at most 200 articles, at most 200 AI requests, and at most `$1.00`. If the runner’s stored cursor does not represent the requested completed interval, use existing stage runners with explicit `--window-minutes 1440` and record that limitation.
 
-- [ ] **Step 3: Capture exact stage output and run identifiers**
+- [x] **Step 3: Capture exact stage output and run identifiers**
 
 Record command lines excluding secret values, stdout counts, exit codes, pipeline run ID, stage timestamps, and any failed stage. Do not rerun a successful stage solely to change counts.
 
@@ -74,19 +74,19 @@ Record command lines excluding secret values, stdout counts, exit codes, pipelin
 **Files:**
 - Evidence source: read-only database queries and existing API/UI.
 
-- [ ] **Step 1: Evaluate triage sample**
+- [x] **Step 1: Evaluate triage sample**
 
 Inspect up to 20 relevant and 20 filtered signals. Check outbreak retention, unknown illness, irrelevant categories, public-health actions, schema/repair outcomes, and obvious false negatives.
 
-- [ ] **Step 2: Evaluate extraction sample**
+- [x] **Step 2: Evaluate extraction sample**
 
 Inspect 20–30 accepted extractions when available. Check number support, explicit zero versus null, disease and geography support, event/data-as-of dates, and every numeric fact’s source span.
 
-- [ ] **Step 3: Evaluate event and observation history**
+- [x] **Step 3: Evaluate event and observation history**
 
 Inspect all ambiguous matches when small and 10–20 events when available. Check false merges/splits and at least one multi-report event for preserved prior observations, source provenance, latest state, and timestamps.
 
-- [ ] **Step 4: Evaluate summaries and API/UI**
+- [x] **Step 4: Evaluate summaries and API/UI**
 
 Inspect 10–15 summaries when available for grounded disease, geography, counts, dates, updates, uncertainty, and source IDs. Check event list, detail, sources, observations, and summary history through existing API/UI routes without redesign.
 
@@ -96,15 +96,15 @@ Inspect 10–15 summaries when available for grounded disease, geography, counts
 - Create: `docs/reports/2026-08-31-real-data-mvp-validation.md`
 - Modify: `STATUS.md` (task ticks and verified baseline)
 
-- [ ] **Step 1: Write compact report**
+- [x] **Step 1: Write compact report**
 
 Use required sections and exact verdict vocabulary: `MVP READY`, `MVP READY WITH MINOR FIXES`, or `MVP BLOCKED`. Include funnel, AI quality, event quality, observations, summaries, API/UI, cost, commands, deviations, and no more than three blockers.
 
-- [ ] **Step 2: Record provenance and limitations**
+- [x] **Step 2: Record provenance and limitations**
 
 Include database/API query time, source and event identifiers, model IDs, cost-row totals, sample sizes, and any unavailable or unsupported check. Never include credentials or article bodies beyond short source spans needed for audit.
 
-- [ ] **Step 3: Commit implementation and report**
+- [x] **Step 3: Commit implementation and report**
 
 Commit focused code/test changes and report/tracking updates on `codex/real-data-mvp-validation`; do not merge or create a PR.
 
@@ -113,18 +113,18 @@ Commit focused code/test changes and report/tracking updates on `codex/real-data
 **Files:**
 - No additional product changes after gates pass.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 Run `corepack pnpm verify`. Record exact web/Python test counts, xfails, and failures in the report and `STATUS.md`.
 
-- [ ] **Step 2: Run pipeline fixture gate**
+- [x] **Step 2: Run pipeline fixture gate**
 
 Run `corepack pnpm test:pipeline`. Record exact result and xfail count.
 
-- [ ] **Step 3: Review diff on `main` baseline**
+- [x] **Step 3: Review diff on `main` baseline**
 
 Inspect standards and spec compliance for `git diff main...HEAD`; fix only findings within task scope, then rerun affected gates.
 
-- [ ] **Step 4: Stop for review**
+- [x] **Step 4: Stop for review**
 
 Return branch and commit, state no PR/merge was made, and identify any next corrective item without implementing it.
