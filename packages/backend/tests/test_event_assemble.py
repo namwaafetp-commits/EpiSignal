@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -11,7 +10,6 @@ from episignal_backend.db.types import (
     LocationRole,
     Precision,
     RelationshipType,
-    ReviewReason,
     SignalType,
     VerificationStatus,
 )
@@ -38,16 +36,11 @@ class FakeAssemblyRepository:
         self.added_locations: list[tuple[UUID, LocationForMatching]] = []
         self.applied_scores: dict[UUID, tuple[float, float, VerificationStatus]] = {}
         self.matched_signal_ids: set[UUID] = set()
-        self.review_calls: list[tuple[UUID, ReviewReason, dict[UUID, float]]] = []
         self.latest_briefs: dict[UUID, tuple[BriefPoint, ...]] = {}
         self.applied_deltas: list[tuple[UUID, UUID, dict]] = []
         self.ai_requests: list[AiRequestRecord] = []
         self.committed = False
         self.rolled_back = False
-
-    @property
-    def needs_review_signal_ids(self) -> set[UUID]:
-        return {call[0] for call in self.review_calls}
 
     def signals_to_match(self, limit: int, *, stale: bool = False) -> list[SignalForMatching]:
         return self._signals[:limit]
@@ -67,7 +60,6 @@ class FakeAssemblyRepository:
         return ()
 
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
-        assert cluster.disease_id is not None
         rep_loc = cluster.representative_location
         locs = (rep_loc,) if rep_loc is not None else ()
         cand = CandidateEvent(
@@ -115,15 +107,6 @@ class FakeAssemblyRepository:
 
     def mark_matched(self, signal_id: UUID) -> None:
         self.matched_signal_ids.add(signal_id)
-
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
-    ) -> None:
-        self.review_calls.append((signal_id, reason, dict(candidate_scores or {})))
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:
         return self.latest_briefs.get(event_id)
@@ -177,9 +160,10 @@ def test_empty_input_returns_zero_counts() -> None:
     assert repo.committed is True
 
 
-def test_unclusterable_signal_routes_to_needs_review() -> None:
+def test_unclusterable_signal_creates_an_unknown_disease_event() -> None:
     now = datetime.now(UTC)
-    # Signal with no disease -> unclusterable
+    # Signal with no disease cannot be clustered, but the Lean MVP still
+    # preserves it as an event instead of opening a human-review case.
     sig_no_disease = _make_signal(disease_id=None, published_at=now)
 
     repo = FakeAssemblyRepository([sig_no_disease])
@@ -187,7 +171,8 @@ def test_unclusterable_signal_routes_to_needs_review() -> None:
 
     assert summary.signals_seen == 1
     assert summary.unclusterable == 1
-    assert sig_no_disease.signal_id in repo.needs_review_signal_ids
+    assert summary.events_created == 1
+    assert repo.created_events[0].disease_id is None
     assert repo.committed is True
 
 
@@ -275,7 +260,7 @@ def test_attach_decision_updates_existing_event_and_recomputes_scores() -> None:
     assert repo.committed is True
 
 
-def test_similarity_is_wired_lazily_and_every_candidate_decision_is_logged(caplog) -> None:
+def test_candidate_decisions_are_logged_without_similarity_or_judge(caplog) -> None:
     now = datetime.now(UTC)
     disease_id = uuid4()
     chiang_mai = LocationForMatching(
@@ -333,17 +318,16 @@ def test_similarity_is_wired_lazily_and_every_candidate_decision_is_logged(caplo
 
     summary = run_event_assembly(repository, match_threshold=0.90)
 
-    assert summary.events_created == 0
-    assert repository.attached_signals[0][0] == matching_event.event_id
-    assert "matched event" in caplog.text
-    assert "similarity=1.0" in caplog.text
+    assert summary.events_created == 1
+    assert repository.attached_signals[0][0] == repository.created_events[0].event_id
+    assert "created event" in caplog.text
+    assert "similarity=" not in caplog.text
     assert "reason=conflicting_admin1" in caplog.text
-    assert (
-        f"event_id={conflicting_event.event_id} similarity=None score=0.0 reason=conflicting_admin1"
-    ) in caplog.text
+    assert f"event_id={matching_event.event_id}" in caplog.text
+    assert f"event_id={conflicting_event.event_id}" in caplog.text
 
 
-def test_refusal_routes_signals_to_needs_review() -> None:
+def test_refusal_creates_a_new_event_without_human_review() -> None:
     now = datetime.now(UTC)
     disease_id = uuid4()
     loc = LocationForMatching(
@@ -378,10 +362,10 @@ def test_refusal_routes_signals_to_needs_review() -> None:
     summary = run_event_assembly(repo)
 
     assert summary.signals_seen == 1
-    assert summary.signals_refused == 1
-    assert summary.events_created == 0
-    assert summary.signals_attached == 0
-    assert sig.signal_id in repo.needs_review_signal_ids
+    assert summary.signals_refused == 0
+    assert summary.events_created == 1
+    assert summary.signals_attached == 1
+    assert repo.created_events
     assert repo.committed is True
 
 

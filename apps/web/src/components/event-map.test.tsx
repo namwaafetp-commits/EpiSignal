@@ -25,11 +25,7 @@ vi.mock("maplibre-gl", () => {
 
     addControl() {}
 
-    on(
-      event: string,
-      layerOrHandler: unknown,
-      maybeHandler?: unknown,
-    ) {
+    on(event: string, layerOrHandler: unknown, maybeHandler?: unknown) {
       const handler = maybeHandler ?? layerOrHandler;
       if (typeof handler === "function") {
         this.handlers.set(event, handler as (event?: unknown) => void);
@@ -77,11 +73,7 @@ vi.mock("maplibre-gl", () => {
   };
 });
 
-import {
-  EventMap,
-  REGION_BOUNDS,
-  type EventMapRegion,
-} from "./event-map";
+import { EventMap, REGION_BOUNDS, type EventMapRegion } from "./event-map";
 
 const events: DashboardEvent[] = [];
 

@@ -154,7 +154,7 @@ def test_awaiting_triage_returns_source_metadata_and_uses_the_blocking_filters()
     rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
     assert ProcessingStatus.NORMALIZED.value in rendered
     assert TriageStatus.PENDING.value in rendered
-    assert "story_group_members" in rendered
+    assert "signals.raw_text IS NOT NULL" in rendered
 
 
 def test_recording_irrelevant_triage_filters_without_deleting_the_signal() -> None:
@@ -217,7 +217,7 @@ def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> Non
     assert "story_group_members" in rendered.split("WHERE")[1]
 
 
-def test_normalized_and_legacy_classified_signals_are_both_extractable() -> None:
+def test_only_relevant_triaged_signals_are_extractable() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -225,13 +225,12 @@ def test_normalized_and_legacy_classified_signals_are_both_extractable() -> None
     where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
         "WHERE"
     )[1]
-    # Both, or the rows the retired relevance pass decided are stranded outside
-    # the funnel with nothing left to move them.
     assert ProcessingStatus.NORMALIZED.value in where_part
-    assert ProcessingStatus.CLASSIFIED.value in where_part
+    assert TriageStatus.DONE.value in where_part
+    assert "public_health_relevant IS true" in where_part
 
 
-def test_a_signal_a_model_called_irrelevant_is_not_extractable() -> None:
+def test_an_irrelevant_triaged_signal_is_not_extractable() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -239,10 +238,10 @@ def test_a_signal_a_model_called_irrelevant_is_not_extractable() -> None:
     where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
         "WHERE"
     )[1]
-    assert "public_health_relevant IS NOT false" in where_part
+    assert "public_health_relevant IS true" in where_part
 
 
-def test_a_deferred_member_of_an_open_group_is_not_extracted_alone() -> None:
+def test_an_extracted_signal_does_not_require_story_group_membership() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -250,7 +249,8 @@ def test_a_deferred_member_of_an_open_group_is_not_extracted_alone() -> None:
     where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
         "WHERE"
     )[1]
-    assert "story_group_members" in where_part
+    assert ProcessingStatus.NORMALIZED.value in where_part
+    assert TriageStatus.DONE.value in where_part
 
 
 def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:

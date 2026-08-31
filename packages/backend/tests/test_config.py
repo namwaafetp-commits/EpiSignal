@@ -272,7 +272,7 @@ def test_event_matching_defaults_are_set() -> None:
     settings = build_settings()
     assert settings.event_cluster_window_days == 7
     assert settings.event_cluster_distance_km == 50.0
-    assert settings.event_match_threshold == 0.75
+    assert settings.event_match_threshold == 0.60
     assert settings.event_match_recency_days == 90.0
     assert settings.event_match_distance_km == 50.0
     assert settings.event_match_batch_size == 100

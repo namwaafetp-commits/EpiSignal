@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
@@ -15,7 +15,7 @@ from episignal_backend.ai.documents import (
 )
 from episignal_backend.ai.extract import ExtractionResult, run_backfill, run_extraction
 from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.db.types import AiOutcome, AiPurpose, ReviewReason
+from episignal_backend.db.types import AiOutcome, AiPurpose
 from test_ai_classify import (
     NOW,
     FakeRepository,
@@ -136,13 +136,7 @@ class BackfillRepository(ExtractRepository):
         self.asked_for_backfill = True
         return self._stale[:limit]
 
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
-    ) -> None:
+    def record_extraction_failure(self, signal_id: UUID) -> None:
         raise AssertionError("a rejected re-extraction must leave the row where it is")
 
 
@@ -215,20 +209,15 @@ def test_an_unknown_disease_leaves_the_link_empty_rather_than_guessing() -> None
     assert repository.stored[FIRST].disease_id is None
 
 
-def test_a_vocabulary_miss_asks_the_smartest_rung_and_stores_its_answer() -> None:
+def test_a_vocabulary_miss_leaves_the_disease_unlinked() -> None:
     repository = ExtractRepository((english(),), candidates=CANDIDATES)
-    model = ScriptedModel([GOOD, json.dumps({"slug": "cholera"})])
+    model = ScriptedModel([GOOD])
 
     run(repository, model)
 
-    assert repository.stored[FIRST].disease_id == CHOLERA
-    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
-    classification = [
-        record for record in repository.requests if record.purpose is AiPurpose.CLASSIFICATION
-    ]
-    assert len(classification) == 1
-    assert classification[0].signal_id == FIRST
-    assert classification[0].batch_size == 1
+    assert repository.stored[FIRST].disease_id is None
+    assert model.asked == ["vendor2/model:free"]
+    assert all(record.purpose is AiPurpose.EXTRACTION for record in repository.requests)
 
 
 def test_a_second_pass_null_keeps_the_disease_unlinked() -> None:
@@ -238,7 +227,7 @@ def test_a_second_pass_null_keeps_the_disease_unlinked() -> None:
     run(repository, model)
 
     assert repository.stored[FIRST].disease_id is None
-    assert repository.reviewed == []
+    assert repository.rejected == []
 
 
 def test_a_failing_second_pass_still_stores_the_extraction() -> None:
@@ -275,12 +264,12 @@ def test_an_ungrounded_answer_escalates_and_the_signal_is_not_written() -> None:
     assert repository.stored[FIRST].extraction.epidemiology.deaths.value == 14
 
 
-def test_an_ungrounded_answer_at_every_tier_sends_one_signal_for_review() -> None:
+def test_an_ungrounded_answer_at_every_tier_reports_one_signal_rejected() -> None:
     repository = ExtractRepository((english(),))
 
     result = run(repository, ScriptedModel([UNGROUNDED, UNGROUNDED, UNGROUNDED]))
 
-    assert repository.reviewed == [FIRST]
+    assert repository.rejected == [FIRST]
     assert repository.stored == {}
     assert result.reviewed == 1
 
@@ -307,7 +296,7 @@ def test_an_unreachable_provider_leaves_the_signal_selectable() -> None:
 
     run(repository, model)
 
-    assert repository.reviewed == []
+    assert repository.rejected == []
     assert repository.stored == {}
 
 
@@ -325,7 +314,7 @@ def test_each_extraction_cost_row_names_its_single_signal() -> None:
     assert all(record.batch_size == 1 for record in repository.requests)
 
 
-def test_one_failing_signal_does_not_stop_the_rest_of_the_queue() -> None:
+def test_one_rejected_signal_does_not_stop_the_rest_of_the_queue() -> None:
     repository = ExtractRepository((english(), french()))
     model = ScriptedModel([UNGROUNDED, UNGROUNDED, UNGROUNDED, FRENCH_ANSWER])
 
@@ -375,7 +364,7 @@ def test_a_rejected_re_extraction_leaves_the_row_exactly_where_it_was() -> None:
     assert FIRST not in repository.stored
 
 
-def test_a_rejected_first_extraction_still_goes_to_review() -> None:
+def test_a_rejected_first_extraction_is_reported_as_reviewed() -> None:
     signal = ExtractableSignal(id=SECOND, title="Cholera in Luanda", raw_text=BODY)
     repository = ExtractRepository([signal])
     model = ScriptedModel([UNGROUNDED, UNGROUNDED, UNGROUNDED])

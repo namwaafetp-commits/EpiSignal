@@ -148,6 +148,13 @@ Lean MVP real-data validation: COMPLETE
 
 MVP verdict: MVP READY WITH MINOR FIXES
 
+## Verified baseline — Lean MVP branch reconciliation
+
+The branch baseline reconciliation was verified at commit `ad26140` with
+`corepack pnpm verify`: 1,222 Python tests and 105 frontend tests passed, with
+two existing dependency deprecation warnings. The completion report is
+[the Lean MVP test reconciliation report](docs/reports/2026-08-31-lean-mvp-test-reconciliation-report.md).
+
 Post-MVP follow-up only: one GDELT rule may intermittently return
 `GdeltUnavailable`, triage precision can improve later, and extraction
 benchmarking remains deferred. Model benchmarking, extraction benchmarking,

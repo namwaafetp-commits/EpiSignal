@@ -80,8 +80,10 @@ def _country_aliases() -> Mapping[str, str]:
 
 
 def _resolve_country(value: str | None) -> str | None:
-    return _country_code(value) or resolve_country(value, _country_aliases()) or (
-        gdelt_country_code(value) if value is not None else None
+    return (
+        _country_code(value)
+        or resolve_country(value, _country_aliases())
+        or (gdelt_country_code(value) if value is not None else None)
     )
 
 

@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -10,15 +10,13 @@ from episignal_backend.ai.documents import (
     ChatRequest,
     ChatResponse,
     ClassifiableSignal,
-    ExtractableSignal,
     ModelSpec,
-    StoredExtraction,
     TokenUsage,
     Verdict,
 )
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.db.types import AiOutcome, ReviewReason
+from episignal_backend.db.types import AiOutcome
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
@@ -41,12 +39,8 @@ class FakeRepository:
         self._pending = tuple(pending)
         self.requests: list[AiRequestRecord] = []
         self.verdicts: dict[UUID, Verdict] = {}
-        self.review_calls: list[tuple[UUID, ReviewReason, dict[UUID, float]]] = []
+        self.rejected: list[UUID] = []
         self.commits = 0
-
-    @property
-    def reviewed(self) -> list[UUID]:
-        return [call[0] for call in self.review_calls]
 
     def models(self) -> Sequence[ModelSpec]:
         return (spec(1), spec(2), spec(3))
@@ -54,29 +48,14 @@ class FakeRepository:
     def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
         return self._pending[:limit]
 
-    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
-        return ()
-
-    def resolve_disease(self, name: str) -> UUID | None:
-        return None
-
     def record_request(self, record: AiRequestRecord) -> None:
         self.requests.append(record)
 
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None:
         self.verdicts[signal_id] = verdict
 
-    def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
-        raise AssertionError("the classification pass must not write an extraction")
-
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
-    ) -> None:
-        self.review_calls.append((signal_id, reason, dict(candidate_scores or {})))
+    def record_extraction_failure(self, signal_id: UUID) -> None:
+        self.rejected.append(signal_id)
 
     def commit(self) -> None:
         self.commits += 1
@@ -155,7 +134,7 @@ def test_an_id_that_was_never_sent_escalates_the_whole_batch() -> None:
     assert repository.verdicts[FIRST].is_public_health_relevant is True
 
 
-def test_rejection_at_every_tier_sends_the_whole_batch_for_review() -> None:
+def test_rejection_at_every_tier_marks_the_whole_batch_failed() -> None:
     repository = FakeRepository((signal(FIRST, "a"), signal(SECOND, "b")))
     model = ScriptedModel(["nonsense", "nonsense", "nonsense"])
 
@@ -163,7 +142,7 @@ def test_rejection_at_every_tier_sends_the_whole_batch_for_review() -> None:
         repository, model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW
     )
 
-    assert sorted(repository.reviewed) == sorted([FIRST, SECOND])
+    assert sorted(repository.rejected) == sorted([FIRST, SECOND])
     assert result.reviewed == 2
 
 
@@ -178,7 +157,7 @@ def test_an_unreachable_provider_leaves_the_signals_untouched() -> None:
     )
 
     assert repository.verdicts == {}
-    assert repository.reviewed == []
+    assert repository.rejected == []
 
 
 def test_every_attempt_writes_a_cost_row_naming_the_batch_size() -> None:

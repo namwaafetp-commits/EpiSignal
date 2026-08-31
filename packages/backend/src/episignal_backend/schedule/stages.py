@@ -297,7 +297,7 @@ def _summarize() -> Mapping[str, int]:
             spec = wiring.spec
 
             def summarize_one(
-                item: tuple[EventForSummary, tuple[SummarySource, ...]]
+                item: tuple[EventForSummary, tuple[SummarySource, ...]],
             ) -> SummaryResult:
                 event, sources = item
                 return run_summary(model, spec, event=event, sources=sources)

@@ -3,17 +3,14 @@ from episignal_backend.schedule.chains import CHAINS, DAILY_CHAIN, chain_for
 from episignal_backend.schedule.documents import StageName
 
 
-def test_triage_runs_after_dedupe_and_before_grouping() -> None:
+def test_daily_chain_contains_only_the_lean_mvp_runtime_stages() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
-        StageName.INGEST_ECDC,
         StageName.DISCOVER,
         StageName.RETRIEVE,
         StageName.DEDUPE,
         StageName.TRIAGE,
-        StageName.PREGROUP,
         StageName.EXTRACT,
-        StageName.GEOCODE,
         StageName.MATCH,
         StageName.SUMMARIZE,
     )
@@ -29,14 +26,27 @@ def test_retrieval_precedes_dedupe() -> None:
     assert DAILY_CHAIN.index(StageName.RETRIEVE) < DAILY_CHAIN.index(StageName.DEDUPE)
 
 
-def test_grouping_precedes_extraction() -> None:
-    assert DAILY_CHAIN.index(StageName.PREGROUP) < DAILY_CHAIN.index(StageName.EXTRACT)
+def test_the_runtime_does_not_schedule_retired_stages() -> None:
+    assert not set(DAILY_CHAIN) & {
+        StageName.INGEST_ECDC,
+        StageName.PREGROUP,
+        StageName.GEOCODE,
+        StageName.EMBED,
+    }
 
 
 def test_every_stage_appears_exactly_once() -> None:
     assert len(set(DAILY_CHAIN)) == len(DAILY_CHAIN)
-    assert set(DAILY_CHAIN) == set(StageName) - {StageName.EMBED}
-    assert StageName.EMBED not in DAILY_CHAIN
+    assert set(DAILY_CHAIN) == {
+        StageName.INGEST_WHO,
+        StageName.DISCOVER,
+        StageName.RETRIEVE,
+        StageName.DEDUPE,
+        StageName.TRIAGE,
+        StageName.EXTRACT,
+        StageName.MATCH,
+        StageName.SUMMARIZE,
+    }
 
 
 def test_a_chain_is_looked_up_by_name() -> None:

@@ -280,7 +280,7 @@ def _ambiguous_scenario() -> tuple[StoryCluster, CandidateEvent]:
     return cluster, candidate
 
 
-def test_an_ambiguous_match_attaches_when_the_judge_says_same_event() -> None:
+def test_an_ambiguous_match_creates_an_event_without_a_judge() -> None:
     now = datetime.now(UTC)
     disease_id = uuid4()
     loc = LocationForMatching(
@@ -298,52 +298,38 @@ def test_an_ambiguous_match_attaches_when_the_judge_says_same_event() -> None:
 
     from episignal_backend.events.assemble import run_event_assembly
 
-    summary = run_event_assembly(
-        repo,
-        now=now,
-        match_threshold=0.95,
-        review_threshold=0.4,
-        judge_model=FakeJudgeModel(_SAME_EVENT),
-        judge_spec=_judge_spec(),
-    )
-
-    assert summary.events_created == 0
-    assert summary.signals_attached == 1
-    assert summary.ambiguous_judged == 1
-    assert summary.ambiguous_attached == 1
-    assert repo.attached_signals[0][0] == candidate.event_id
-    assert any(req.purpose is AiPurpose.EVENT_MATCH_JUDGE for req in repo.ai_requests)
-
-
-def test_an_ambiguous_match_creates_a_new_event_when_the_judge_disagrees() -> None:
-    now = datetime.now(UTC)
-    disease_id = uuid4()
-    loc = LocationForMatching(
-        location_role=LocationRole.PRIMARY,
-        precision=Precision.PLACE,
-        country_code="TH",
-        admin1="Chiang Mai",
-        place_name="Chiang Mai",
-        latitude=18.79,
-        longitude=98.98,
-    )
-    candidate = _country_candidate(disease_id, title="Dengue outbreak in Thailand")
-    sig = _make_signal(disease_id=disease_id, loc=loc, published_at=now)
-    repo = FakeAssemblyRepository([sig], {disease_id: [candidate]})
-
-    from episignal_backend.events.assemble import run_event_assembly
-
-    summary = run_event_assembly(
-        repo,
-        now=now,
-        match_threshold=0.95,
-        review_threshold=0.4,
-        judge_model=FakeJudgeModel(_DIFFERENT_EVENT),
-        judge_spec=_judge_spec(),
-    )
+    summary = run_event_assembly(repo, now=now, match_threshold=0.95, review_threshold=0.4)
 
     assert summary.events_created == 1
-    assert summary.ambiguous_judged == 1
+    assert summary.signals_attached == 1
+    assert summary.ambiguous_judged == 0
+    assert summary.ambiguous_attached == 0
+    assert repo.attached_signals[0][0] == repo.created_events[0].event_id
+    assert not any(req.purpose is AiPurpose.EVENT_MATCH_JUDGE for req in repo.ai_requests)
+
+
+def test_an_ambiguous_match_creates_a_new_event_without_a_judge_answer() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    loc = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        admin1="Chiang Mai",
+        place_name="Chiang Mai",
+        latitude=18.79,
+        longitude=98.98,
+    )
+    candidate = _country_candidate(disease_id, title="Dengue outbreak in Thailand")
+    sig = _make_signal(disease_id=disease_id, loc=loc, published_at=now)
+    repo = FakeAssemblyRepository([sig], {disease_id: [candidate]})
+
+    from episignal_backend.events.assemble import run_event_assembly
+
+    summary = run_event_assembly(repo, now=now, match_threshold=0.95, review_threshold=0.4)
+
+    assert summary.events_created == 1
+    assert summary.ambiguous_judged == 0
     assert summary.ambiguous_attached == 0
     assert repo.created_events
     assert repo.attached_signals[0][0] == repo.created_events[0].event_id
@@ -367,14 +353,7 @@ def test_an_ambiguous_match_without_a_judge_prefers_a_new_event() -> None:
 
     from episignal_backend.events.assemble import run_event_assembly
 
-    summary = run_event_assembly(
-        repo,
-        now=now,
-        match_threshold=0.95,
-        review_threshold=0.4,
-        judge_model=None,
-        judge_spec=None,
-    )
+    summary = run_event_assembly(repo, now=now, match_threshold=0.95, review_threshold=0.4)
 
     assert summary.events_created == 1
     assert summary.ambiguous_judged == 0
@@ -398,14 +377,7 @@ def test_an_unavailable_judge_prefers_a_new_event() -> None:
 
     from episignal_backend.events.assemble import run_event_assembly
 
-    summary = run_event_assembly(
-        repo,
-        now=now,
-        match_threshold=0.95,
-        review_threshold=0.4,
-        judge_model=FakeJudgeModel(refuse=True),
-        judge_spec=_judge_spec(),
-    )
+    summary = run_event_assembly(repo, now=now, match_threshold=0.95, review_threshold=0.4)
 
     assert summary.events_created == 1
-    assert summary.ambiguous_judged == 1
+    assert summary.ambiguous_judged == 0

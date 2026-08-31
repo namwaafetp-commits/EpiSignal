@@ -153,7 +153,7 @@ def test_it_satisfies_the_event_repository_boundary() -> None:
     assert isinstance(repo, EventRepository)
 
 
-def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
+def test_signals_to_match_uses_direct_extraction_metadata_without_geocoding() -> None:
     sig_id = uuid4()
     disease_id = uuid4()
     src_id = uuid4()
@@ -181,15 +181,7 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
             "confidence": 0.95,
         },
     )
-    fake_loc = FakeLocation(signal_id=sig_id)
-
-    # First execute is signals select, second execute is locations select
-    session = FakeSession(
-        [
-            FakeResult([(fake_sig, True, CredibilityTier.OFFICIAL)]),
-            FakeResult([fake_loc]),
-        ]
-    )
+    session = FakeSession([FakeResult([(fake_sig, True, CredibilityTier.OFFICIAL)])])
 
     repo = SqlAlchemyEventRepository(session)
     signals = repo.signals_to_match(limit=10, stale=False)
@@ -200,11 +192,10 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
     assert sig.disease_id == disease_id
     assert sig.source_is_official is True
     assert sig.credibility_tier == CredibilityTier.OFFICIAL
-    assert len(sig.locations) == 1
-    assert sig.locations[0].place_name == "Beni"
+    assert sig.locations == ()
     assert sig.extraction is not None
     assert sig.extraction.signal_type == SignalType.OUTBREAK_REPORT
-    assert sig.embedding == (1.0, 0.0)
+    assert sig.embedding is None
 
     # Assert executed statement checked processing_status
     stmt_str = str(session.executed[0])
@@ -255,13 +246,13 @@ class FakeEventLocation:
         self.longitude = longitude
 
 
-def test_candidate_events_spatial_narrowing_rule() -> None:
+def test_candidate_events_filters_by_country_without_geospatial_sql() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
     now = datetime.now(UTC)
 
-    # 1. Place precision -> ST_DWithin used in SQL
+    # Place precision does not invoke retired geospatial narrowing.
     loc_place = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -287,11 +278,9 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
 
     ev_id = uuid4()
     fake_ev = FakeEvent(ev_id, disease_id, now, now)
-    fake_ev_loc = FakeEventLocation(ev_id)
     session_place = FakeSession(
         [
             FakeResult([fake_ev]),
-            FakeResult([fake_ev_loc]),
         ]
     )
 
@@ -302,9 +291,9 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     assert cands_place[0].event_id == ev_id
     assert len(cands_place[0].locations) == 1
     sql_place = str(session_place.executed[0]).lower()
-    assert "st_dwithin" in sql_place
+    assert "st_dwithin" not in sql_place
 
-    # 2. Admin1 precision -> country_code equality used, ST_DWithin NOT used
+    # Admin1 precision uses the same country-level query.
     loc_admin1 = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.ADMIN1,
@@ -331,7 +320,6 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     session_admin1 = FakeSession(
         [
             FakeResult([fake_ev]),
-            FakeResult([fake_ev_loc]),
         ]
     )
     repo_admin1 = SqlAlchemyEventRepository(session_admin1)
@@ -357,27 +345,30 @@ def test_candidates_are_bounded_by_lookback_and_limit() -> None:
                 credibility_tier=CredibilityTier.OFFICIAL,
                 published_at=now,
                 first_seen_at=now,
-                locations=(),
+                locations=(
+                    LocationForMatching(
+                        location_role=LocationRole.PRIMARY,
+                        precision=Precision.COUNTRY,
+                        country_code="CD",
+                    ),
+                ),
             ),
         )
     )
     session = FakeSession([FakeResult([])])
-    before = datetime.now(UTC)
 
     SqlAlchemyEventRepository(session).candidate_events(cluster, lookback_days=7, limit=20)
 
-    after = datetime.now(UTC)
     statement = session.executed[0]
     parameters = statement.compile().params.values()
     cutoffs = [value for value in parameters if isinstance(value, datetime)]
     assert len(cutoffs) == 1
-    assert before - timedelta(days=7, seconds=1) <= cutoffs[0]
-    assert cutoffs[0] <= after - timedelta(days=7)
+    assert cutoffs[0] <= datetime.now(UTC) - timedelta(days=7)
     assert statement._limit_clause.value == 20
     assert "events.last_updated_at desc" in str(statement).lower()
 
 
-def test_a_different_disease_is_never_a_candidate() -> None:
+def test_candidate_query_is_constrained_to_the_cluster_disease() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
@@ -392,7 +383,13 @@ def test_a_different_disease_is_never_a_candidate() -> None:
                 credibility_tier=CredibilityTier.OFFICIAL,
                 published_at=now,
                 first_seen_at=now,
-                locations=(),
+                locations=(
+                    LocationForMatching(
+                        location_role=LocationRole.PRIMARY,
+                        precision=Precision.COUNTRY,
+                        country_code="CD",
+                    ),
+                ),
             ),
         )
     )
@@ -400,11 +397,10 @@ def test_a_different_disease_is_never_a_candidate() -> None:
 
     SqlAlchemyEventRepository(session).candidate_events(cluster, lookback_days=7, limit=20)
 
-    parameters = session.executed[0].compile().params.values()
-    assert disease_id in parameters
+    assert disease_id in session.executed[0].compile().params.values()
 
 
-def test_a_cluster_without_geography_still_gets_candidates() -> None:
+def test_a_cluster_without_geography_has_no_candidates() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
@@ -430,10 +426,11 @@ def test_a_cluster_without_geography_still_gets_candidates() -> None:
         cluster, lookback_days=7, limit=20
     )
 
-    assert [candidate.event_id for candidate in candidates] == [event.id]
+    assert candidates == ()
+    assert session.executed == []
 
 
-def test_candidate_events_map_the_primary_signal_embedding() -> None:
+def test_candidate_events_do_not_load_embeddings() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
@@ -462,17 +459,11 @@ def test_candidate_events_map_the_primary_signal_embedding() -> None:
         )
     )
     event = FakeEvent(uuid4(), disease_id, now, now)
-    session = FakeSession(
-        [
-            FakeResult([event]),
-            FakeResult([FakeEventLocation(event.id)]),
-            FakeResult([(event.id, [0.0, 1.0])]),
-        ]
-    )
+    session = FakeSession([FakeResult([event])])
 
     candidates = SqlAlchemyEventRepository(session).candidate_events(cluster)
 
-    assert candidates[0].representative_embedding == (0.0, 1.0)
+    assert candidates[0].representative_embedding is None
 
 
 def test_create_event_inserts_event_row_and_returns_candidate() -> None:
@@ -778,18 +769,7 @@ def test_an_unreadable_extraction_is_absence_rather_than_an_exception() -> None:
     assert read_stored_extraction({"signal_type": "not_a_type"}) is None
 
 
-def test_open_review_updates_signal_and_persists_review_case() -> None:
-    from episignal_backend.db.types import ReviewReason, ReviewStatus
-    from episignal_backend.models.review import SignalReviewCase
+def test_event_repository_has_no_human_review_write_path() -> None:
+    repo = SqlAlchemyEventRepository(FakeSession())
 
-    sig_id = uuid4()
-    session = FakeSession(results=[FakeResult(None)])
-    repo = SqlAlchemyEventRepository(session)
-    repo.open_review(sig_id, reason=ReviewReason.EVENT_MATCH_AMBIGUOUS)
-
-    assert len(session.executed) == 2  # update signal, select existing case
-    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
-    assert len(cases) == 1
-    assert cases[0].signal_id == sig_id
-    assert cases[0].reason is ReviewReason.EVENT_MATCH_AMBIGUOUS
-    assert cases[0].status is ReviewStatus.OPEN
+    assert not hasattr(repo, "open_review")

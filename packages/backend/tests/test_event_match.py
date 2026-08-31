@@ -145,7 +145,7 @@ def test_match_score_country_precision_only_cannot_reach_accept_threshold():
     assert 0.0 < score <= 0.65
 
 
-def test_same_disease_same_country_without_admin1_is_ambiguous_not_attached():
+def test_same_disease_same_country_can_attach_at_the_lean_mvp_threshold():
     now = datetime.now(UTC)
     disease_id = uuid4()
     country = LocationForMatching(
@@ -167,12 +167,10 @@ def test_same_disease_same_country_without_admin1_is_ambiguous_not_attached():
     decision = decide(
         cluster,
         [candidate],
-        threshold=0.75,
-        review_threshold=0.55,
-        similarity_for=lambda _cluster, _candidate: 1.0,
+        threshold=0.60,
     )
 
-    assert decision.action is MatchAction.AMBIGUOUS
+    assert decision.action is MatchAction.ATTACH
     assert decision.event_id == candidate.event_id
 
 
