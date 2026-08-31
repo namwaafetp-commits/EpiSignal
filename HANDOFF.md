@@ -1,71 +1,57 @@
-# Handoff — Item F: Model benchmarking harness
+# Handoff — Next MVP priority: real-data end-to-end surveillance validation
 
 **Date:** 2026-08-30
-**Item:** `F` — Model benchmarking harness
-**State:** `not-started`; no F-specific design spec or implementation plan is
-committed.
-**Role:** planner first, then implementation worker after the design and plan
-are approved.
+**State:** next implementation item after F Lite; do not start in the F Lite
+task.
 
 ## Objective
 
-Build a reproducible harness that stores comparable acceptance rate,
-cost-per-accepted result, grounding rate, and five-slot brief quality by model
-and purpose, so free-model selection is backed by measurements rather than
-impressions.
+Run the complete EpiSignal surveillance pipeline on real incoming data and
+evaluate the real signals, events, observations, and summaries it produces.
 
 ## Why this is next
 
-The Lean MVP now has purpose-scoped provider seams, structured validators,
-grounding checks, the AI cost ledger, an ambiguous-event judge, and an event
-summarizer, but it does not yet retain a durable cross-model comparison. F is
-the remaining prerequisite for evidence-based model or roster decisions.
+The Lean MVP and F Lite are verified in code, but synthetic fixtures cannot
+show whether retrieval, deduplication, matching, observation history, and
+summaries behave correctly on live reporting. Real-data validation is the
+highest-value next evidence before adding more product or benchmarking
+infrastructure.
 
 ## Dependencies already satisfied
 
-- `C` and `C2`: structured extraction, grounding, English title, and five-slot
-  brief contracts are implemented and covered by tests.
-- `O`: provider adapters, purpose-scoped model routing, and cost rows exist.
-- `O2`: the title gate, retrieval, pre-grouping, and cluster extraction funnel
-  are verified on `main`.
-- `R`: conservative event matching, the judge, observations, summaries, and
-  the synthetic pipeline fixture are verified on `main`.
-- `M` and `L`: review recovery and scheduled stage boundaries are verified.
+- The Lean MVP pipeline stages, conservative event matching, observation
+  history, summaries, API/UI, and scheduler are on `main`.
+- F Lite has committed triage/extraction fixtures and deterministic scoring, but
+  it does not justify an automatic roster change.
+- Provider keys, database access, and the scheduler's explicit run boundaries
+  are the operational prerequisites to confirm before execution.
 
 ## Scope boundary
 
-In scope is the benchmark data model, deterministic fixture/corpus inputs,
-measurement protocol, stored results, and reports needed to compare existing
-models by purpose.
+In scope is a bounded run of the existing pipeline against real incoming
+reporting, inspection of produced signals/events/observations/summaries, and a
+provenance-preserving evaluation report.
 
 Out of scope is changing the production roster or routing, enabling embeddings
-or BGE-M3, wiring batch jobs, changing event thresholds, running the live
-scheduler, resolving live review cases, and building new public product
-surfaces. Do not change the Lean MVP architecture while measuring it.
+or BGE-M3, changing event thresholds, adding benchmark infrastructure, changing
+GDELT retrieval, automatic model selection, or building new public surfaces.
 
 ## Relevant records
 
-- [Roadmap item F](ROADMAP.md)
-- [GDELT layer architecture](docs/superpowers/specs/2026-08-27-gdelt-layer-architecture.md)
-  — defines F as the model benchmarking harness.
-- [AI extraction design](docs/superpowers/specs/2026-08-27-ai-extraction-design.md)
-  — defines the extraction, grounding, and validation signals a benchmark must
-  measure.
-- [Lean MVP architecture](docs/lean-mvp-architecture.md) — authoritative
-  runtime direction and model-purpose boundaries.
+- [Roadmap](ROADMAP.md)
+- [F Lite report](docs/reports/2026-08-30-f-lite-model-check-report.md)
+- [Lean MVP architecture](docs/lean-mvp-architecture.md)
 - [Post-merge reconciliation report](docs/reports/2026-08-30-post-merge-reconciliation.md)
-  — current baseline and verified dependencies.
 
 ## Start condition
 
-Design F against the latest `main`, commit the F-specific spec and plan, and
-only then create a fresh task branch/worktree from that `main`. No historical
-branch or stale worktree is a valid base. Do not implement F in this handoff
-task.
+Planner defines one bounded real-data validation run, its date window and
+stop/rollback behavior, then creates a fresh task branch/worktree from the
+latest `main`. Do not begin execution in this handoff task.
 
 ## Completion condition
 
-The F plan is fully implemented, benchmark results are stored with provenance
-and cost, the comparison is reproducible without production side effects,
-`corepack pnpm verify` is green, and a completion report records the actual
-measurements and remaining uncertainty.
+The bounded run produces a report covering what real signals and events were
+created, whether observation and summary provenance is intact, the failure
+cases found, and the next corrective item; no production configuration changes
+are made without separate review.

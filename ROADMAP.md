@@ -41,7 +41,7 @@ small items.
 ```text
 Band 0  Foundation              [#]      1/1  verified
 Band 1  Official ingestion      [###]    3/3  verified
-Band 2  GDELT discovery layer   [#########-] 10/11  F remains
+Band 2  GDELT discovery layer   [##########] 11/11  F Lite verified; real-data validation next
 Band 3  Product surface         [###---] 3/6  H, J, and K remain
 Band 4  Operations              [##-]    2/3  N remains
 Band 5  Acceptance              [-]      0/1
@@ -90,7 +90,7 @@ Umbrella architecture and shared invariants:
 | `D1` | Geocoding of extracted places | Extracted places resolve against the gazetteer into `signal_locations` with PostGIS geometry and recorded precision, coarsening rather than tie-breaking on ambiguity. | `C` | `verified` |
 | `D2a` | Story clustering, event matching, dual scoring — deterministic | Signals group into story clusters, clusters match or create events, `early_signal_score` and `evidence_score` are computed separately, and observations are recorded. No model call. | `D1` | `verified` |
 | `D2b` | Embedding similarity and LLM escalation | The ambiguous matches `D2a` refuses receive a conservative LLM judgement. **Lean MVP supersession (docs/lean-mvp-architecture.md):** embeddings/BGE-M3/pgvector are deferred to Phase 2; the ambiguous band is decided by the cheap classifier rung (Llama 3.1 8B, `events/judge.py`, `event_match_judge` purpose). | `D2a` | `verified` |
-| `F` | Model benchmarking harness | Free-model selection is backed by stored measurements rather than impressions. | `C` | `not-started` |
+| `F` | F Lite: lean model check | A bounded deterministic comparison of cheap triage/extraction models is stored as JSON without production side effects. | `C` | `verified` |
 | `O` | High-efficiency pipeline and Gemini transition | English-only discovery is enforced, providers route through one measured ladder, event follow-ups carry a recorded delta, optional pre-group and batch levers exist, and trailing spend plus the stop decisions are reported from `ai_requests`. **Superseded for MVP (docs/lean-mvp-architecture.md):** roster selection for the MVP is Llama = cheap classifier (+ ambiguous judge), DeepSeek = event summarizer; Gemini is kept as a provider adapter but not the free-ladder's everyday model. | `C2`, `D2a`, `L` | `verified` |
 | `O2` | Pipeline funnel v2: keyword gate, deferred retrieval, cluster extraction | Relevance is decided from the title by seeded keywords with zero model requests, bodies are fetched only for articles that pass, and one story costs one extraction whose every claim cites the member it came from. | `O`, `M` | `verified` |
 | `R` | Event-based surveillance: Lean MVP | The funnel performs conservative deduplication and event matching, records additive observations, updates traceable versioned summaries on material change, and exposes the public event API/UI. **Lean MVP supersession (docs/lean-mvp-architecture.md):** embeddings/BGE-M3/pgvector are dormant Phase-2 scaffolding; the load-bearing runtime is RapidFuzz near-exact dedup, deterministic matching, the ambiguous-band LLM judge, observation history, and DeepSeek summaries. | `O2` | `verified` |
@@ -125,7 +125,14 @@ Artifacts:
 `R` [spec](docs/superpowers/specs/2026-08-29-event-surveillance-pipeline-design.md) ·
 [plan](docs/superpowers/plans/2026-08-29-event-surveillance-pipeline.md) ·
 [Lean MVP architecture](docs/lean-mvp-architecture.md) ·
-[reconciliation](docs/reports/2026-08-30-post-merge-reconciliation.md)
+[reconciliation](docs/reports/2026-08-30-post-merge-reconciliation.md) —
+`F` [report](docs/reports/2026-08-30-f-lite-model-check-report.md)
+
+F Lite supersedes the previously proposed database-heavy benchmarking harness
+for MVP. Benchmark history tables, multi-purpose evaluation, dashboards,
+scheduling, and automatic model selection are post-MVP. The next execution
+priority is real-data end-to-end surveillance validation; it is intentionally
+not a new roadmap implementation row until its bounded scope is planned.
 
 ### Pipeline as it stands
 

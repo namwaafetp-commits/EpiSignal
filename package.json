@@ -41,6 +41,7 @@
 
 
     "ingest:ecdc": "uv run --package episignal-backend python -m episignal_backend.ingest_runner ecdc-epi",
+    "model:check": "uv run --package episignal-backend python -m episignal_backend.model_check",
     "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm contracts:check && corepack pnpm build"
   },
   "devDependencies": {
