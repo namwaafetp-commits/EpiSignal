@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM ghcr.io/astral-sh/uv:0.12.5-python3.12-bookworm-slim AS builder
+FROM python:3.12-slim-bookworm AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -18,7 +20,9 @@ COPY database database
 
 RUN uv sync --frozen --package episignal-api --no-dev
 
-FROM ghcr.io/astral-sh/uv:0.12.5-python3.12-bookworm-slim AS runtime
+FROM python:3.12-slim-bookworm AS runtime
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /bin/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
