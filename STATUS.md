@@ -4,18 +4,18 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-08-30
+**Last updated:** 2026-08-31
 
 ## Position
 
 | Field | Value |
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
-| Item | `F Lite` — Lean model check |
-| Status | `verified` |
+| Item | Real-data end-to-end surveillance validation |
+| Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | F Lite is defined by the current task scope; the prior database-heavy F design is superseded |
-| Plan | F Lite is implemented by `model_check.py` and `test_model_check.py` |
+| Spec | [Lean MVP real-data validation design](docs/superpowers/specs/2026-08-31-real-data-mvp-validation-design.md) |
+| Plan | [Lean MVP real-data validation plan](docs/superpowers/plans/2026-08-31-real-data-mvp-validation.md) |
 
 ## Verified main baseline
 
@@ -117,6 +117,19 @@ ledger against the superseding Lean MVP architecture:
   is recorded. Live extraction evidence remains an explicit follow-up because
   the provider smoke timed out.
 
+## Task ledger — real-data end-to-end surveillance validation
+
+- [ ] Make Mistral Small 24B first for TRIAGE only, with fallback and adjacent
+  purpose routing unchanged.
+- [ ] Run one bounded 2026-08-30 to 2026-08-31 UTC real-data window under the
+  200-candidate and $1.00 AI caps.
+- [ ] Inspect real triage, extraction, event matching, observation history,
+  summaries, provenance, and API/UI surfaces.
+- [ ] Write `docs/reports/2026-08-31-real-data-mvp-validation.md` with funnel,
+  quality, cost, verdict, deviations, and no more than three blockers.
+- [ ] Run `corepack pnpm verify` and `corepack pnpm test:pipeline`; record exact
+  outputs and zero unexpected xfails.
+
 ## Other roadmap state
 
 - `D2b` is verified for the Lean MVP's LLM-judge scope; embeddings are deferred
@@ -128,17 +141,9 @@ ledger against the superseding Lean MVP architecture:
 
 ## Next action
 
-**Planner:** plan one bounded real-data end-to-end surveillance validation run.
-Start from the latest `main` in a fresh task branch/worktree when that item
-begins. Do not use historical branch names or stale worktrees as a base.
-
-The objective is to observe the complete existing pipeline on real incoming
-reporting and evaluate its produced signals, events, observations, summaries,
-and provenance. Dependencies already satisfied are the Lean MVP stages, the
-verified pipeline fixture, F Lite's deterministic checks, and the existing
-database/provider setup. It must not change the production roster or routing,
-wire benchmark history, enable embeddings, alter thresholds, or build product
-surfaces. Do not implement this next item in the F Lite task.
+**Worker:** implement and execute bounded validation on branch
+`codex/real-data-mvp-validation`. Preserve existing production thresholds,
+queries, source roster, embedding exclusion, and public surfaces.
 
 ## Blockers
 
