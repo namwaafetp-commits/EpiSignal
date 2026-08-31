@@ -10,10 +10,9 @@ on a different connection for the whole run.
 """
 
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
-from episignal_backend.ai.embed import run_embedding
-from episignal_backend.ai.embeddings import LocalBgeM3Provider
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards, cost_row
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
@@ -24,32 +23,23 @@ from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import AiPurpose
 from episignal_backend.events.assemble import run_event_assembly
 from episignal_backend.events.delta import configure_delta
-from episignal_backend.events.judge import configure_judge
+from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
+    SummaryResult,
     configure_summary,
     pick_representative_sources,
     run_summary,
     should_resummarize,
     unique_summary_candidates,
 )
-from episignal_backend.geocode.external import NominatimClient
-from episignal_backend.geocode.locate import run_geocoding
-from episignal_backend.geocode.repository import (
-    SqlAlchemyGazetteerRepository,
-    SqlAlchemyGeocodeCacheRepository,
-    SqlAlchemyGeocodeRepository,
-)
 from episignal_backend.ingestion.dedupe import DedupeThresholds, run_dedupe
-from episignal_backend.ingestion.discovery import run_discovery, run_retry
-from episignal_backend.ingestion.ecdc_epi import EcdcEpiConnector
+from episignal_backend.ingestion.discovery import run_discovery
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
 from episignal_backend.ingestion.gdelt.connector import GdeltConnector
 from episignal_backend.ingestion.pipeline import run_ingestion
-from episignal_backend.ingestion.pregroup import group_signals
-from episignal_backend.ingestion.pregroup_store import SqlAlchemyPreGroupStore
 from episignal_backend.ingestion.protocol import SourceConnector
 from episignal_backend.ingestion.repository import (
     SqlAlchemyDedupeRepository,
@@ -85,14 +75,6 @@ def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
     )
     with session_scope() as session:
         repository = SqlAlchemyDiscoveryRepository(session)
-        # Retry first: a stub is a page already known to be wanted, so it has a
-        # better claim on the run budget than an article not yet seen.
-        retried = run_retry(
-            repository,
-            connector,
-            max_attempts=settings.gdelt_max_retrieval_attempts,
-            batch_size=settings.gdelt_retry_batch_size,
-        )
         discovered = run_discovery(
             repository,
             connector,
@@ -101,8 +83,6 @@ def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
             max_articles=settings.gdelt_max_articles_per_run,
         )
     return {
-        "retried": retried.attempted,
-        "promoted": retried.promoted,
         "window_minutes": window.minutes,
         "rules": discovered.rules_run,
         "rules_failed": discovered.rules_failed,
@@ -166,42 +146,6 @@ def _dedupe() -> Mapping[str, int]:
     }
 
 
-def _pregroup() -> Mapping[str, int]:
-    settings = get_settings()
-    now = datetime.now(UTC)
-
-    if not settings.pregroup_enabled:
-        with session_scope() as session:
-            resolved, expired = SqlAlchemyPreGroupStore(session).resolve_and_expire(
-                expiry_hours=settings.pregroup_expiry_hours,
-                now=now,
-            )
-            session.commit()
-        return {
-            "resolved": resolved,
-            "expired": expired,
-        }
-
-    with session_scope() as session:
-        store = SqlAlchemyPreGroupStore(session)
-        resolved, expired = store.resolve_and_expire(
-            expiry_hours=settings.pregroup_expiry_hours, now=now
-        )
-        candidates = store.candidates(limit=settings.pregroup_batch_size)
-        groups = group_signals(candidates, window_days=settings.pregroup_window_days)
-        written = store.write_groups(groups, window_days=settings.pregroup_window_days, now=now)
-        session.commit()
-
-    deferred = sum(len(group.deferred) for group in groups)
-    return {
-        "examined": len(candidates),
-        "groups": written,
-        "deferred": deferred,
-        "resolved": resolved,
-        "expired": expired,
-    }
-
-
 def _triage() -> Mapping[str, int]:
     settings = get_settings()
     guards = Guards(
@@ -230,25 +174,6 @@ def _triage() -> Mapping[str, int]:
         "failed": result.failed,
         "unavailable": result.unavailable,
         "requests": result.requests,
-    }
-
-
-def _embed() -> Mapping[str, int]:
-    settings = get_settings()
-    provider = LocalBgeM3Provider(
-        model_name=settings.embedding_model,
-        batch_size=settings.embedding_batch_size,
-    )
-    with session_scope() as session:
-        result = run_embedding(
-            SqlAlchemyAiRepository(session),
-            provider,
-            batch_size=settings.embedding_batch_size,
-        )
-    return {
-        "examined": result.examined,
-        "embedded": result.embedded,
-        "failed": result.failed,
     }
 
 
@@ -281,41 +206,9 @@ def _extract() -> Mapping[str, int]:
     return {
         "examined": extracted.examined,
         "extracted": extracted.extracted,
-        "review": extracted.reviewed,
+        "rejected": extracted.reviewed,
         "unavailable": extracted.unavailable,
         "requests": extracted.requests,
-    }
-
-
-def _geocode() -> Mapping[str, int]:
-    settings = get_settings()
-    limit = min(settings.geocode_batch_size, settings.geocode_max_signals_per_run)
-    with session_scope() as session:
-        # Same wiring as geocode_runner: the cache is a local table and is
-        # always in play; the live client exists only when the operator has
-        # enabled Nominatim, and otherwise the stage never reaches the network.
-        result = run_geocoding(
-            SqlAlchemyGeocodeRepository(session),
-            SqlAlchemyGazetteerRepository(session),
-            limit=limit,
-            source=settings.gazetteer_source,
-            stale=False,
-            cache=SqlAlchemyGeocodeCacheRepository(session),
-            nominatim=(
-                NominatimClient(
-                    base_url=settings.nominatim_url,
-                    user_agent=settings.nominatim_user_agent,
-                    timeout=settings.nominatim_timeout_seconds,
-                )
-                if settings.nominatim_enabled
-                else None
-            ),
-        )
-    return {
-        "examined": result.examined,
-        "located": result.located,
-        "unresolved": result.unresolved,
-        "locations": result.locations,
     }
 
 
@@ -327,7 +220,6 @@ def _match() -> Mapping[str, int]:
         # The delta pass is enrichment: without a provider key the assembly
         # still runs, it simply never records what changed.
         wiring = configure_delta(settings, specs)
-        judge = configure_judge(settings, specs)
         summary = run_event_assembly(
             event_repository,
             limit=settings.event_match_batch_size,
@@ -335,7 +227,7 @@ def _match() -> Mapping[str, int]:
             cluster_window_days=settings.event_cluster_window_days,
             cluster_distance_km=settings.event_cluster_distance_km,
             match_threshold=settings.event_match_threshold,
-            review_threshold=settings.event_match_review_threshold,
+            review_threshold=None,
             match_recency_days=settings.event_match_recency_days,
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
@@ -343,8 +235,6 @@ def _match() -> Mapping[str, int]:
             delta_model=wiring.model,
             delta_spec=wiring.spec,
             followup_window_days=wiring.window_days,
-            judge_model=judge.model,
-            judge_spec=judge.spec,
         )
     return {
         "seen": summary.signals_seen,
@@ -354,8 +244,6 @@ def _match() -> Mapping[str, int]:
         "refused": summary.signals_refused,
         "unclusterable": summary.unclusterable,
         "deltas": summary.deltas_applied,
-        "judged": summary.ambiguous_judged,
-        "judge_attached": summary.ambiguous_attached,
     }
 
 
@@ -377,6 +265,7 @@ def _summarize() -> Mapping[str, int]:
         failed = 0
         unavailable = 0
 
+        pending: list[tuple[EventForSummary, tuple[SummarySource, ...]]] = []
         for event in unique_summary_candidates(awaiting):
             examined += 1
             if not should_resummarize(
@@ -399,40 +288,57 @@ def _summarize() -> Mapping[str, int]:
                 event.sources,
                 max_sources=settings.summary_max_sources,
             )
-            result = run_summary(
-                wiring.model,
-                wiring.spec,
-                event=event,
-                sources=sources,
-            )
-            if result.attempt is not None:
-                event_repository.record_ai_request(
-                    cost_row(
-                        result.attempt,
-                        purpose=AiPurpose.EVENT_SUMMARY,
-                        signal_id=None,
-                        batch_size=1,
-                        at=now,
-                    )
-                )
-            if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
-                event_repository.store_summary(
-                    event_id=event.event_id,
-                    headline=result.verdict.headline,
-                    summary=result.verdict.summary,
-                    status=result.verdict.status.value,
-                    latest_development=result.verdict.latest_development,
-                    uncertainties=list(result.verdict.uncertainties),
-                    model_id=wiring.spec.model_id,
-                    source_signal_ids=[source.signal_id for source in sources],
-                    counts=event.latest_observation,
-                    now=now,
-                )
-                summarized += 1
-            elif result.outcome is SummaryOutcome.UNAVAILABLE:
-                unavailable += 1
-            else:
-                failed += 1
+            pending.append((event, sources))
+
+        if pending and wiring.model is not None and wiring.spec is not None:
+            model = wiring.model
+            spec = wiring.spec
+
+            def summarize_one(
+                item: tuple[EventForSummary, tuple[SummarySource, ...]]
+            ) -> SummaryResult:
+                event, sources = item
+                return run_summary(model, spec, event=event, sources=sources)
+
+            # Model calls are independent. Bound each worker batch and commit
+            # after its database writes, so completed summaries survive a later
+            # provider failure or interruption.
+            batch_size = max(settings.ai_extraction_workers, 1)
+            for start in range(0, len(pending), batch_size):
+                batch = pending[start : start + batch_size]
+                with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+                    completed = list(pool.map(summarize_one, batch))
+
+                for (event, sources), result in zip(batch, completed, strict=True):
+                    if result.attempt is not None:
+                        event_repository.record_ai_request(
+                            cost_row(
+                                result.attempt,
+                                purpose=AiPurpose.EVENT_SUMMARY,
+                                signal_id=None,
+                                batch_size=1,
+                                at=now,
+                            )
+                        )
+                    if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
+                        event_repository.store_summary(
+                            event_id=event.event_id,
+                            headline=result.verdict.headline,
+                            summary=result.verdict.summary,
+                            status=result.verdict.status.value,
+                            latest_development=result.verdict.latest_development,
+                            uncertainties=list(result.verdict.uncertainties),
+                            model_id=spec.model_id,
+                            source_signal_ids=[source.signal_id for source in sources],
+                            counts=event.latest_observation,
+                            now=now,
+                        )
+                        summarized += 1
+                    elif result.outcome is SummaryOutcome.UNAVAILABLE:
+                        unavailable += 1
+                    else:
+                        failed += 1
+                event_repository.commit()
 
         event_repository.commit()
 
@@ -449,15 +355,11 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
     """Map each stage to a callable. Nothing here runs until the chain calls it."""
     return {
         StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector()),
-        StageName.INGEST_ECDC: lambda: _ingest(EcdcEpiConnector()),
         StageName.DISCOVER: lambda: _discover(window),
         StageName.RETRIEVE: _retrieve,
         StageName.DEDUPE: _dedupe,
         StageName.TRIAGE: _triage,
-        StageName.EMBED: _embed,
-        StageName.PREGROUP: _pregroup,
         StageName.EXTRACT: _extract,
-        StageName.GEOCODE: _geocode,
         StageName.MATCH: _match,
         StageName.SUMMARIZE: _summarize,
     }

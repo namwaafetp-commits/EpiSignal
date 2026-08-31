@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
+from episignal_backend.requeue import requeue_historical_extractions
 from episignal_backend.schedule.chains import chain_for
 from episignal_backend.schedule.documents import ChainOutcome, StageName
 from episignal_backend.schedule.repository import SqlAlchemyPipelineRunRepository
@@ -30,6 +31,7 @@ from episignal_backend.schedule.window import catch_up_window
 class Arguments:
     only: StageName | None
     trigger: str
+    requeue_existing: bool = False
 
 
 def parse_arguments(argv: Sequence[str]) -> Arguments:
@@ -40,7 +42,7 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
     parser.add_argument(
         "--only",
         type=StageName,
-        choices=list(StageName),
+        choices=list(chain_for("daily")),
         default=None,
         help="Run one stage instead of the whole chain.",
     )
@@ -50,9 +52,18 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
         default="manual",
         help="Who started this run. Task Scheduler passes scheduled.",
     )
+    parser.add_argument(
+        "--requeue-existing",
+        action="store_true",
+        help="Requeue eligible historical extractions, then run match and summarize only.",
+    )
     clean_argv = [arg for arg in argv if arg != "--"]
     parsed = parser.parse_args(clean_argv)
-    return Arguments(only=parsed.only, trigger=parsed.trigger)
+    return Arguments(
+        only=parsed.only,
+        trigger=parsed.trigger,
+        requeue_existing=parsed.requeue_existing,
+    )
 
 
 def _print(outcome: ChainOutcome, backlog: dict[str, int]) -> None:
@@ -70,6 +81,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     chain_name = PipelineChain(settings.pipeline_chain)
     chain = chain_for(settings.pipeline_chain)
+    requeued = 0
+    if arguments.requeue_existing:
+        chain = (StageName.MATCH, StageName.SUMMARIZE)
     if arguments.only is not None:
         chain = (arguments.only,)
 
@@ -88,6 +102,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     default_minutes=settings.gdelt_query_window_minutes,
                     max_minutes=settings.pipeline_catch_up_max_minutes,
                 )
+                if arguments.requeue_existing:
+                    requeue_result = requeue_historical_extractions(session)
+                    requeued = requeue_result.requeued
                 run_id = repository.start_run(
                     chain=chain_name,
                     trigger=PipelineTrigger(arguments.trigger),
@@ -119,6 +136,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     _print(outcome, backlog)
+    if arguments.requeue_existing:
+        print(f"requeued_existing={requeued}")
     return 0 if outcome.ok else 1
 
 

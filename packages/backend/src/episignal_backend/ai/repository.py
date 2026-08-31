@@ -35,7 +35,6 @@ from episignal_backend.ai.schema import (
 )
 from episignal_backend.db.types import (
     ProcessingStatus,
-    ReviewReason,
     SignalType,
     StoryGroupRole,
     StoryGroupState,
@@ -51,7 +50,6 @@ from episignal_backend.models import (
     StoryGroup,
     StoryGroupMember,
 )
-from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +149,6 @@ class SqlAlchemyAiRepository:
                 Signal.processing_status == ProcessingStatus.NORMALIZED,
                 Signal.triage_status == TriageStatus.PENDING,
                 Signal.raw_text.is_not(None),
-                ~_deferred_by_open_group(),
             )
             .order_by(Signal.first_seen_at)
         )
@@ -213,19 +210,10 @@ class SqlAlchemyAiRepository:
         stmt = (
             select(Signal)
             .where(
-                # `normalized` is what the keyword gate now produces. `classified`
-                # stays selectable so the rows the retired relevance pass decided
-                # are not stranded outside the funnel forever.
-                Signal.processing_status.in_(
-                    (ProcessingStatus.NORMALIZED, ProcessingStatus.CLASSIFIED)
-                ),
-                # A signal a model called irrelevant stays out; one never asked
-                # (null) comes in.
-                Signal.public_health_relevant.isnot(False),
+                Signal.processing_status == ProcessingStatus.NORMALIZED,
+                Signal.triage_status == TriageStatus.DONE,
+                Signal.public_health_relevant.is_(True),
                 Signal.raw_text.is_not(None),
-                # Pre-group deferral: a member waiting on its open group's
-                # representative is not selectable.
-                ~_deferred_by_open_group(),
             )
             .order_by(Signal.first_seen_at)
         )
@@ -397,20 +385,11 @@ class SqlAlchemyAiRepository:
             )
         )
 
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
-    ) -> None:
+    def record_extraction_failure(self, signal_id: UUID) -> None:
         self._session.execute(
             update(Signal)
             .where(Signal.id == signal_id)
-            .values(processing_status=ProcessingStatus.NEEDS_REVIEW)
-        )
-        SqlAlchemyReviewRepository(self._session).open_review(
-            signal_id, reason=reason, candidate_scores=candidate_scores
+            .values(processing_status=ProcessingStatus.FAILED)
         )
 
     def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]:

@@ -13,7 +13,6 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from episignal_backend.db.types import ProcessingStatus
 from episignal_backend.ingestion.documents import DiscoveredArticle, Rejection, TimeWindow
 from episignal_backend.ingestion.filtering import compile_rules, evaluate
 from episignal_backend.ingestion.protocol import (
@@ -141,8 +140,6 @@ def run_discovery(
     selected = candidates[:max_articles]
 
     stored = 0
-    needs_review = 0
-
     for article in selected:
         first_seen = repository.first_seen_at(article.canonical_url) or moment
         # Retrieval moved behind the keyword gate: a body is downloaded in the
@@ -163,10 +160,7 @@ def run_discovery(
             )
             continue
 
-        if signal.processing_status == ProcessingStatus.NEEDS_REVIEW:
-            needs_review += 1
-        else:
-            stored += 1
+        stored += 1
 
     return DiscoveryResult(
         rules_run=len(rules),
@@ -177,7 +171,7 @@ def run_discovery(
         rejected=rejected,
         deferred=len(candidates) - len(selected),
         stored=stored,
-        needs_review=needs_review,
+        needs_review=0,
         failed=failed,
     )
 

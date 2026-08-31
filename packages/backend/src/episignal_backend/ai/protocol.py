@@ -27,7 +27,6 @@ from episignal_backend.ai.documents import (
     Verdict,
 )
 from episignal_backend.ai.schema import TriageVerdict
-from episignal_backend.db.types import ReviewReason
 
 
 @runtime_checkable
@@ -79,18 +78,12 @@ class AiRepository(Protocol):
 
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None: ...
 
+    def record_extraction_failure(self, signal_id: UUID) -> None: ...
+
     def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]: ...
 
     def record_cluster_extraction(
         self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
-    ) -> None: ...
-
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
     ) -> None: ...
 
     def commit(self) -> None: ...

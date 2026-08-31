@@ -1,4 +1,4 @@
-"""Story clustering over geocoded signals.
+"""Story clustering over extracted signals.
 
 Pure functions for precision weighting, spatial compatibility, temporal
 compatibility, and single-link agglomerative clustering.

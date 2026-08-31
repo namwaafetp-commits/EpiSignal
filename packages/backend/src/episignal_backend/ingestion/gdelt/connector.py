@@ -101,7 +101,7 @@ class GdeltConnector:
             content_hash=content_hash(article.title, ""),
             publisher=self._publisher(article, None),
             query_rule_id=article.query_rule_id,
-            processing_status=ProcessingStatus.NEEDS_REVIEW,
+            processing_status=ProcessingStatus.FETCHED,
         )
 
     def defer(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:

@@ -1,7 +1,7 @@
 """Candidate match scoring and the conservative matching decision.
 
 Pure functions for scoring how well a story cluster matches candidate events
-and deciding whether to attach, create, or refuse.
+and deciding whether to attach or create.
 
 This module imports neither SQLAlchemy nor httpx.
 """
@@ -206,11 +206,11 @@ def decide(
     """Make the conservative matching decision for a story cluster.
 
     - attach: exactly one candidate event scores >= threshold.
-    - create: no candidate event scores >= threshold, and none falls in the
-      ambiguous band.
-    - ambiguous: a single candidate scores between the review threshold and
-      the auto threshold, so an LLM judge must decide.
-    - refuse: two or more candidate events score >= threshold.
+    - create: no candidate event scores >= threshold.
+    - ambiguous: a single candidate scores between the optional legacy review
+      threshold and the auto threshold; the caller creates a new event.
+    - refuse: two or more candidate events score >= threshold; the caller
+      creates a new event.
 
     Deterministic guards run before ``similarity_for``. Similarity therefore
     cannot be consulted for a refused pair and can only add to its score.
@@ -245,10 +245,7 @@ def decide(
         if similarity is not None:
             score = min(1.0, score + SIMILARITY_WEIGHT * max(0.0, similarity))
         candidate_scores[cand.event_id] = score
-        country_only = _is_country_only(cluster.representative_location) and _is_country_only(
-            _candidate_representative_location(cand)
-        )
-        if score >= threshold and not country_only:
+        if score >= threshold:
             qualifiers.append((cand, score))
             candidate_rejections[cand.event_id] = None
         elif review_threshold is not None and score >= review_threshold:

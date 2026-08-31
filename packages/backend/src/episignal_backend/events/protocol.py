@@ -7,7 +7,7 @@ is, which is why `commit` and `rollback` sit on the protocol.
 This module imports neither SQLAlchemy nor httpx.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
@@ -16,7 +16,6 @@ from episignal_backend.ai.documents import AiRequestRecord
 from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import (
     RelationshipType,
-    ReviewReason,
     VerificationStatus,
 )
 from episignal_backend.events.documents import (
@@ -29,7 +28,7 @@ from episignal_backend.events.documents import (
 
 
 class NoEventsToMatch(Exception):
-    """Raised when no geocoded signals are available for matching."""
+    """Raised when no extracted signals are available for matching."""
 
 
 @runtime_checkable
@@ -37,7 +36,7 @@ class EventRepository(Protocol):
     """The storage contract for event matching, observation recording, and scoring."""
 
     def signals_to_match(self, limit: int, *, stale: bool = False) -> Sequence[SignalForMatching]:
-        """Select signals at processing_status = 'geocoded' (or 'matched' if stale=True)."""
+        """Select signals at processing_status = 'extracted' (or matched when stale)."""
         ...
 
     def candidate_events(
@@ -48,7 +47,7 @@ class EventRepository(Protocol):
         limit: int = 20,
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
-        """Retrieve candidate events matching the cluster's disease and spatial scope."""
+        """Retrieve recent same-disease, same-country candidate events."""
         ...
 
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
@@ -87,16 +86,6 @@ class EventRepository(Protocol):
 
     def mark_matched(self, signal_id: UUID) -> None:
         """Advance a signal to processing_status = 'matched'."""
-        ...
-
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
-    ) -> None:
-        """Route an unclusterable or refused signal to needs_review and record a typed case."""
         ...
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:

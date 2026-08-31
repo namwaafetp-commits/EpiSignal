@@ -1,22 +1,14 @@
-"""The order the stages run in.
-
-One chain exists. The order is a decision, not an accident: WHO and ECDC are
-ingested first so an official document that corroborates a story is in the
-database before that story's media coverage is matched to an event.
-"""
+"""Lean MVP runtime stage order."""
 
 from episignal_backend.schedule.documents import StageName
 
 DAILY_CHAIN: tuple[StageName, ...] = (
     StageName.INGEST_WHO,
-    StageName.INGEST_ECDC,
     StageName.DISCOVER,
     StageName.RETRIEVE,
     StageName.DEDUPE,
     StageName.TRIAGE,
-    StageName.PREGROUP,
     StageName.EXTRACT,
-    StageName.GEOCODE,
     StageName.MATCH,
     StageName.SUMMARIZE,
 )

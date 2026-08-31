@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('ingest_who', 'ingest_ecdc', 'discover', 'dedupe', 'extract', 'geocode', 'match')]
+    [ValidateSet('ingest_who', 'discover', 'retrieve', 'dedupe', 'triage', 'extract', 'match', 'summarize')]
     [string]$Only
 )
 

@@ -18,7 +18,7 @@ class MatchAction(StrEnum):
     """The outcome of matching a cluster against candidate events.
 
     ``AMBIGUOUS`` is a single candidate scoring between the review and auto
-    thresholds: the deterministic engine cannot decide, so an LLM judge must.
+    thresholds; callers create a new event instead of waiting for review.
     """
 
     ATTACH = "attach"
@@ -53,18 +53,13 @@ class LocationForMatching(BaseModel):
 
     @model_validator(mode="after")
     def validate_coordinates(self) -> "LocationForMatching":
-        if self.precision != Precision.UNRESOLVED and (
-            self.latitude is None or self.longitude is None
-        ):
-            raise ValueError(
-                f"Coordinates are required for precision {self.precision}; "
-                "only unresolved locations may have null coordinates"
-            )
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be supplied together")
         return self
 
 
 class SignalForMatching(BaseModel):
-    """A geocoded signal ready for story clustering and matching."""
+    """An extracted signal ready for story clustering and matching."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -140,7 +135,7 @@ class CandidateEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     event_id: UUID
-    disease_id: UUID
+    disease_id: UUID | None = None
     locations: tuple[LocationForMatching, ...] = ()
     first_signal_at: datetime
     last_updated_at: datetime
@@ -163,7 +158,8 @@ class MatchDecision(BaseModel):
     @model_validator(mode="after")
     def validate_decision(self) -> "MatchDecision":
         # AMBIGUOUS carries exactly one candidate and its score, like ATTACH,
-        # so the assembly knows which event the judge must consider.
+        # so the assembly can preserve the candidate's score when it creates a
+        # new event for an ambiguous match.
         carries_target = self.action in (MatchAction.ATTACH, MatchAction.AMBIGUOUS)
         if carries_target:
             if self.event_id is None:

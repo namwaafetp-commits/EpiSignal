@@ -125,7 +125,8 @@ class Settings(BaseSettings):
 
     event_cluster_window_days: int = Field(default=7, ge=1, le=365)
     event_cluster_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
-    event_match_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    # Country-level extraction is enough for a conservative recent match.
+    event_match_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
     event_match_recency_days: float = Field(default=90.0, ge=1.0, le=3650.0)
     event_match_distance_km: float = Field(default=50.0, ge=0.0, le=1000.0)
     event_match_batch_size: int = Field(default=100, ge=1, le=5000)

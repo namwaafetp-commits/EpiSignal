@@ -1,7 +1,7 @@
 """Running one chain, in order, with the failure policy the design settled on.
 
 Every stage selects its own backlog by processing_status, so a failed extraction
-does not invalidate signals extracted yesterday and waiting to be geocoded. The
+does not invalidate signals extracted yesterday and waiting to be matched. The
 chain therefore runs every stage and reports which ones failed, rather than
 aborting on the first.
 
