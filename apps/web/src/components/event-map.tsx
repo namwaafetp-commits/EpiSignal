@@ -17,7 +17,7 @@ function isMappedEvent(
   event: DashboardEvent,
 ): event is DashboardEvent & { latitude: number; longitude: number } {
   return (
-    (event.map_level === "town" || event.map_level === "country") &&
+    (event.map_level === "admin1" || event.map_level === "country") &&
     typeof event.latitude === "number" &&
     typeof event.longitude === "number"
   );
@@ -35,7 +35,9 @@ function toGeoJson(events: readonly DashboardEvent[]) {
       properties: {
         id: event.public_id,
         headline: event.headline,
-        location: event.town ?? event.country_code ?? "Unknown location",
+        location: event.admin1
+          ? `${event.admin1}, ${event.country_code ?? "Unknown country"}`
+          : (event.country_code ?? "Unknown location"),
         map_level: event.map_level,
       },
     })),
@@ -82,7 +84,7 @@ export function EventMap({ events, onSelect }: EventMapProps) {
             "circle-radius": 7,
             "circle-color": [
               "case",
-              ["==", ["get", "map_level"], "town"],
+              ["==", ["get", "map_level"], "admin1"],
               "#d97706",
               "#2563eb",
             ],

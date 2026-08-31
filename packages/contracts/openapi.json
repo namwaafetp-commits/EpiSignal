@@ -141,6 +141,17 @@
       },
       "DashboardEventResponse": {
         "properties": {
+          "admin1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin1"
+          },
           "article_count": {
             "title": "Article Count",
             "type": "integer"
@@ -222,6 +233,10 @@
           "map_level": {
             "anyOf": [
               {
+                "enum": [
+                  "admin1",
+                  "country"
+                ],
                 "type": "string"
               },
               {
@@ -240,17 +255,6 @@
           "summary": {
             "title": "Summary",
             "type": "string"
-          },
-          "town": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Town"
           }
         },
         "required": [
@@ -261,7 +265,7 @@
           "event_type",
           "status",
           "country_code",
-          "town",
+          "admin1",
           "first_reported_at",
           "latest_report_at",
           "article_count",

@@ -88,14 +88,14 @@ def test_dashboard_endpoint_returns_summarized_event_map_fields() -> None:
                 event_type=EventType.OUTBREAK.value,
                 status=EventStatus.ONGOING.value,
                 country_code="TH",
-                town="Chiang Mai",
+                admin1="Chiang Mai",
                 first_reported_at=NOW,
                 latest_report_at=NOW,
                 article_count=3,
                 last_summarized_at=NOW,
                 latitude=18.7883,
                 longitude=98.9853,
-                map_level="town",
+                map_level="admin1",
             ),
         ),
         total=1,
@@ -108,8 +108,8 @@ def test_dashboard_endpoint_returns_summarized_event_map_fields() -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
-    assert data["items"][0]["town"] == "Chiang Mai"
-    assert data["items"][0]["map_level"] == "town"
+    assert data["items"][0]["admin1"] == "Chiang Mai"
+    assert data["items"][0]["map_level"] == "admin1"
     assert data["items"][0]["latitude"] == 18.7883
 
 

@@ -6,14 +6,14 @@ export interface DashboardEvent {
   event_type: string;
   status: string;
   country_code: string | null;
-  town: string | null;
+  admin1: string | null;
   first_reported_at: string | null;
   latest_report_at: string;
   article_count: number;
   last_summarized_at: string;
   latitude: number | null;
   longitude: number | null;
-  map_level: "town" | "country" | null;
+  map_level: "admin1" | "country" | null;
 }
 
 export interface DashboardEventsResponse {
@@ -66,7 +66,7 @@ function isDashboardEvent(value: unknown): value is DashboardEvent {
     typeof event.event_type === "string" &&
     typeof event.status === "string" &&
     (event.country_code === null || typeof event.country_code === "string") &&
-    (event.town === null || typeof event.town === "string") &&
+    (event.admin1 === null || typeof event.admin1 === "string") &&
     isTimestamp(event.first_reported_at, true) &&
     isTimestamp(event.latest_report_at) &&
     Number.isInteger(event.article_count) &&
@@ -75,7 +75,7 @@ function isDashboardEvent(value: unknown): value is DashboardEvent {
     isCoordinate(event.latitude, -90, 90) &&
     isCoordinate(event.longitude, -180, 180) &&
     (event.map_level === null ||
-      event.map_level === "town" ||
+      event.map_level === "admin1" ||
       event.map_level === "country")
   );
 }

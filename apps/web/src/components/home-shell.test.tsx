@@ -37,14 +37,14 @@ const EVENTS: DashboardEvent[] = [
     event_type: "outbreak",
     status: "ongoing",
     country_code: "AO",
-    town: "Cacuaco",
+    admin1: "Cacuaco",
     first_reported_at: "2026-08-01T00:00:00Z",
     latest_report_at: "2026-08-30T00:00:00Z",
     article_count: 3,
     last_summarized_at: "2026-08-30T01:00:00Z",
     latitude: -8.58,
     longitude: 13.66,
-    map_level: "town",
+    map_level: "admin1",
   },
   {
     public_id: "EVT-2026-00002",
@@ -54,7 +54,7 @@ const EVENTS: DashboardEvent[] = [
     event_type: "outbreak",
     status: "monitoring",
     country_code: "TH",
-    town: null,
+    admin1: null,
     first_reported_at: "2025-01-01T00:00:00Z",
     latest_report_at: "2025-01-02T00:00:00Z",
     article_count: 1,
@@ -81,12 +81,15 @@ describe("HomeShell", () => {
     expect(
       screen.getByRole("link", { name: /View event: Cholera in Cacuaco/i }),
     ).toHaveAttribute("href", "/events/EVT-2026-00001");
+    expect(screen.getByText(/Cacuaco, AO/)).toBeInTheDocument();
     expect(
       screen.getByText("A country-level dengue summary."),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/signals plotted|48h|Recent Signals/i),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText(/town/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Review Queue")).not.toBeInTheDocument();
   });
 
   it("routes a map marker to the existing event detail page", async () => {

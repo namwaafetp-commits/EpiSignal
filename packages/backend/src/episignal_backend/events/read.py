@@ -7,16 +7,17 @@ mutate an event, an observation, or a source link.
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from episignal_backend.db.types import LocationRole, Precision
+from episignal_backend.db.types import Precision
+from episignal_backend.geocode.normalize import ascii_form, normalized_form
 from episignal_backend.models import (
     Disease,
     Event,
-    EventLocation,
     EventObservation,
     EventSignal,
     EventSummary,
@@ -24,6 +25,8 @@ from episignal_backend.models import (
     Signal,
     Source,
 )
+
+DashboardMapLevel = Literal["admin1", "country"]
 
 
 @dataclass(frozen=True)
@@ -61,14 +64,14 @@ class DashboardEventItem:
     event_type: str
     status: str
     country_code: str | None
-    town: str | None
+    admin1: str | None
     first_reported_at: datetime | None
     latest_report_at: datetime
     article_count: int
     last_summarized_at: datetime
     latitude: float | None
     longitude: float | None
-    map_level: str | None
+    map_level: DashboardMapLevel | None
 
 
 @dataclass(frozen=True)
@@ -143,33 +146,26 @@ class EventDetail:
 
 
 def _dashboard_location(
-    locations: tuple[EventLocation, ...],
+    admin1: str | None,
     country_centroids: dict[str, tuple[float, float]],
+    admin1_centroids: dict[tuple[str, str], tuple[str, float, float]],
     country_code: str | None,
-) -> tuple[str | None, float | None, float | None, str | None]:
-    place_locations = [
-        location
-        for location in locations
-        if location.place_name and location.latitude is not None and location.longitude is not None
-    ]
-    place_locations.sort(
-        key=lambda location: (
-            location.location_role is not LocationRole.PRIMARY,
-            str(location.id),
-        )
-    )
-    if place_locations:
-        place = place_locations[0]
-        latitude = place.latitude
-        longitude = place.longitude
-        assert latitude is not None and longitude is not None
-        return place.place_name, float(latitude), float(longitude), "town"
+) -> tuple[str | None, float | None, float | None, DashboardMapLevel | None]:
+    if admin1 is not None and country_code is not None:
+        centroid = admin1_centroids.get((country_code, admin1))
+        if centroid is None:
+            centroid = admin1_centroids.get((country_code, normalized_form(admin1)))
+        if centroid is None:
+            centroid = admin1_centroids.get((country_code, ascii_form(admin1)))
+        if centroid is not None:
+            resolved_name, latitude, longitude = centroid
+            return resolved_name, latitude, longitude, "admin1"
 
     if country_code is not None and country_code in country_centroids:
         latitude, longitude = country_centroids[country_code]
-        return None, latitude, longitude, "country"
+        return admin1, latitude, longitude, "country"
 
-    return None, None, None, None
+    return admin1, None, None, None
 
 
 def query_dashboard_events(session: Session) -> DashboardEventPage:
@@ -189,21 +185,41 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
     if not rows:
         return DashboardEventPage(items=(), total=0)
 
-    event_ids = [event.id for event, _ in rows]
-    location_rows = (
-        session.execute(
-            select(EventLocation)
-            .where(EventLocation.event_id.in_(event_ids))
-            .order_by(EventLocation.event_id, EventLocation.id)
-        )
-        .scalars()
-        .all()
-    )
-    locations_by_event: dict[UUID, list[EventLocation]] = {}
-    for location in location_rows:
-        locations_by_event.setdefault(location.event_id, []).append(location)
-
     country_codes = {event.country_code for event, _ in rows if event.country_code is not None}
+    admin1_centroids: dict[tuple[str, str], tuple[str, float, float]] = {}
+    if country_codes:
+        admin1_rows = session.execute(
+            select(
+                GazetteerPlace.country_code,
+                GazetteerPlace.admin1_code,
+                GazetteerPlace.name,
+                GazetteerPlace.normalized_name,
+                GazetteerPlace.ascii_name,
+                GazetteerPlace.latitude,
+                GazetteerPlace.longitude,
+            )
+            .where(
+                GazetteerPlace.country_code.in_(country_codes),
+                GazetteerPlace.precision == Precision.ADMIN1,
+                GazetteerPlace.admin1_code.is_not(None),
+            )
+            .order_by(GazetteerPlace.country_code, GazetteerPlace.geonames_id)
+        ).all()
+        for (
+            code,
+            admin1_code,
+            name,
+            normalized_name,
+            ascii_name,
+            latitude,
+            longitude,
+        ) in admin1_rows:
+            centroid = (name, float(latitude), float(longitude))
+            if admin1_code is not None:
+                admin1_centroids.setdefault((code, admin1_code), centroid)
+            admin1_centroids.setdefault((code, normalized_name), centroid)
+            admin1_centroids.setdefault((code, ascii_name), centroid)
+
     country_centroids: dict[str, tuple[float, float]] = {}
     if country_codes:
         centroid_rows = session.execute(
@@ -227,7 +243,7 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
             event_type=event.event_type.value,
             status=event.status.value,
             country_code=event.country_code,
-            town=location[0],
+            admin1=location[0],
             first_reported_at=event.first_signal_at,
             latest_report_at=event.last_updated_at,
             article_count=event.article_count,
@@ -239,8 +255,9 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
         for event, disease_name in rows
         for location in (
             _dashboard_location(
-                tuple(locations_by_event.get(event.id, [])),
+                event.admin1,
                 country_centroids,
+                admin1_centroids,
                 event.country_code,
             ),
         )

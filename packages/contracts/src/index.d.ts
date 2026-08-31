@@ -303,6 +303,8 @@ export interface components {
         CredibilityTier: "official" | "high" | "medium" | "unknown";
         /** DashboardEventResponse */
         DashboardEventResponse: {
+            /** Admin1 */
+            admin1: string | null;
             /** Article Count */
             article_count: number;
             /** Country Code */
@@ -330,14 +332,12 @@ export interface components {
             /** Longitude */
             longitude: number | null;
             /** Map Level */
-            map_level: string | null;
+            map_level: ("admin1" | "country") | null;
             /** Public Id */
             public_id: string;
             status: components["schemas"]["EventStatus"];
             /** Summary */
             summary: string;
-            /** Town */
-            town: string | null;
         };
         /** DashboardEventsResponse */
         DashboardEventsResponse: {

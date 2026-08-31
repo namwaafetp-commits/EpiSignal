@@ -7,7 +7,6 @@ from episignal_backend.db.types import (
     CredibilityTier,
     EventStatus,
     EventType,
-    LocationRole,
     RelationshipType,
     VerificationStatus,
 )
@@ -92,20 +91,22 @@ def test_event_detail_loads_sources_through_event_signal_join() -> None:
     assert detail.sources[0].source_name == "Public Health Office"
 
 
-def test_dashboard_returns_summarized_events_with_town_then_country_locations() -> None:
-    town_event_id = uuid4()
+def test_dashboard_resolves_admin1_then_country_and_leaves_missing_country_unmapped() -> None:
+    admin1_event_id = uuid4()
     country_event_id = uuid4()
+    unmapped_event_id = uuid4()
     now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
-    town_event = SimpleNamespace(
-        id=town_event_id,
-        public_id="EVT-2026-TOWN",
+    admin1_event = SimpleNamespace(
+        id=admin1_event_id,
+        public_id="EVT-2026-ADMIN1",
         headline="Dengue in Chiang Mai",
         summary="Cases are under observation.",
         event_type=EventType.OUTBREAK,
         status=EventStatus.MONITORING,
         country_code="TH",
+        admin1="CM",
         first_signal_at=now,
-        last_updated_at=now,
+        last_updated_at=now.replace(hour=2),
         article_count=2,
         last_summarized_at=now,
     )
@@ -117,41 +118,59 @@ def test_dashboard_returns_summarized_events_with_town_then_country_locations() 
         event_type=EventType.OUTBREAK,
         status=EventStatus.ONGOING,
         country_code="NG",
+        admin1=None,
         first_signal_at=now,
         last_updated_at=now.replace(hour=1),
         article_count=4,
         last_summarized_at=now,
     )
-    town_location = SimpleNamespace(
-        id=uuid4(),
-        event_id=town_event_id,
-        location_role=LocationRole.PRIMARY,
-        place_name="Chiang Mai",
-        latitude=18.7883,
-        longitude=98.9853,
+    unmapped_event = SimpleNamespace(
+        id=unmapped_event_id,
+        public_id="EVT-2026-UNMAPPED",
+        headline="Influenza in Unknown Province",
+        summary="A report without a gazetteer match.",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        country_code="ZZ",
+        admin1="Unknown Province",
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
     )
+    admin1_centroid = ("TH", "CM", "Chiang Mai", "chiang mai", "chiang mai", 18.7883, 98.9853)
     country_centroid = ("NG", 9.08, 8.68)
     session = FakeSession(
         [
-            FakeResult([(country_event, "Cholera"), (town_event, "Dengue")]),
-            FakeResult([town_location]),
+            FakeResult(
+                [
+                    (admin1_event, "Dengue"),
+                    (country_event, "Cholera"),
+                    (unmapped_event, "Influenza"),
+                ]
+            ),
+            FakeResult([admin1_centroid]),
             FakeResult([country_centroid]),
         ]
     )
 
     page = query_dashboard_events(session)
 
-    assert page.total == 2
+    assert page.total == 3
     assert [item.public_id for item in page.items] == [
+        "EVT-2026-ADMIN1",
         "EVT-2026-COUNTRY",
-        "EVT-2026-TOWN",
+        "EVT-2026-UNMAPPED",
     ]
-    assert page.items[0].town is None
-    assert page.items[0].map_level == "country"
-    assert (page.items[0].latitude, page.items[0].longitude) == (9.08, 8.68)
-    assert page.items[1].town == "Chiang Mai"
-    assert page.items[1].map_level == "town"
-    assert (page.items[1].latitude, page.items[1].longitude) == (18.7883, 98.9853)
+    assert page.items[0].admin1 == "Chiang Mai"
+    assert page.items[0].map_level == "admin1"
+    assert (page.items[0].latitude, page.items[0].longitude) == (18.7883, 98.9853)
+    assert page.items[1].admin1 is None
+    assert page.items[1].map_level == "country"
+    assert (page.items[1].latitude, page.items[1].longitude) == (9.08, 8.68)
+    assert page.items[2].admin1 == "Unknown Province"
+    assert page.items[2].map_level is None
+    assert (page.items[2].latitude, page.items[2].longitude) == (None, None)
 
     statement = session.executed[0]
     rendered = str(statement.compile(compile_kwargs={"literal_binds": True}))
@@ -159,3 +178,4 @@ def test_dashboard_returns_summarized_events_with_town_then_country_locations() 
     assert "btrim(events.summary)" in rendered
     assert "ORDER BY events.last_updated_at DESC" in rendered
     assert "published_at" not in rendered
+    assert not any("event_locations" in str(statement) for statement in session.executed)

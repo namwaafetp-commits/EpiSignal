@@ -30,7 +30,10 @@ function dateLabel(value: string | null) {
 }
 
 function eventLocation(event: DashboardEvent) {
-  return event.town ?? event.country_code ?? "Location unresolved";
+  if (event.admin1) {
+    return `${event.admin1}, ${event.country_code ?? "Unknown country"}`;
+  }
+  return event.country_code ?? "Location unresolved";
 }
 
 function EventCard({ event }: { event: DashboardEvent }) {
@@ -55,7 +58,6 @@ function EventCard({ event }: { event: DashboardEvent }) {
         </span>
         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
           📍 {eventLocation(event)}
-          {event.map_level ? ` (${event.map_level})` : ""}
         </span>
       </div>
 
@@ -93,7 +95,7 @@ export function HomeShell({
   const events = eventFeed.status === "ready" ? eventFeed.data.items : [];
   const mappedCount = events.filter(
     (event) =>
-      (event.map_level === "town" || event.map_level === "country") &&
+      (event.map_level === "admin1" || event.map_level === "country") &&
       event.latitude !== null &&
       event.longitude !== null,
   ).length;
@@ -109,7 +111,6 @@ export function HomeShell({
           <a href="#event-map">Map</a>
           <a href="#events-list">Events</a>
           <Link href="/admin/pipeline">Pipeline Monitor</Link>
-          <Link href="/admin/reviews">Review Queue</Link>
           <a href="#about">About</a>
         </nav>
         <span className={`system-pill system-pill--${apiStatus}`}>

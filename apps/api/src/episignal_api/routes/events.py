@@ -5,6 +5,7 @@ from uuid import UUID
 from episignal_backend.db.types import EventStatus, VerificationStatus
 from episignal_backend.events.read import (
     DashboardEventPage,
+    DashboardMapLevel,
     EventDetail,
     EventListPage,
     query_event_detail,
@@ -57,14 +58,14 @@ class DashboardEventResponse(BaseModel):
     event_type: str
     status: EventStatus
     country_code: str | None
-    town: str | None
+    admin1: str | None
     first_reported_at: datetime | None
     latest_report_at: datetime
     article_count: int
     last_summarized_at: datetime
     latitude: float | None
     longitude: float | None
-    map_level: str | None
+    map_level: DashboardMapLevel | None
 
 
 class DashboardEventsResponse(BaseModel):
