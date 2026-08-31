@@ -5,15 +5,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardEvent, DashboardFeedState } from "../lib/api-dashboard";
 import type { EventDetailResponse } from "../lib/api-events";
 import { HomeShell } from "./home-shell";
-
-const push = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
-}));
 
 const getEventDetail = vi.fn();
 vi.mock("../lib/api-events", () => ({
@@ -36,6 +31,9 @@ vi.mock("./event-map", () => ({
         {events.length} events
       </span>
       <span data-testid="selected-marker">{selectedId ?? "none"}</span>
+      {events.map((event) => (
+        <span key={event.public_id}>{event.headline}</span>
+      ))}
       <button onClick={() => onSelect(events[0]?.public_id)}>
         Open marker
       </button>
@@ -54,7 +52,7 @@ const EVENTS: DashboardEvent[] = [
     country_code: "AO",
     admin1: "Cacuaco",
     first_reported_at: "2026-08-01T00:00:00Z",
-    latest_report_at: "2026-08-30T12:00:00Z",
+    latest_report_at: "2026-08-30T10:00:00Z",
     article_count: 3,
     last_summarized_at: "2026-08-30T13:00:00Z",
     latitude: -8.58,
@@ -119,7 +117,16 @@ const detail = {
 } satisfies EventDetailResponse;
 
 describe("HomeShell", () => {
-  it("defaults to Map and shows dashboard stats plus unmapped events", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("defaults to Map, fills the full map view, and shows filtered stats", () => {
     render(<HomeShell apiStatus="ready" eventFeed={ready} />);
 
     expect(screen.getByRole("button", { name: "Map" })).toHaveAttribute(
@@ -129,25 +136,17 @@ describe("HomeShell", () => {
     expect(
       screen.getByRole("region", { name: /event map/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/1 mapped \/ 2 events/)).toBeInTheDocument();
     expect(
-      screen.getByText("Total events").previousElementSibling,
-    ).toHaveTextContent("2");
-    expect(
-      screen.getByText("Countries").previousElementSibling,
-    ).toHaveTextContent("2");
-    expect(
-      screen.getByText("Active events").previousElementSibling,
-    ).toHaveTextContent("2");
-    expect(
-      screen.getByRole("button", { name: /view event: Dengue activity/i }),
-    ).toBeInTheDocument();
+      screen.getByLabelText("Filtered event statistics"),
+    ).toHaveTextContent("2 EVENTS · 1 MAPPED · 2 COUNTRIES · 2 ACTIVE");
+    expect(screen.queryByText("Recent events")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/map_level|processing_status/i),
     ).not.toBeInTheDocument();
   });
 
-  it("selects a map marker or recent event card and opens detail panel", async () => {
+  it("selects a map marker and opens a floating detail panel", async () => {
+    vi.useRealTimers();
     getEventDetail.mockResolvedValue(detail);
     render(<HomeShell apiStatus="ready" eventFeed={ready} />);
 
@@ -170,17 +169,32 @@ describe("HomeShell", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: /view event: Dengue activity/i }),
+      screen.getByRole("button", { name: "Close event details" }),
     );
-    expect(screen.getByTestId("selected-marker")).toHaveTextContent(
-      "EVT-2026-00002",
-    );
-    expect(getEventDetail).toHaveBeenCalledWith("EVT-2026-00002");
+    expect(
+      screen.queryByRole("dialog", { name: /event details/i }),
+    ).not.toBeInTheDocument();
   });
 
-  it("filters same dashboard events in Map and Calendar views", () => {
+  it("combines region, disease, and time filters and preserves them in Calendar", () => {
     render(<HomeShell apiStatus="ready" eventFeed={ready} />);
 
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Thailand" },
+    });
+    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Cholera activity increasing in Cacuaco"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
+
+    expect(screen.getByRole("button", { name: "7D" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.change(screen.getByLabelText("Region"), {
+      target: { value: "Asia" },
+    });
     fireEvent.change(screen.getByLabelText("Disease"), {
       target: { value: "Dengue" },
     });
@@ -189,6 +203,9 @@ describe("HomeShell", () => {
       screen.queryByText("Cholera activity increasing in Cacuaco"),
     ).not.toBeInTheDocument();
 
+    expect(
+      screen.getByText(/1 EVENTS · 0 MAPPED · 1 COUNTRIES · 1 ACTIVE/),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
     expect(
       screen.getByRole("heading", { name: "Surveillance calendar" }),
@@ -197,6 +214,46 @@ describe("HomeShell", () => {
     expect(
       screen.getByRole("link", { name: /open event: Dengue activity/i }),
     ).toHaveAttribute("href", "/events/EVT-2026-00002");
+    expect(screen.getByLabelText("Region")).toHaveValue("Asia");
+    expect(screen.getByRole("button", { name: "7D" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("supports 24H, 30D, Custom, and ASEAN region filtering", () => {
+    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "24H" }));
+    expect(
+      screen.queryByText("Cholera activity increasing in Cacuaco"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Dengue activity in Thailand"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "30D" }));
+    expect(
+      screen.getByText("Cholera activity increasing in Cacuaco"),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Region"), {
+      target: { value: "ASEAN" },
+    });
+    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Cholera activity increasing in Cacuaco"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    expect(screen.getByLabelText("From")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-08-29" },
+    });
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "2026-08-29" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
   });
 
   it("renders newest calendar group before older group", () => {

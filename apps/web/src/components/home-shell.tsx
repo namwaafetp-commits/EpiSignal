@@ -8,11 +8,84 @@ import { EventMap } from "./event-map";
 
 export type ApiShellStatus = "loading" | "ready" | "unavailable";
 type HomeView = "map" | "calendar";
+type TimeRange = "24h" | "7d" | "30d" | "custom";
+type Region =
+  | ""
+  | "Africa"
+  | "Asia"
+  | "Europe"
+  | "North America"
+  | "South America"
+  | "Oceania"
+  | "ASEAN";
 
 const STATUS_LABELS: Record<ApiShellStatus, string> = {
   loading: "Checking feed",
   ready: "Live feed",
   unavailable: "Feed unavailable",
+};
+
+const TIME_RANGES: { value: TimeRange; label: string }[] = [
+  { value: "24h", label: "24H" },
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "custom", label: "Custom" },
+];
+
+const REGIONS: { value: Region; label: string }[] = [
+  { value: "", label: "All regions" },
+  { value: "Africa", label: "Africa" },
+  { value: "Asia", label: "Asia" },
+  { value: "Europe", label: "Europe" },
+  { value: "North America", label: "North America" },
+  { value: "South America", label: "South America" },
+  { value: "Oceania", label: "Oceania" },
+  { value: "ASEAN", label: "ASEAN" },
+];
+
+const ASEAN_COUNTRIES = new Set([
+  "BN",
+  "KH",
+  "ID",
+  "LA",
+  "MY",
+  "MM",
+  "PH",
+  "SG",
+  "TH",
+  "TL",
+  "VN",
+]);
+
+const REGION_COUNTRIES: Record<Exclude<Region, "" | "ASEAN">, Set<string>> = {
+  Africa: new Set(
+    "AO BF BI BJ BW CD CF CG CI CM CV DJ DZ EG ER ET GA GH GM GN GQ GW KE KM LR LS LY MA MG ML MR MU MW MZ NA NE NG RW SC SD SH SL SN SO SS ST SZ TD TG TN TZ UG YT ZA ZM ZW".split(
+      " ",
+    ),
+  ),
+  Asia: new Set(
+    "AF AM AZ BD BH BN BT CN CY GE ID IL IN IQ IR JO JP KG KH KP KR KW KZ LA LB LK MM MN MY MV NP OM PH PK PS QA RU SA SG SY TH TJ TL TM TR TW UZ VN YE".split(
+      " ",
+    ),
+  ),
+  Europe: new Set(
+    "AD AL AT BA BE BG BY CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SK SM UA VA XK".split(
+      " ",
+    ),
+  ),
+  "North America": new Set(
+    "AG BB BS BZ CA CR CU DM DO GD GT HN HT JM KN LC MX NI PA PM PR SV TT US VC".split(
+      " ",
+    ),
+  ),
+  "South America": new Set(
+    "AR BO BR CL CO EC FK GF GY PE PY SR UY VE".split(" "),
+  ),
+  Oceania: new Set(
+    "AS AU CK FJ FM GU KI MH MP NC NF NR NU NZ PF PG PW SB TK TO TV VU WF WS".split(
+      " ",
+    ),
+  ),
 };
 
 const ACTIVE_STATUSES = new Set([
@@ -64,43 +137,56 @@ function isMapped(event: DashboardEvent) {
   );
 }
 
+function eventDate(event: DashboardEvent) {
+  return event.latest_report_at || event.last_summarized_at;
+}
+
+function isInRegion(countryCode: string | null, region: Region) {
+  if (!region) return true;
+  if (!countryCode) return false;
+  if (region === "ASEAN") return ASEAN_COUNTRIES.has(countryCode);
+  return REGION_COUNTRIES[region].has(countryCode);
+}
+
+function isInTimeRange(
+  event: DashboardEvent,
+  timeRange: TimeRange,
+  customRange: DateRange,
+) {
+  const timestamp = Date.parse(eventDate(event));
+  if (Number.isNaN(timestamp)) return false;
+  const now = Date.now();
+  if (timeRange === "24h")
+    return timestamp >= now - 24 * 60 * 60 * 1000 && timestamp <= now;
+  if (timeRange === "7d")
+    return timestamp >= now - 7 * 24 * 60 * 60 * 1000 && timestamp <= now;
+  if (timeRange === "30d")
+    return timestamp >= now - 30 * 24 * 60 * 60 * 1000 && timestamp <= now;
+  if (!customRange.from || !customRange.to) return true;
+  const from = Date.parse(`${customRange.from}T00:00:00Z`);
+  const to = Date.parse(`${customRange.to}T23:59:59.999Z`);
+  return timestamp >= from && timestamp <= to;
+}
+
 function sortLatestFirst(events: readonly DashboardEvent[]) {
   return [...events].sort(
-    (left, right) =>
-      Date.parse(right.latest_report_at) - Date.parse(left.latest_report_at),
+    (left, right) => Date.parse(eventDate(right)) - Date.parse(eventDate(left)),
   );
 }
 
-function EventCard({
-  event,
-  onSelect,
-}: {
-  event: DashboardEvent;
-  onSelect: (publicId: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="event-card"
-      data-event-card="true"
-      onClick={() => onSelect(event.public_id)}
-      aria-label={`View event: ${event.headline}`}
-    >
-      <div className="event-card__meta">
-        <span className={`status-label status-label--${event.status}`}>
-          {formatLabel(event.status)}
-        </span>
-        <span>{event.disease ?? "Disease not specified"}</span>
-      </div>
-      <h3>{event.headline}</h3>
-      <p className="event-card__location">{eventLocation(event)}</p>
-      <p className="event-card__summary">{event.summary}</p>
-      <div className="event-card__footer">
-        <span>{event.article_count} sources</span>
-        <span>Updated {relativeTimeLabel(event.latest_report_at)}</span>
-      </div>
-    </button>
-  );
+interface DateRange {
+  from: string;
+  to: string;
+}
+
+function initialDateRange(): DateRange {
+  const today = new Date();
+  const from = new Date(today);
+  from.setUTCDate(from.getUTCDate() - 7);
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10),
+  };
 }
 
 function CalendarCard({ event }: { event: DashboardEvent }) {
@@ -114,9 +200,9 @@ function CalendarCard({ event }: { event: DashboardEvent }) {
         <span className={`status-label status-label--${event.status}`}>
           {formatLabel(event.status)}
         </span>
-        <span>{event.disease ?? "Disease not specified"}</span>
-        <time dateTime={event.latest_report_at}>
-          {relativeTimeLabel(event.latest_report_at)}
+        <span>{event.disease ?? "Unknown disease"}</span>
+        <time dateTime={eventDate(event)}>
+          {relativeTimeLabel(eventDate(event))}
         </time>
       </div>
       <h3>{event.headline}</h3>
@@ -124,11 +210,11 @@ function CalendarCard({ event }: { event: DashboardEvent }) {
       <p className="event-card__summary">{event.summary}</p>
       <div className="calendar-card__latest">
         <span>Latest development</span>
-        <strong>Open event for full observation history</strong>
+        <strong>Available on the full event page</strong>
       </div>
       <div className="event-card__footer">
         <span>{event.article_count} sources</span>
-        <span>Updated {dateTimeLabel(event.latest_report_at)}</span>
+        <span>Updated {dateTimeLabel(eventDate(event))}</span>
       </div>
     </Link>
   );
@@ -158,7 +244,7 @@ function EventDetailPanel({
           <span className={`status-label status-label--${event.status}`}>
             {formatLabel(event.status)}
           </span>
-          <span>{event.disease ?? "Disease not specified"}</span>
+          <span>{event.disease ?? "Unknown disease"}</span>
         </div>
         <button
           type="button"
@@ -182,7 +268,7 @@ function EventDetailPanel({
       </div>
       <div className="event-detail-panel__footer">
         <span>{event.article_count} sources</span>
-        <span>Updated {relativeTimeLabel(event.latest_report_at)}</span>
+        <span>Updated {relativeTimeLabel(eventDate(event))}</span>
       </div>
       <Link
         href={`/events/${encodeURIComponent(event.public_id)}`}
@@ -197,23 +283,37 @@ function EventDetailPanel({
 function FilterBar({
   events,
   search,
+  region,
   disease,
   country,
   status,
+  timeRange,
+  customDraft,
   onSearch,
+  onRegion,
   onDisease,
   onCountry,
   onStatus,
+  onTimeRange,
+  onCustomDraft,
+  onApplyCustom,
 }: {
   events: readonly DashboardEvent[];
   search: string;
+  region: Region;
   disease: string;
   country: string;
   status: string;
+  timeRange: TimeRange;
+  customDraft: DateRange;
   onSearch: (value: string) => void;
+  onRegion: (value: Region) => void;
   onDisease: (value: string) => void;
   onCountry: (value: string) => void;
   onStatus: (value: string) => void;
+  onTimeRange: (value: TimeRange) => void;
+  onCustomDraft: (value: DateRange) => void;
+  onApplyCustom: () => void;
 }) {
   const diseases = [
     ...new Set(
@@ -233,57 +333,119 @@ function FilterBar({
 
   return (
     <section className="filter-bar" aria-label="Event filters">
-      <label className="search-field">
-        <span>Search</span>
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder="Search events or locations"
-        />
-      </label>
-      <label>
-        <span>Disease</span>
-        <select
-          value={disease}
-          onChange={(event) => onDisease(event.target.value)}
-        >
-          <option value="">All diseases</option>
-          {diseases.map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
+      <div className="filter-bar__selects">
+        <label className="search-field">
+          <span>Search</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search headline, disease, country, or region"
+          />
+        </label>
+        <label>
+          <span>Region</span>
+          <select
+            value={region}
+            onChange={(event) => onRegion(event.target.value as Region)}
+          >
+            {REGIONS.map((option) => (
+              <option key={option.label} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Disease</span>
+          <select
+            value={disease}
+            onChange={(event) => onDisease(event.target.value)}
+          >
+            <option value="">All diseases</option>
+            {diseases.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Country</span>
+          <select
+            value={country}
+            onChange={(event) => onCountry(event.target.value)}
+          >
+            <option value="">All countries</option>
+            {countries.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select
+            value={status}
+            onChange={(event) => onStatus(event.target.value)}
+          >
+            <option value="">All statuses</option>
+            {statuses.map((value) => (
+              <option key={value} value={value}>
+                {formatLabel(value)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <fieldset className="time-filter">
+        <legend>Time range</legend>
+        <div className="time-filter__buttons">
+          {TIME_RANGES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={timeRange === option.value}
+              className={timeRange === option.value ? "is-active" : ""}
+              onClick={() => onTimeRange(option.value)}
+            >
+              {option.label}
+            </button>
           ))}
-        </select>
-      </label>
-      <label>
-        <span>Country</span>
-        <select
-          value={country}
-          onChange={(event) => onCountry(event.target.value)}
-        >
-          <option value="">All countries</option>
-          {countries.map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span>Status</span>
-        <select
-          value={status}
-          onChange={(event) => onStatus(event.target.value)}
-        >
-          <option value="">All statuses</option>
-          {statuses.map((value) => (
-            <option key={value} value={value}>
-              {formatLabel(value)}
-            </option>
-          ))}
-        </select>
-      </label>
+        </div>
+        {timeRange === "custom" && (
+          <div className="custom-range">
+            <label>
+              <span>From</span>
+              <input
+                type="date"
+                value={customDraft.from}
+                onChange={(event) =>
+                  onCustomDraft({ ...customDraft, from: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              <span>To</span>
+              <input
+                type="date"
+                value={customDraft.to}
+                onChange={(event) =>
+                  onCustomDraft({ ...customDraft, to: event.target.value })
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className="apply-filter"
+              onClick={onApplyCustom}
+            >
+              Apply
+            </button>
+          </div>
+        )}
+      </fieldset>
     </section>
   );
 }
@@ -294,9 +456,8 @@ function dateGroupKey(value: string) {
 
 function dateGroupLabel(value: string) {
   const date = new Date(`${value}T00:00:00Z`);
-  const today = new Date();
-  const todayKey = today.toISOString().slice(0, 10);
-  if (value === todayKey) return "Today";
+  const todayKey = new Date().toISOString().slice(0, 10);
+  if (value === todayKey) return "TODAY";
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
@@ -310,7 +471,7 @@ function dateGroupLabel(value: string) {
 function CalendarView({ events }: { events: readonly DashboardEvent[] }) {
   const groups = new Map<string, DashboardEvent[]>();
   for (const event of events) {
-    const key = dateGroupKey(event.latest_report_at);
+    const key = dateGroupKey(eventDate(event));
     const group = groups.get(key) ?? [];
     group.push(event);
     groups.set(key, group);
@@ -358,9 +519,13 @@ export function HomeShell({
 }) {
   const [view, setView] = useState<HomeView>("map");
   const [search, setSearch] = useState("");
+  const [region, setRegion] = useState<Region>("");
   const [disease, setDisease] = useState("");
   const [country, setCountry] = useState("");
   const [status, setStatus] = useState("");
+  const [timeRange, setTimeRange] = useState<TimeRange>("7d");
+  const [customRange, setCustomRange] = useState<DateRange>(initialDateRange);
+  const [customDraft, setCustomDraft] = useState<DateRange>(initialDateRange);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailState, setDetailState] = useState<{
     id: string;
@@ -375,27 +540,45 @@ export function HomeShell({
     const query = search.trim().toLowerCase();
     return sortLatestFirst(
       allEvents.filter((event) => {
-        const haystack = [event.headline, event.summary, eventLocation(event)]
+        const haystack = [
+          event.headline,
+          event.summary,
+          event.disease,
+          event.country_code,
+          event.admin1,
+        ]
+          .filter(Boolean)
           .join(" ")
           .toLowerCase();
         return (
           (!query || haystack.includes(query)) &&
+          isInRegion(event.country_code, region) &&
           (!disease || event.disease === disease) &&
           (!country || event.country_code === country) &&
-          (!status || event.status === status)
+          (!status || event.status === status) &&
+          isInTimeRange(event, timeRange, customRange)
         );
       }),
     );
-  }, [allEvents, country, disease, search, status]);
+  }, [
+    allEvents,
+    country,
+    customRange,
+    disease,
+    region,
+    search,
+    status,
+    timeRange,
+  ]);
 
   const selectedEvent =
     events.find((event) => event.public_id === selectedId) ?? null;
-  const mappedCount = allEvents.filter(isMapped).length;
-  const activeCount = allEvents.filter((event) =>
+  const mappedCount = events.filter(isMapped).length;
+  const activeCount = events.filter((event) =>
     ACTIVE_STATUSES.has(event.status),
   ).length;
   const countryCount = new Set(
-    allEvents.map((event) => event.country_code).filter(Boolean),
+    events.map((event) => event.country_code).filter(Boolean),
   ).size;
 
   useEffect(() => {
@@ -417,6 +600,11 @@ export function HomeShell({
 
   function selectEvent(publicId: string) {
     setSelectedId(publicId);
+  }
+
+  function selectTimeRange(value: TimeRange) {
+    setTimeRange(value);
+    if (value === "custom") setCustomDraft(customRange);
   }
 
   return (
@@ -454,13 +642,20 @@ export function HomeShell({
         <FilterBar
           events={allEvents}
           search={search}
+          region={region}
           disease={disease}
           country={country}
           status={status}
+          timeRange={timeRange}
+          customDraft={customDraft}
           onSearch={setSearch}
+          onRegion={setRegion}
           onDisease={setDisease}
           onCountry={setCountry}
           onStatus={setStatus}
+          onTimeRange={selectTimeRange}
+          onCustomDraft={setCustomDraft}
+          onApplyCustom={() => setCustomRange(customDraft)}
         />
 
         {view === "map" ? (
@@ -471,73 +666,38 @@ export function HomeShell({
                   <p className="eyebrow">Where things are happening</p>
                   <h1 id="map-heading">Global event map</h1>
                 </div>
-                <p>{events.length} visible events from summarized reporting.</p>
+                <p>{events.length} events in current view.</p>
               </div>
-              <div className="map-workspace">
-                <div className="map-stage">
-                  <EventMap
-                    events={events}
-                    selectedId={selectedId}
-                    onSelect={selectEvent}
+              <div className="map-stage">
+                <EventMap
+                  events={events}
+                  selectedId={selectedId}
+                  onSelect={selectEvent}
+                />
+                {selectedEvent && (
+                  <EventDetailPanel
+                    event={selectedEvent}
+                    detail={selectedDetail}
+                    detailLoading={detailLoading}
+                    onClose={() => setSelectedId(null)}
                   />
-                  {selectedEvent && (
-                    <EventDetailPanel
-                      event={selectedEvent}
-                      detail={selectedDetail}
-                      detailLoading={detailLoading}
-                      onClose={() => setSelectedId(null)}
-                    />
-                  )}
-                </div>
-                <aside
-                  className="recent-events"
-                  aria-labelledby="recent-heading"
-                >
-                  <div className="recent-events__heading">
-                    <p className="eyebrow">Signal picture</p>
-                    <h2 id="recent-heading">Recent events</h2>
-                  </div>
-                  <div className="recent-events__list" aria-live="polite">
-                    {eventFeed.status === "loading" ? (
-                      <p className="empty-state">Loading summarized events…</p>
-                    ) : eventFeed.status === "unavailable" ? (
-                      <p className="empty-state">
-                        Events unavailable. The API could not load summaries.
-                      </p>
-                    ) : events.length === 0 ? (
-                      <p className="empty-state">
-                        No events match these filters.
-                      </p>
-                    ) : (
-                      events.map((event) => (
-                        <EventCard
-                          key={event.public_id}
-                          event={event}
-                          onSelect={selectEvent}
-                        />
-                      ))
-                    )}
-                  </div>
-                </aside>
+                )}
               </div>
-            </section>
-            <section className="stats-strip" aria-label="Event overview">
-              <div>
-                <strong>{allEvents.length}</strong>
-                <span>Total events</span>
-              </div>
-              <div>
-                <strong>{activeCount}</strong>
-                <span>Active events</span>
-              </div>
-              <div>
-                <strong>{countryCount}</strong>
-                <span>Countries</span>
-              </div>
-              <div>
-                <strong>{mappedCount}</strong>
-                <span>Mapped events</span>
-              </div>
+              {eventFeed.status === "loading" ? (
+                <p className="map-feed-message">Loading summarized events…</p>
+              ) : eventFeed.status === "unavailable" ? (
+                <p className="map-feed-message">
+                  Events unavailable. The API could not load summaries.
+                </p>
+              ) : events.length === 0 ? (
+                <p className="map-feed-message">
+                  No events match these filters.
+                </p>
+              ) : null}
+              <p className="map-stats" aria-label="Filtered event statistics">
+                {events.length} EVENTS · {mappedCount} MAPPED · {countryCount}{" "}
+                COUNTRIES · {activeCount} ACTIVE
+              </p>
             </section>
           </>
         ) : (
