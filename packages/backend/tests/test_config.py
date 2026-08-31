@@ -111,6 +111,13 @@ def test_api_bind_host_prefers_new_name_and_accepts_legacy_name(
 
     assert settings.api_host == "0.0.0.0"
 
+    programmatic_settings = Settings(
+        api_host="10.0.0.1",
+        database_url="postgresql+psycopg://user:secret@host/db",
+        _env_file=None,
+    )
+    assert programmatic_settings.api_host == "10.0.0.1"
+
 
 def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
         env_prefix="EPISIGNAL_",
         env_file="apps/api/.env",
         extra="ignore",
+        populate_by_name=True,
     )
 
     env: Literal["development", "test", "production"] = "development"
