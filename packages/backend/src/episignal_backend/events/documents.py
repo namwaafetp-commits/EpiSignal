@@ -12,6 +12,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from episignal_backend.ai.schema import BriefPoint, Extraction
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
+from episignal_backend.geocode.normalize import normalized_form
+
+
+def normalize_disease_text(value: str | None) -> str | None:
+    """Normalize disease text for exact, non-fuzzy identity comparisons."""
+    if value is None:
+        return None
+    normalized = normalized_form(value)
+    return normalized or None
 
 
 class MatchAction(StrEnum):
@@ -65,6 +74,7 @@ class SignalForMatching(BaseModel):
 
     signal_id: UUID
     disease_id: UUID | None = None
+    disease_text: str | None = None
     source_id: UUID
     source_is_official: bool
     credibility_tier: CredibilityTier
@@ -74,6 +84,13 @@ class SignalForMatching(BaseModel):
     locations: tuple[LocationForMatching, ...] = ()
     extraction: Extraction | None = None
     embedding: tuple[float, ...] | None = None
+
+    @property
+    def disease_identity(self) -> str | None:
+        if self.disease_id is not None:
+            return f"id:{self.disease_id}"
+        disease_text = normalize_disease_text(self.disease_text)
+        return f"text:{disease_text}" if disease_text is not None else None
 
 
 _PRECISION_RANK = {
@@ -95,6 +112,25 @@ class StoryCluster(BaseModel):
     @property
     def disease_id(self) -> UUID | None:
         return self.signals[0].disease_id
+
+    @property
+    def disease_text(self) -> str | None:
+        return next(
+            (
+                text
+                for signal in self.signals
+                if (text := normalize_disease_text(signal.disease_text))
+            ),
+            None,
+        )
+
+    @property
+    def disease_identity(self) -> str | None:
+        if self.disease_id is not None:
+            return f"id:{self.disease_id}"
+        if self.disease_text is not None:
+            return f"text:{self.disease_text}"
+        return None
 
     @property
     def representative_location(self) -> LocationForMatching | None:
@@ -136,12 +172,20 @@ class CandidateEvent(BaseModel):
 
     event_id: UUID
     disease_id: UUID | None = None
+    disease_text: str | None = None
     locations: tuple[LocationForMatching, ...] = ()
     first_signal_at: datetime
     last_updated_at: datetime
     representative_embedding: tuple[float, ...] | None = None
     title: str = ""
     recent_source_titles: tuple[str, ...] = ()
+
+    @property
+    def disease_identity(self) -> str | None:
+        if self.disease_id is not None:
+            return f"id:{self.disease_id}"
+        disease_text = normalize_disease_text(self.disease_text)
+        return f"text:{disease_text}" if disease_text is not None else None
 
 
 class MatchDecision(BaseModel):

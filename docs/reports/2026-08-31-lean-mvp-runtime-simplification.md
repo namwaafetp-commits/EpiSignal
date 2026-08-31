@@ -1,41 +1,92 @@
-# Lean MVP runtime simplification
+# Lean MVP runtime and recovery report
 
 Date: 2026-08-31
 
+## Runtime and recovery baseline
+
 Before events: 14
+
 Before summaries: 14
+
 Backlog extracted: 131
 
 After events: 145
+
 After summaries: 15
+
 Attached existing: 0
+
 Created new: 131
-Unmapped: 130
+
+Unmapped before: 130
+
 Remaining blocked: 41
 
 Historical review rows examined: 172
+
 Valid extracted backlog: 131
+
 Invalid extractions: 41
+
 Requeued: 131
+
 New events: 131
+
 Attached existing: 0
 
-Events total: 145
-Summaries total: 15
-Summaries pending: 130
-Exact pending reason: the summary provider was configured and one provider
-request succeeded, but the remaining provider requests did not complete within
-the bounded validation run. The run was stopped before the first 32-request
-batch committed. This was not a missing API key, extraction regeneration, a
-full-pipeline rerun, or an intentional skip. No evidence was recorded to
-classify it as a rate limit or model-unavailable response.
+The 131 valid rows were requeued directly to `EXTRACTED` and processed only
+through `MATCH → SUMMARIZE`. The 41 remaining `NEEDS_REVIEW` rows have invalid
+stored extractions. No discovery, retrieval, dedupe, triage, or extraction was
+rerun.
 
-The 172 historical `NEEDS_REVIEW` rows were examined. The 131 rows with valid
-stored extractions were requeued directly to
-`EXTRACTED`, then matched and attached to newly created events. The 41 rows
-left in `NEEDS_REVIEW` were excluded because their stored extraction was
-invalid. No discovery, retrieval, dedupe, triage, or extraction was rerun for
-the recovery pass.
+## PR #7 clarification
+
+Country normalization fixed: YES
+
+Extraction country resolution is exact and non-geocoded. A valid triage ISO-2
+value wins; otherwise the existing country alias/GDELT country-name helpers are
+used; otherwise the country is null. Focused coverage includes Thailand → TH,
+United States → US, and an unknown country → null.
+
+Recovery events currently: 145
+
+Potential duplicate event groups: 2
+
+Recommended resulting event count after safe consolidation: 143
+
+Unmapped before: 130
+
+Unmapped after country normalization: 101
+
+The duplicate audit was read-only. It found two exact normalized
+disease-identity + country groups within the seven-day matching window; no
+events were merged in this patch.
+
+Summaries persisted: 15
+
+Summaries remaining: 130
+
+Summary per-completion commit: YES
+
+Exact pending reason: the summary provider was configured and 15 requests
+completed successfully. The remaining 130 model calls were launched by the
+bounded validation run but did not complete before that run was stopped; the
+old batch implementation only wrote request/summary rows after a whole batch
+returned. They were not skipped intentionally, and the available evidence does
+not indicate a missing key, request/cost guard, rate limit, or unavailable
+model. No full-pipeline rerun or extraction regeneration was performed.
+
+Invalid extraction explanation: all 172 historical `NEEDS_REVIEW` rows were
+examined; 131 had valid stored extractions and were requeued, while 41 could
+not be parsed and remained blocked. The 131 new events were created because
+the earlier recovery matching pass treated each eligible unresolved-disease
+row as a standalone event. This patch adds exact disease-text fallback
+identity and candidate-event fallback lookup, so future matching can attach
+same disease + country + time without embeddings, fuzzy matching, an LLM judge,
+or human review. The two potential duplicate groups above are the safe
+read-only consolidation candidates among the existing recovery events.
+
+## Runtime
 
 Runtime stages:
 
@@ -43,20 +94,23 @@ Runtime stages:
 
 `NEEDS_REVIEW` runtime writes remaining: 0
 
-The dashboard read path retains admin1-centroid, country-centroid, and no-marker
-fallback behavior. Fifteen summaries are persisted; 130 newly created events
-remain summary-pending because the external summary provider did not complete
-within the bounded validation run. The summary stage was the only additional
-stage attempted after matching; extraction was not regenerated.
+Event creation is never blocked by unresolved disease or country. The dashboard
+location fallback remains admin1 centroid, then country centroid, then no
+marker. No `GEOCODE`, `PREGROUP`, `ECDC`, embeddings, or normal-path event judge
+stage is in the runtime chain.
 
-Focused validation:
+Focused tests: 26 passed
 
-- `uv run pytest packages/backend/tests/test_lean_mvp_runtime.py packages/backend/tests/test_pipeline_runner.py packages/backend/tests/test_pipeline_fixture.py packages/backend/tests/test_event_read.py -q` — 19 passed
-- Targeted `ruff` — passed
-- Targeted `mypy` — passed
-- `git diff --check` — passed
+Targeted ruff: passed
+
+Targeted mypy: passed
+
+`git diff --check`: passed
 
 Branch: `codex/next-iteration`
+
 Commit: see PR head
+
 PR: https://github.com/namwaafetp-commits/EpiSignal/pull/7
+
 Do not merge.

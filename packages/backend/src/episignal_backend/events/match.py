@@ -23,6 +23,7 @@ from episignal_backend.events.documents import (
     MatchRejection,
     StoryCluster,
 )
+from episignal_backend.geocode.normalize import normalized_form
 
 DEFAULT_MATCH_WEIGHTS: dict[str, float] = {
     "disease": 0.30,
@@ -54,13 +55,16 @@ def _candidate_representative_location(
     return max(candidates, key=lambda loc: _PRECISION_RANK.get(loc.precision, -1))
 
 
-def _is_country_only(location: LocationForMatching | None) -> bool:
-    """Whether a location supplies no administrative or place-level identity."""
-    if location is None:
-        return False
-    return location.precision == Precision.COUNTRY or not any(
-        (location.admin1, location.admin2, location.place_name)
-    )
+def _disease_identity(value: object) -> str | None:
+    identity = getattr(value, "disease_identity", None)
+    if isinstance(identity, str):
+        return identity
+    disease_id = getattr(value, "disease_id", None)
+    if disease_id is not None:
+        return f"id:{disease_id}"
+    disease_text = getattr(value, "disease_text", None)
+    normalized = normalized_form(disease_text) if isinstance(disease_text, str) else ""
+    return f"text:{normalized}" if normalized else None
 
 
 def match_score(
@@ -82,7 +86,8 @@ def match_score(
     If disease or spatial agreement is zero, the total match score is zero.
     """
     # 1. Disease component
-    if cluster.disease_id is None or cluster.disease_id != candidate.disease_id:
+    cluster_identity = _disease_identity(cluster)
+    if cluster_identity is None or cluster_identity != _disease_identity(candidate):
         return 0.0
     disease_score = 1.0
 
@@ -161,7 +166,8 @@ def _deterministic_rejection(
     distance_km: float,
     recency_days: float,
 ) -> MatchRejection | None:
-    if cluster.disease_id is None or cluster.disease_id != candidate.disease_id:
+    cluster_identity = _disease_identity(cluster)
+    if cluster_identity is None or cluster_identity != _disease_identity(candidate):
         return MatchRejection.DISEASE_MISMATCH
 
     cluster_location = cluster.representative_location

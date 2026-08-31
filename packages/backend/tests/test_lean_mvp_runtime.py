@@ -2,8 +2,10 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision, ProcessingStatus
 from episignal_backend.events.assemble import run_event_assembly
+from episignal_backend.events.cluster import build_clusters
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching, StoryCluster
 from episignal_backend.events.match import decide
 from episignal_backend.events.repository import SqlAlchemyEventRepository
@@ -73,6 +75,63 @@ def test_match_repository_reads_triage_country_without_signal_locations() -> Non
     assert result[0].locations[0].latitude is None
 
 
+@pytest.mark.parametrize(
+    ("country", "expected"),
+    (("Thailand", "TH"), ("United States", "US"), ("Ruritania", None)),
+)
+def test_match_repository_resolves_extraction_country_aliases(
+    country: str, expected: str | None
+) -> None:
+    signal_id = uuid4()
+    extraction = _valid_extraction()
+    extraction["locations"] = [{"role": "primary", "country": country}]
+    signal = SimpleNamespace(
+        id=signal_id,
+        disease_id=None,
+        source_id=uuid4(),
+        triage_country_code=None,
+        triage_admin1=None,
+        published_at=NOW,
+        first_seen_at=NOW,
+        title="Disease report",
+        ai_extraction=extraction,
+    )
+    session = SimpleNamespace(
+        execute=lambda statement: SimpleNamespace(
+            all=lambda: [(signal, False, CredibilityTier.MEDIUM)]
+        )
+    )
+
+    result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
+
+    assert result[0].locations[0].country_code == expected
+
+
+def test_triage_iso2_country_takes_priority_over_extraction_alias() -> None:
+    extraction = _valid_extraction()
+    extraction["locations"] = [{"role": "primary", "country": "Thailand"}]
+    signal = SimpleNamespace(
+        id=uuid4(),
+        disease_id=None,
+        source_id=uuid4(),
+        triage_country_code="UG",
+        triage_admin1=None,
+        published_at=NOW,
+        first_seen_at=NOW,
+        title="Disease report",
+        ai_extraction=extraction,
+    )
+    session = SimpleNamespace(
+        execute=lambda statement: SimpleNamespace(
+            all=lambda: [(signal, False, CredibilityTier.MEDIUM)]
+        )
+    )
+
+    result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
+
+    assert result[0].locations[0].country_code == "UG"
+
+
 def test_same_disease_and_country_can_attach_without_admin1() -> None:
     disease_id = uuid4()
     location = LocationForMatching(
@@ -101,6 +160,113 @@ def test_same_disease_and_country_can_attach_without_admin1() -> None:
     decision = decide(StoryCluster(signals=(signal,)), [candidate], threshold=0.60)
 
     assert decision.event_id == candidate.event_id
+
+
+def test_exact_disease_text_and_country_cluster_without_disease_id() -> None:
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="TH",
+    )
+    first = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        disease_text=" Dengue ",
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=NOW,
+        first_seen_at=NOW,
+        locations=(location,),
+    )
+    second = first.model_copy(update={"signal_id": uuid4(), "disease_text": "dengue"})
+
+    clusters, unclusterable = build_clusters((first, second), window_days=7)
+
+    assert len(clusters) == 1
+    assert len(clusters[0].signals) == 2
+    assert unclusterable == ()
+
+
+def test_exact_disease_text_and_country_can_attach_without_disease_id() -> None:
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="TH",
+    )
+    signal = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        disease_text="Dengue",
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=NOW,
+        first_seen_at=NOW,
+        locations=(location,),
+    )
+    candidate = SimpleNamespace(
+        event_id=uuid4(),
+        disease_id=None,
+        disease_text=" dengue ",
+        locations=(location,),
+        first_signal_at=NOW - timedelta(days=1),
+        last_updated_at=NOW,
+    )
+
+    decision = decide(StoryCluster(signals=(signal,)), [candidate], threshold=0.60)
+
+    assert decision.event_id == candidate.event_id
+
+
+def test_null_disease_event_uses_attached_extraction_text_as_candidate_identity() -> None:
+    event = SimpleNamespace(
+        id=uuid4(),
+        disease_id=None,
+        country_code="TH",
+        admin1=None,
+        admin2=None,
+        place_name=None,
+        first_signal_at=NOW - timedelta(days=1),
+        created_at=NOW - timedelta(days=1),
+        last_updated_at=NOW,
+        title="Dengue event",
+    )
+    extraction = _valid_extraction()
+    extraction["disease"] = {"name": "Dengue", "confidence": 0.9}
+    results = [
+        SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [event])),
+        SimpleNamespace(all=lambda: [(event.id, True, extraction)]),
+    ]
+
+    class Session:
+        def execute(self, statement):
+            return results.pop(0)
+
+    signal = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        disease_text=" dengue ",
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=NOW,
+        first_seen_at=NOW,
+        locations=(
+            LocationForMatching(
+                location_role=LocationRole.PRIMARY,
+                precision=Precision.COUNTRY,
+                country_code="TH",
+            ),
+        ),
+    )
+
+    candidates = SqlAlchemyEventRepository(Session()).candidate_events(
+        StoryCluster(signals=(signal,)),
+        lookback_days=7,
+    )
+
+    assert candidates[0].disease_text == "dengue"
 
 
 class _AssemblyRepository:

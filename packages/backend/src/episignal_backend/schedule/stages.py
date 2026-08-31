@@ -10,7 +10,7 @@ on a different connection for the whole run.
 """
 
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 from episignal_backend.ai.extract import run_extraction
@@ -50,6 +50,8 @@ from episignal_backend.ingestion.retrieval import run_retrieval
 from episignal_backend.ingestion.who_don import WhoDonConnector
 from episignal_backend.schedule.documents import DiscoveryWindow, StageName
 from episignal_backend.schedule.run import StageRunner
+
+SUMMARY_MAX_WORKERS = 4
 
 
 def _ingest(connector: SourceConnector) -> Mapping[str, int]:
@@ -300,16 +302,14 @@ def _summarize() -> Mapping[str, int]:
                 event, sources = item
                 return run_summary(model, spec, event=event, sources=sources)
 
-            # Model calls are independent. Bound each worker batch and commit
-            # after its database writes, so completed summaries survive a later
-            # provider failure or interruption.
-            batch_size = max(settings.ai_extraction_workers, 1)
-            for start in range(0, len(pending), batch_size):
-                batch = pending[start : start + batch_size]
-                with ThreadPoolExecutor(max_workers=len(batch)) as pool:
-                    completed = list(pool.map(summarize_one, batch))
-
-                for (event, sources), result in zip(batch, completed, strict=True):
+            # Model calls are independent. The four-worker cap bounds provider
+            # pressure; each completed future is written and committed before
+            # the next completion is handled.
+            with ThreadPoolExecutor(max_workers=SUMMARY_MAX_WORKERS) as pool:
+                futures = {pool.submit(summarize_one, item): item for item in pending}
+                for future in as_completed(futures):
+                    event, sources = futures[future]
+                    result = future.result()
                     if result.attempt is not None:
                         event_repository.record_ai_request(
                             cost_row(
@@ -338,7 +338,7 @@ def _summarize() -> Mapping[str, int]:
                         unavailable += 1
                     else:
                         failed += 1
-                event_repository.commit()
+                    event_repository.commit()
 
         event_repository.commit()
 

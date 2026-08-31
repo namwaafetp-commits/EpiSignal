@@ -6,8 +6,9 @@ owns transactions.
 Maps between ORM models and pure domain contracts across the boundary.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -35,6 +36,8 @@ from episignal_backend.events.documents import (
     StoryCluster,
     SummarySource,
 )
+from episignal_backend.geocode.normalize import normalized_form, resolve_country
+from episignal_backend.ingestion.gdelt.locale import country_code as gdelt_country_code
 from episignal_backend.models import (
     AiRequest,
     Disease,
@@ -46,6 +49,7 @@ from episignal_backend.models import (
     Signal,
     Source,
 )
+from episignal_backend.seeds import load_country_aliases
 
 
 def read_stored_extraction(payload: Any) -> Extraction | None:
@@ -70,6 +74,17 @@ def _country_code(value: str | None) -> str | None:
     return normalized if len(normalized) == 2 and normalized.isalpha() else None
 
 
+@lru_cache(maxsize=1)
+def _country_aliases() -> Mapping[str, str]:
+    return {normalized_form(alias.name): alias.country_code for alias in load_country_aliases()}
+
+
+def _resolve_country(value: str | None) -> str | None:
+    return _country_code(value) or resolve_country(value, _country_aliases()) or (
+        gdelt_country_code(value) if value is not None else None
+    )
+
+
 def _direct_locations(
     extraction: Any,
     *,
@@ -80,10 +95,11 @@ def _direct_locations(
     extracted = tuple(getattr(extraction, "locations", ()) or ())
     primary = next((item for item in extracted if item.role.value == "primary"), None)
     source = primary or (extracted[0] if extracted else None)
-    code = _country_code(country_code) or _country_code(getattr(source, "country", None))
+    source_country = getattr(source, "country", None)
+    code = _country_code(country_code) or _resolve_country(source_country)
     province = getattr(source, "admin1", None) or admin1
     place = getattr(source, "place_name", None)
-    if code is None and province is None and place is None:
+    if code is None and province is None and place is None and not source_country:
         return ()
     precision = (
         Precision.ADMIN1 if province else Precision.COUNTRY if code else Precision.UNRESOLVED
@@ -157,6 +173,11 @@ class SqlAlchemyEventRepository:
                 SignalForMatching(
                     signal_id=sig.id,
                     disease_id=sig.disease_id,
+                    disease_text=(
+                        extraction.disease.name
+                        if extraction is not None and extraction.disease is not None
+                        else None
+                    ),
                     source_id=sig.source_id,
                     source_is_official=is_official,
                     credibility_tier=cred_tier,
@@ -179,16 +200,19 @@ class SqlAlchemyEventRepository:
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
         rep_loc = cluster.representative_location
-        if cluster.disease_id is None or rep_loc is None or rep_loc.country_code is None:
+        if cluster.disease_identity is None or rep_loc is None or rep_loc.country_code is None:
             return ()
 
         cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
 
         conditions: list[ColumnElement[bool]] = [
-            Event.disease_id == cluster.disease_id,
             Event.last_updated_at >= cutoff,
             Event.country_code == rep_loc.country_code,
         ]
+        if cluster.disease_id is not None:
+            conditions.append(Event.disease_id == cluster.disease_id)
+        else:
+            conditions.append(Event.disease_id.is_(None))
         event_query = (
             select(Event).where(*conditions).order_by(Event.last_updated_at.desc()).limit(limit)
         )
@@ -196,8 +220,29 @@ class SqlAlchemyEventRepository:
         if not events:
             return ()
 
+        disease_text_by_event: dict[UUID, str] = {}
+        if cluster.disease_id is None:
+            event_ids = [event.id for event in events]
+            extracted_rows = self._session.execute(
+                select(EventSignal.event_id, EventSignal.is_primary, Signal.ai_extraction)
+                .join(Signal, Signal.id == EventSignal.signal_id)
+                .where(EventSignal.event_id.in_(event_ids))
+                .order_by(EventSignal.event_id, EventSignal.is_primary.desc())
+            ).all()
+            for event_id, is_primary, payload in extracted_rows:
+                if event_id in disease_text_by_event and not is_primary:
+                    continue
+                extraction = read_stored_extraction(payload)
+                if extraction is not None and extraction.disease is not None:
+                    normalized_disease_text = normalized_form(extraction.disease.name)
+                    if normalized_disease_text:
+                        disease_text_by_event[event_id] = normalized_disease_text
+
         candidates: list[CandidateEvent] = []
         for ev in events:
+            disease_text = disease_text_by_event.get(ev.id)
+            if cluster.disease_id is None and disease_text != cluster.disease_text:
+                continue
             event_location = _event_location(ev)
             first_sig: datetime = (
                 ev.first_signal_at
@@ -208,6 +253,7 @@ class SqlAlchemyEventRepository:
                 CandidateEvent(
                     event_id=ev.id,
                     disease_id=ev.disease_id,
+                    disease_text=disease_text,
                     locations=(event_location,) if event_location is not None else (),
                     first_signal_at=first_sig,
                     last_updated_at=ev.last_updated_at,
@@ -272,6 +318,7 @@ class SqlAlchemyEventRepository:
         return CandidateEvent(
             event_id=event_id,
             disease_id=cluster.disease_id,
+            disease_text=cluster.disease_text,
             locations=locations,
             first_signal_at=first_sig_at,
             last_updated_at=last_updated_at,
