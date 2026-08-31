@@ -727,6 +727,29 @@ def test_store_summary_propagates_verdict_status_to_event() -> None:
     assert status_values == {"status": EventStatus.ONGOING}
 
 
+def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
+    from episignal_backend.db.types import EventStatus
+
+    event_id = uuid4()
+    signal_id = uuid4()
+    session = FakeSession([FakeResult(None), FakeResult(1)])
+    repo = SqlAlchemyEventRepository(session)
+
+    repo.store_summary(
+        event_id=event_id,
+        headline="Dengue outbreak continues",
+        summary="Officials report an ongoing outbreak.",
+        status=EventStatus.ONGOING.value,
+        latest_development="Cases increased.",
+        uncertainties=[],
+        model_id="fake-summary-model",
+        source_signal_ids=[signal_id],
+        counts=None,
+    )
+
+    assert session.added[0].source_signal_ids == [str(signal_id)]
+
+
 def test_a_stored_extraction_survives_its_version_key() -> None:
     payload = {
         "signal_type": "outbreak_report",

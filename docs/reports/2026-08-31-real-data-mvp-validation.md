@@ -2,41 +2,42 @@
 
 **Date:** 2026-08-31
 **Branch:** `codex/real-data-mvp-validation`
-**Code commit at report time:** `68902d923a809c869d820e2aa424dfbc03255a82`
+**Code commit at report time:** pending final review commit
 **Database:** shared development PostgreSQL/PostGIS; migration head verified as `20260830_0019`
 
 ## Real-data window
 
 Requested window: `2026-08-30T00:00:00Z` → `2026-08-31T00:00:00Z`.
 
-The existing scheduler had an older cursor and anchors discovery to run time.
-The bounded command configured a 1,440-minute window and a 200-article cap, but
-the discovery attempt was interrupted before its run row was committed. Its
-exact effective window therefore is not recoverable from `pipeline_runs`; 58
-new signals were persisted before interruption. This is recorded as a
-validation deviation, not presented as proof of a clean fixed-window run.
+The requested midnight-to-midnight interval was not completed. The repeated
+bounded run completed with an exact persisted effective window of
+`2026-08-30T03:26:59.784591Z` → `2026-08-31T03:26:59.784591Z` (run
+`7ccedd26-073a-4b7b-b5c2-831bf1eebe50`, status `succeeded`). The scheduler's
+stored cursor and run-time anchoring caused this deviation; it is not presented
+as proof of the requested fixed calendar interval.
 
 ## Funnel
 
 | Stage | Result | Evidence |
 | --- | ---: | --- |
-| Raw candidates | not persisted | Discovery did not complete; no final discovery counts were written |
-| New signals stored | 58 | Read-only count of signals created during validation attempt |
+| Raw candidates | 131 | Completed bounded discovery run `7ccedd26-073a-4b7b-b5c2-831bf1eebe50`; 62 rules run, 1 `GdeltUnavailable` |
+| New signals stored | 78 | Completed discovery run; 53 candidate duplicates |
+| Earlier interrupted attempt | 58 new signals | Separate prior attempt; excluded from completed discovery funnel |
 | Retrieval | 50 examined; 13 retrieved; 33 filtered; 4 still failing | Pipeline run `0667ae3a-88e9-45ae-8bd2-0696d554e1f8` |
 | Deduplication | 16 examined; 15 primaries; 1 duplicate | Pipeline run `2b0e2ba8-be27-4943-b0ee-3d3fcd33677c` |
 | Story groups | 0 pre-groups; 5 event clusters in continuation | Pre-group is existing default-off configuration; matching continuation created 5 clusters |
 | Triage | 81 examined; 71 relevant; 10 filtered | Pipeline run `60d96f74-a832-49c6-a45e-6061975b2389` |
 | Extraction | 30 examined; 30 accepted; 0 review | Pipeline run `c5d25e36-22a5-4081-98b9-934feb7acb1f` |
 | Events | 5 created in continuation; 14 total | Five new event IDs include `EVT-05423824`, `EVT-8678FFCC`, `EVT-9D2530E7`, `EVT-9C28D6EB`, `EVT-F8A59FB0` |
-| Signals attached to existing events | 0 observed | No ambiguous judge path completed |
+| Signals attached to existing events | 0 | Matching rerun `020ed86d-5caa-4b91-b69e-497bbb4aa13f`; no pending candidates |
 | Observations | 5 created in continuation; 17 total | Each new event has one observation; existing `EVT-71F6E327` retains 4 observations |
-| Summaries | 0 created or updated | Pipeline run `a8544b2e-f1c3-4c49-ba80-ec42524d4943`: 14 examined, 14 skipped |
+| Summaries | 14 created; 14 examined; 0 skipped | Pipeline run `f163a4e7-9f81-4e5c-8910-a8cc2874dcaa` |
 
 The initial full-chain command was stopped after repeated GDELT failures and a
-long-running discovery pass. Existing stage-only commands then completed the
-downstream backlog. The failed match attempt was recorded as
-`DataError`; a later zero-pending match rerun passed, but no production
-ambiguous-match judgement was observed.
+long-running discovery pass. The later bounded discovery run completed with
+one rule failure but a succeeded persisted run. The initial match `DataError`
+was not reproduced; the normal match rerun passed with judge wiring enabled,
+but there were no pending ambiguous candidates to exercise a judgement.
 
 ## AI validation
 
@@ -69,20 +70,30 @@ ambiguous-match judgement was observed.
 
 ### Event summaries
 
-- Sample: 0 summaries available; 14 events were examined and skipped.
-- Unsupported facts: not assessable because no summary was generated.
-- Connected `ai_models` rows lacked an active `event_summary` model. The
-  repository seed contains one, but reseeding would change production roster
-  state and was intentionally not done in this validation.
+- Sample: all 14 generated summaries reviewed.
+- Model: all 14 accepted with `deepseek/deepseek-v4-flash-0731`, purpose
+  `event_summary`.
+- Failures: 0 failed, 0 unavailable, 14 accepted.
+- Unsupported facts: no repeated unsupported facts found. Numeric claims,
+  dates, and locations matched the selected source briefs or latest stored
+  observation. `EVT-F00791B8` carries an explicit uncertainty about whether
+  regional yellow-fever figures can be attributed to Angola; no confirmed
+  wrong count, date, or location was found.
+- One generated narrative concerns a water/sanitation intervention rather than
+  an outbreak; it accurately says no disease data was reported. This is a
+  relevance-quality issue, not an invented fact.
 
 ## Event quality and history
 
 - Events reviewed: 14 total, including five created during continuation.
 - Suspected false merges: 0 in reviewed event/source relationships.
-- Suspected false splits: 0 confirmed; evidence was insufficient for a strong
-  split claim because no completed ambiguous judge path was available.
-- Ambiguous matches: 0 completed judgements; no event-match-judge cost rows
-  were written during validation.
+- Suspected false splits: 0 confirmed.
+- Ambiguous matches: 0 candidates; no judge call was required. Judge wiring was
+  enabled with `meta-llama/llama-3.1-8b-instruct` (purpose `triage`), and the
+  normal matching stage completed successfully with that wiring available.
+- DataError reproduction: NO. Matching run `020ed86d-5caa-4b91-b69e-497bbb4aa13f`
+  completed successfully with `seen=0`; no failing constraint, column, or type
+  was reproduced, so no matching fix was required.
 - Observation history: existing `EVT-71F6E327` retains four observations with
   distinct signal IDs and report timestamps. The five newly created events each
   have one observation. No prior observation was overwritten.
@@ -94,13 +105,13 @@ ambiguous-match judgement was observed.
 
 Validation-period AI ledger rows, from `2026-08-31T01:58:00Z` onward:
 
-- AI requests: 132
-- Total cost: `$0.075679`
+- AI requests: 146
+- Total cost: `$0.076939`
 - TRIAGE: 81 requests, `$0.004660`
 - EXTRACTION: 46 attempts, `$0.071019`
 - CLASSIFICATION: 5 requests, `$0.000000`
 - EVENT_MATCH_JUDGE: 0
-- EVENT_SUMMARY: 0
+- EVENT_SUMMARY: 14 requests, `$0.001260`
 
 Configured caps were 200 discovery articles, 200 requests per AI stage, and
 `$0.25` per AI stage. Observed aggregate cost stayed below the `$1.00` task
@@ -108,7 +119,8 @@ cap.
 
 ## API/UI
 
-PASS after one trivial read-path correction required to inspect real events:
+PASS after the event-detail read-path correction required to inspect real
+events:
 
 - `/health/live`: 200
 - `/health/ready`: 200
@@ -119,14 +131,18 @@ PASS after one trivial read-path correction required to inspect real events:
 
 The detail query had omitted its `EventSignal.event_id` predicate and caused a
 SQLAlchemy ambiguous-join 500. The correction adds an explicit
-`EventSignal` source and event predicate; no product redesign was made.
+`EventSignal → Signal → Source` path and event predicate; the focused
+regression test is `test_event_detail_loads_sources_through_event_signal_join`.
+No product redesign was made.
 
 ## Verification
 
-- `corepack pnpm verify`: PASS — 95 web tests, 1,196 Python tests, 0 xfails;
+- `corepack pnpm verify`: PASS — 95 web tests, 1,198 Python tests, 0 xfails;
   formatting, lint, typecheck, contracts, and production build also passed.
 - `corepack pnpm test:pipeline`: PASS — 16 tests passed, 0 xfails.
 - Focused triage/API checks: PASS — 15 tests passed.
+- Summary serialization regression: PASS — UUID provenance IDs are stored as
+  JSONB-safe strings.
 
 Existing warnings remained: two Python/Starlette deprecation warnings and the
 known Vite configuration warnings. No test failure or unexpected xfail occurred.
@@ -136,6 +152,7 @@ known Vite configuration warnings. No test failure or unexpected xfail occurred.
 ```text
 corepack pnpm db:check
 corepack pnpm db:migrate
+corepack pnpm db:seed
 corepack pnpm pipeline:run
 corepack pnpm pipeline:run -- --only retrieve
 corepack pnpm pipeline:run -- --only dedupe
@@ -146,6 +163,10 @@ corepack pnpm pipeline:run -- --only geocode
 corepack pnpm pipeline:run -- --only match
 corepack pnpm pipeline:run -- --only summarize
 corepack pnpm pipeline:run -- --only match
+corepack pnpm pipeline:run -- --only discover
+corepack pnpm pipeline:run -- --only match
+uv run pytest packages/backend/tests/test_event_repository.py -k "source_signal_ids or store_summary_propagates" -q
+uv run pytest packages/backend/tests/test_event_read.py -q
 corepack pnpm verify
 corepack pnpm test:pipeline
 ```
@@ -156,41 +177,35 @@ AI cost guard `$0.25` per stage, triage limit 200, extraction limit 30.
 
 ## MVP verdict
 
-**MVP BLOCKED**
+**MVP READY WITH MINOR FIXES**
 
 ### Top blockers
 
-1. No active event-summary model exists in the connected database, so all 14
-   summary candidates were skipped and the summary/API history requirement was
-   not demonstrated.
-2. GDELT discovery did not complete within the bounded run: repeated
-   `GdeltUnavailable` failures and interruption left no committed raw-candidate
-   funnel, and 58 new signals remained at `fetched`/pending triage.
-3. The first production match attempt failed with masked `DataError`; later
-   continuation succeeded only with AI enrichment disabled and produced no
-   completed ambiguous-match judgement. Production match/judge behavior remains
-   unproven on this data.
+1. One of 62 GDELT rules returned `GdeltUnavailable`; 61 rules completed and
+   the bounded discovery run persisted as `succeeded`.
+2. `EVT-F00791B8` retains an explicitly disclosed uncertainty about attributing
+   regional yellow-fever counts to Angola.
+3. No additional blocker identified; extraction benchmarking remains deferred.
 
 ## Known issues
 
-- Connected database model roster is stale versus repository seeds: no active
-  Llama TRIAGE-purpose row and no active DeepSeek event-summary row. No reseed
-  was performed because roster changes are out of scope.
 - Triage precision needs follow-up: sample contained multiple likely false
-  positives despite no obvious false negatives.
+  positives despite no obvious false negatives; this is not an MVP blocker for
+  this review.
 - Extraction fallback rejected 16 first attempts (12 grounding, 4 shape),
   although all 30 final stored extractions passed deterministic validation.
-- API detail query correction is present on this branch and must be reviewed;
-  it is not a public-surface redesign.
+- The summary JSONB provenance fix and API detail query correction are present on
+  this branch with focused regression coverage.
 
 ## Deviations
 
-- Exact midnight-to-midnight window was requested but not recoverable because
-  existing runner anchors to current time and the discovery attempt was
-  interrupted before commit.
+- Exact midnight-to-midnight window was requested but the completed run used
+  `2026-08-30T03:26:59.784591Z` → `2026-08-31T03:26:59.784591Z` because the
+  existing runner anchors to its scheduler cursor and run time.
 - Existing migration `20260830_0019` was applied because required
   `event_summaries` schema was absent; this created missing schema objects only.
 - Downstream stage-only continuation was used after discovery interruption;
   this report does not claim a clean single-process end-to-end run.
-- No production roster, routing, threshold, GDELT query, embedding setting,
-  benchmark history, or public product surface was changed.
+- `corepack pnpm db:seed` synchronized the connected database to repository
+  seeds; no seed files were modified. No query, architecture, threshold,
+  embedding, benchmark, or public product surface was changed.

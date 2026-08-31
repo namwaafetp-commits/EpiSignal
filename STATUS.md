@@ -133,14 +133,13 @@ ledger against the superseding Lean MVP architecture:
 ## Verified validation baseline
 
 The real-data validation code and report were verified on this branch. The
-verification commit is `68902d923a809c869d820e2aa424dfbc03255a82` and contains the
-triage ordering change plus the event-detail read-path correction.
+final verification commit will be recorded after the required gates complete.
 
 | Fact | Value |
 | --- | --- |
-| `corepack pnpm verify` | PASS; 95 web tests, 1,196 Python tests, 0 xfails |
+| `corepack pnpm verify` | PASS; 95 web tests, 1,198 Python tests, 0 xfails |
 | `corepack pnpm test:pipeline` | PASS; 16 tests, 0 xfails |
-| MVP verdict | `MVP BLOCKED`; see validation report |
+| MVP verdict | `MVP READY WITH MINOR FIXES`; see validation report |
 
 ## Other roadmap state
 
@@ -148,16 +147,17 @@ triage ordering change plus the event-detail read-path correction.
   to Phase 2.
 - `E`, `L`, `M`, and `O` are verified. `G` and `I` are also implemented and
   verified through the R events API/UI work.
-- `H`, `J`, `K`, `N`, and `Z` remain not-started. F Lite is verified; real-data
-  end-to-end surveillance validation is the one next implementation priority.
+- `H`, `J`, `K`, `N`, and `Z` remain not-started. F Lite and real-data
+  end-to-end surveillance validation are verified; only residual follow-up
+  risks remain for this validation item.
 
 ## Next action
 
 Validation complete on branch `codex/real-data-mvp-validation`. The MVP is
-blocked by live-data/schema/roster evidence recorded in the validation report;
-next item should address only its highest-value blocker.
+ready with minor fixes; residual provider availability and summary attribution
+risks are recorded in the validation report.
 
 ## Blockers
 
-MVP blockers are recorded in
+Residual risks are recorded in
 [the real-data validation report](docs/reports/2026-08-31-real-data-mvp-validation.md).
