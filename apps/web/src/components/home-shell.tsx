@@ -4,20 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getEventDetail, type EventDetailResponse } from "../lib/api-events";
 import type { DashboardEvent, DashboardFeedState } from "../lib/api-dashboard";
-import { EventMap } from "./event-map";
+import { EventMap, type EventMapRegion } from "./event-map";
 
 export type ApiShellStatus = "loading" | "ready" | "unavailable";
 type HomeView = "map" | "calendar";
 type TimeRange = "24h" | "7d" | "30d" | "custom";
-type Region =
-  | ""
-  | "Africa"
-  | "Asia"
-  | "Europe"
-  | "North America"
-  | "South America"
-  | "Oceania"
-  | "ASEAN";
+type Region = EventMapRegion;
 
 const STATUS_LABELS: Record<ApiShellStatus, string> = {
   loading: "Checking feed",
@@ -671,6 +663,7 @@ export function HomeShell({
               <div className="map-stage">
                 <EventMap
                   events={events}
+                  region={region}
                   selectedId={selectedId}
                   onSelect={selectEvent}
                 />

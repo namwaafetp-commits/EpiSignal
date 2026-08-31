@@ -5,8 +5,52 @@ import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
 
+export type EventMapRegion =
+  | ""
+  | "Africa"
+  | "Asia"
+  | "Europe"
+  | "North America"
+  | "South America"
+  | "Oceania"
+  | "ASEAN";
+
+type NamedEventMapRegion = Exclude<EventMapRegion, "">;
+
+export const REGION_BOUNDS = {
+  Africa: [
+    [-20, -36],
+    [55, 38],
+  ],
+  Asia: [
+    [25, -12],
+    [180, 80],
+  ],
+  Europe: [
+    [-25, 34],
+    [45, 72],
+  ],
+  "North America": [
+    [-170, 5],
+    [-50, 83],
+  ],
+  "South America": [
+    [-82, -56],
+    [-34, 14],
+  ],
+  Oceania: [
+    [110, -50],
+    [180, 10],
+  ],
+  ASEAN: [
+    [92, -12],
+    [142, 29],
+  ],
+} satisfies Record<NamedEventMapRegion, [[number, number], [number, number]]>;
+
 export interface EventMapProps {
   events: DashboardEvent[];
+  region: EventMapRegion;
   selectedId: string | null;
   onSelect: (publicId: string) => void;
 }
@@ -55,7 +99,29 @@ function tooltipContent(headline: string, location: string) {
   return content;
 }
 
-export function EventMap({ events, selectedId, onSelect }: EventMapProps) {
+function applyRegionViewport(map: maplibregl.Map, region: EventMapRegion) {
+  if (!region) {
+    map.easeTo({
+      center: [15, 5],
+      zoom: 1.8,
+      duration: 700,
+    });
+    return;
+  }
+
+  map.fitBounds(REGION_BOUNDS[region], {
+    padding: 40,
+    duration: 700,
+    maxZoom: 6,
+  });
+}
+
+export function EventMap({
+  events,
+  region,
+  selectedId,
+  onSelect,
+}: EventMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -166,6 +232,11 @@ export function EventMap({ events, selectedId, onSelect }: EventMapProps) {
 
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
+    applyRegionViewport(mapRef.current, region);
+  }, [isLoaded, region]);
+
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded) return;
     const map = mapRef.current;
     if (map.getLayer("events-circles")) {
       map.setPaintProperty("events-circles", "circle-radius", [
@@ -181,7 +252,7 @@ export function EventMap({ events, selectedId, onSelect }: EventMapProps) {
         1.5,
       ]);
     }
-    const selectedEvent = events.find(
+    const selectedEvent = eventsRef.current.find(
       (event) => event.public_id === selectedId,
     );
     if (selectedEvent && isMappedEvent(selectedEvent)) {
@@ -191,7 +262,7 @@ export function EventMap({ events, selectedId, onSelect }: EventMapProps) {
         duration: 700,
       });
     }
-  }, [events, isLoaded, selectedId]);
+  }, [isLoaded, selectedId]);
 
   return (
     <section
@@ -208,8 +279,7 @@ export function EventMap({ events, selectedId, onSelect }: EventMapProps) {
       </div>
       {mapError ? (
         <div className="map-fallback">
-          Map unavailable. All events remain accessible in the recent events
-          list.
+          Map unavailable. All events remain accessible in Calendar view.
         </div>
       ) : (
         <div ref={mapContainerRef} className="event-map__canvas" />

@@ -20,12 +20,15 @@ vi.mock("./event-map", () => ({
     events,
     selectedId,
     onSelect,
+    region,
   }: {
     events: DashboardEvent[];
     selectedId: string | null;
     onSelect: (publicId: string) => void;
+    region: string;
   }) => (
     <div data-testid="mock-event-map">
+      <span data-testid="map-region">{region}</span>
       <span>
         {events.filter((event) => event.map_level !== null).length} mapped /{" "}
         {events.length} events
@@ -219,6 +222,22 @@ describe("HomeShell", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("passes the selected region to the map without changing it for other filters", () => {
+    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
+
+    expect(screen.getByTestId("map-region")).toHaveTextContent("");
+    fireEvent.change(screen.getByLabelText("Region"), {
+      target: { value: "Africa" },
+    });
+    expect(screen.getByTestId("map-region")).toHaveTextContent("Africa");
+
+    fireEvent.change(screen.getByLabelText("Disease"), {
+      target: { value: "Cholera" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "24H" }));
+    expect(screen.getByTestId("map-region")).toHaveTextContent("Africa");
   });
 
   it("supports 24H, 30D, Custom, and ASEAN region filtering", () => {
