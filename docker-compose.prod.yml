@@ -5,7 +5,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       EPISIGNAL_ENV: production
-      EPISIGNAL_API_HOST: 0.0.0.0
+      EPISIGNAL_API_BIND_HOST: ${EPISIGNAL_API_BIND_HOST:-0.0.0.0}
       EPISIGNAL_API_PORT: "8000"
       EPISIGNAL_DATABASE_URL: ${EPISIGNAL_DATABASE_URL:?EPISIGNAL_DATABASE_URL is required}
       EPISIGNAL_CORS_ORIGINS: ${EPISIGNAL_CORS_ORIGINS:?EPISIGNAL_CORS_ORIGINS is required}
@@ -81,7 +81,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: episignal_proxy
-      traefik.http.routers.episignal-api.rule: Host(`${EPISIGNAL_API_PUBLIC_HOST:?EPISIGNAL_API_PUBLIC_HOST is required}`)
+      traefik.http.routers.episignal-api.rule: Host(`${EPISIGNAL_API_PUBLIC_HOST:-${EPISIGNAL_API_HOST:?EPISIGNAL_API_PUBLIC_HOST or EPISIGNAL_API_HOST is required}}`)
       traefik.http.routers.episignal-api.entrypoints: websecure
       traefik.http.routers.episignal-api.tls: "true"
       traefik.http.routers.episignal-api.tls.certresolver: mytlschallenge

@@ -96,6 +96,22 @@ def test_settings_parse_comma_separated_cors_origins_from_the_environment(monkey
     )
 
 
+def test_api_bind_host_prefers_new_name_and_accepts_legacy_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:secret@host/db")
+    monkeypatch.setenv("EPISIGNAL_API_HOST", "legacy.example.com")
+
+    legacy_settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert legacy_settings.api_host == "legacy.example.com"
+
+    monkeypatch.setenv("EPISIGNAL_API_BIND_HOST", "0.0.0.0")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.api_host == "0.0.0.0"
+
+
 def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/database"
