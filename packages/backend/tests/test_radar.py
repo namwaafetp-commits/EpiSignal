@@ -531,6 +531,31 @@ def test_query_radar_assembly_malformed_extraction_is_omitted() -> None:
     assert page.items[0].id == sig2.id
 
 
+@pytest.mark.parametrize(
+    ("schema_version", "expected_items"),
+    [(3, 1), (2, 1), (1, 0)],
+)
+def test_query_radar_supports_current_extraction_versions_only(
+    schema_version: int, expected_items: int
+) -> None:
+    now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+    extraction = dict(FakeSignalRow().ai_extraction)
+    extraction["extraction_schema_version"] = schema_version
+    signal = FakeSignalRow(id=uuid4(), ai_extraction=extraction)
+
+    session = FakeSession(
+        [
+            FakeResult([signal]),
+            FakeResult([]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_radar(session, now=now, hours=48, limit=50)
+
+    assert len(page.items) == expected_items
+
+
 def test_query_pipeline_runs_ordering_and_limit() -> None:
     now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
     session = FakeSession()
