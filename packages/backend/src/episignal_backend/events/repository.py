@@ -718,7 +718,9 @@ class SqlAlchemyEventRepository:
             latest_development=latest_development,
             uncertainties=uncertainties,
             model_id=model_id,
-            source_signal_ids=source_signal_ids,
+            # JSONB cannot encode Python UUID objects; keep provenance IDs as
+            # strings in the versioned summary payload.
+            source_signal_ids=[str(signal_id) for signal_id in source_signal_ids],
             counts=counts,
         )
         self._session.add(row)

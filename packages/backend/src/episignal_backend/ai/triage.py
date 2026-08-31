@@ -32,6 +32,7 @@ from episignal_backend.db.types import AiPurpose
 DEFAULT_LIMIT = 200
 DEFAULT_MAX_TIER = 3
 TRIAGE_SNIPPET_CHARACTERS = 1200
+TRIAGE_PREFERRED_MODEL_ID = "mistralai/mistral-small-24b-instruct-2501"
 
 logger = logging.getLogger("episignal_backend.ai.triage")
 
@@ -73,6 +74,21 @@ def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatReques
         )
 
     return _request
+
+
+def _triage_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
+    ladder = Ladder.build(
+        repository.models(),
+        max_tier=max_tier,
+        purpose=AiPurpose.TRIAGE,
+    )
+    preferred = next(
+        (rung for rung in ladder.rungs if rung.model_id == TRIAGE_PREFERRED_MODEL_ID),
+        None,
+    )
+    if preferred is None:
+        return ladder
+    return Ladder(rungs=(preferred, *(rung for rung in ladder.rungs if rung != preferred)))
 
 
 def _climb_once(
@@ -123,11 +139,7 @@ def run_triage(
     max_tier: int = DEFAULT_MAX_TIER,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> TriageResult:
-    ladder = Ladder.build(
-        repository.models(),
-        max_tier=max_tier,
-        purpose=AiPurpose.TRIAGE,
-    )
+    ladder = _triage_ladder(repository, max_tier=max_tier)
     budget = RunBudget(guards)
     pending = repository.awaiting_triage(limit=limit)
 

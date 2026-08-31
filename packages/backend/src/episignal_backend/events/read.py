@@ -211,9 +211,10 @@ def query_event_detail(
             EventSignal.relationship_type,
             EventSignal.is_primary,
         )
-        .join(EventSignal, EventSignal.event_id == event.id)
+        .select_from(EventSignal)
         .join(Signal, Signal.id == EventSignal.signal_id)
         .join(Source, Source.id == Signal.source_id)
+        .where(EventSignal.event_id == event.id)
         .order_by(
             EventSignal.is_primary.desc(),
             func.coalesce(Signal.published_at, Signal.first_seen_at).desc(),

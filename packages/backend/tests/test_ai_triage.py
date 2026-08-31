@@ -73,6 +73,17 @@ def model_spec() -> ModelSpec:
     )
 
 
+def mistral_model_spec() -> ModelSpec:
+    return ModelSpec(
+        id=uuid4(),
+        tier=3,
+        model_id="mistralai/mistral-small-24b-instruct-2501",
+        label="Mistral Small 24B",
+        prompt_price_per_million=Decimal("0.05"),
+        completion_price_per_million=Decimal("0.08"),
+    )
+
+
 @dataclass(frozen=True)
 class StoredTriage:
     disease: str | None
@@ -135,6 +146,11 @@ class TriageRepository:
         return None
 
 
+class TwoModelTriageRepository(TriageRepository):
+    def models(self) -> Sequence[ModelSpec]:
+        return (model_spec(), mistral_model_spec())
+
+
 class ScriptedModel:
     def __init__(self, script: list[ChatResponse]) -> None:
         self.script = script
@@ -167,6 +183,16 @@ def test_a_valid_answer_is_stored_and_costed() -> None:
     assert result.triaged == 1
     assert result.repaired == 0
     assert repository.stored[SIGNAL.id].disease == "dengue"
+    assert repository.requests[0].purpose is AiPurpose.TRIAGE
+
+
+def test_triage_attempts_mistral_small_first_when_available() -> None:
+    repository = TwoModelTriageRepository(pending=(SIGNAL,))
+    model = ScriptedModel([response(GOOD_TRIAGE)])
+
+    run_triage(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert model.requests[0].model_id == "mistralai/mistral-small-24b-instruct-2501"
     assert repository.requests[0].purpose is AiPurpose.TRIAGE
 
 
