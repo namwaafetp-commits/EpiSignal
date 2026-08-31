@@ -13,7 +13,25 @@ Created new: 131
 Unmapped: 130
 Remaining blocked: 41
 
-The 131 eligible historical `NEEDS_REVIEW` rows were requeued directly to
+Historical review rows examined: 172
+Valid extracted backlog: 131
+Invalid extractions: 41
+Requeued: 131
+New events: 131
+Attached existing: 0
+
+Events total: 145
+Summaries total: 15
+Summaries pending: 130
+Exact pending reason: the summary provider was configured and one provider
+request succeeded, but the remaining provider requests did not complete within
+the bounded validation run. The run was stopped before the first 32-request
+batch committed. This was not a missing API key, extraction regeneration, a
+full-pipeline rerun, or an intentional skip. No evidence was recorded to
+classify it as a rate limit or model-unavailable response.
+
+The 172 historical `NEEDS_REVIEW` rows were examined. The 131 rows with valid
+stored extractions were requeued directly to
 `EXTRACTED`, then matched and attached to newly created events. The 41 rows
 left in `NEEDS_REVIEW` were excluded because their stored extraction was
 invalid. No discovery, retrieval, dedupe, triage, or extraction was rerun for
@@ -28,7 +46,8 @@ Runtime stages:
 The dashboard read path retains admin1-centroid, country-centroid, and no-marker
 fallback behavior. Fifteen summaries are persisted; 130 newly created events
 remain summary-pending because the external summary provider did not complete
-within the bounded validation run.
+within the bounded validation run. The summary stage was the only additional
+stage attempted after matching; extraction was not regenerated.
 
 Focused validation:
 
