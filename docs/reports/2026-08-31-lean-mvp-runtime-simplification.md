@@ -57,5 +57,6 @@ Focused validation:
 - `git diff --check` — passed
 
 Branch: `codex/next-iteration`
-Commit: recorded in final handoff
-PR: not opened; do not merge
+Commit: see PR head
+PR: https://github.com/namwaafetp-commits/EpiSignal/pull/7
+Do not merge.
