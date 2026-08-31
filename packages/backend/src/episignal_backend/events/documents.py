@@ -12,13 +12,22 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from episignal_backend.ai.schema import BriefPoint, Extraction
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
+from episignal_backend.geocode.normalize import normalized_form
+
+
+def normalize_disease_text(value: str | None) -> str | None:
+    """Normalize disease text for exact, non-fuzzy identity comparisons."""
+    if value is None:
+        return None
+    normalized = normalized_form(value)
+    return normalized or None
 
 
 class MatchAction(StrEnum):
     """The outcome of matching a cluster against candidate events.
 
     ``AMBIGUOUS`` is a single candidate scoring between the review and auto
-    thresholds: the deterministic engine cannot decide, so an LLM judge must.
+    thresholds; callers create a new event instead of waiting for review.
     """
 
     ATTACH = "attach"
@@ -53,23 +62,19 @@ class LocationForMatching(BaseModel):
 
     @model_validator(mode="after")
     def validate_coordinates(self) -> "LocationForMatching":
-        if self.precision != Precision.UNRESOLVED and (
-            self.latitude is None or self.longitude is None
-        ):
-            raise ValueError(
-                f"Coordinates are required for precision {self.precision}; "
-                "only unresolved locations may have null coordinates"
-            )
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be supplied together")
         return self
 
 
 class SignalForMatching(BaseModel):
-    """A geocoded signal ready for story clustering and matching."""
+    """An extracted signal ready for story clustering and matching."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     signal_id: UUID
     disease_id: UUID | None = None
+    disease_text: str | None = None
     source_id: UUID
     source_is_official: bool
     credibility_tier: CredibilityTier
@@ -79,6 +84,13 @@ class SignalForMatching(BaseModel):
     locations: tuple[LocationForMatching, ...] = ()
     extraction: Extraction | None = None
     embedding: tuple[float, ...] | None = None
+
+    @property
+    def disease_identity(self) -> str | None:
+        if self.disease_id is not None:
+            return f"id:{self.disease_id}"
+        disease_text = normalize_disease_text(self.disease_text)
+        return f"text:{disease_text}" if disease_text is not None else None
 
 
 _PRECISION_RANK = {
@@ -100,6 +112,25 @@ class StoryCluster(BaseModel):
     @property
     def disease_id(self) -> UUID | None:
         return self.signals[0].disease_id
+
+    @property
+    def disease_text(self) -> str | None:
+        return next(
+            (
+                text
+                for signal in self.signals
+                if (text := normalize_disease_text(signal.disease_text))
+            ),
+            None,
+        )
+
+    @property
+    def disease_identity(self) -> str | None:
+        if self.disease_id is not None:
+            return f"id:{self.disease_id}"
+        if self.disease_text is not None:
+            return f"text:{self.disease_text}"
+        return None
 
     @property
     def representative_location(self) -> LocationForMatching | None:
@@ -140,13 +171,21 @@ class CandidateEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     event_id: UUID
-    disease_id: UUID
+    disease_id: UUID | None = None
+    disease_text: str | None = None
     locations: tuple[LocationForMatching, ...] = ()
     first_signal_at: datetime
     last_updated_at: datetime
     representative_embedding: tuple[float, ...] | None = None
     title: str = ""
     recent_source_titles: tuple[str, ...] = ()
+
+    @property
+    def disease_identity(self) -> str | None:
+        if self.disease_id is not None:
+            return f"id:{self.disease_id}"
+        disease_text = normalize_disease_text(self.disease_text)
+        return f"text:{disease_text}" if disease_text is not None else None
 
 
 class MatchDecision(BaseModel):
@@ -163,7 +202,8 @@ class MatchDecision(BaseModel):
     @model_validator(mode="after")
     def validate_decision(self) -> "MatchDecision":
         # AMBIGUOUS carries exactly one candidate and its score, like ATTACH,
-        # so the assembly knows which event the judge must consider.
+        # so the assembly can preserve the candidate's score when it creates a
+        # new event for an ambiguous match.
         carries_target = self.action in (MatchAction.ATTACH, MatchAction.AMBIGUOUS)
         if carries_target:
             if self.event_id is None:

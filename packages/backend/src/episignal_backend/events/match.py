@@ -1,7 +1,7 @@
 """Candidate match scoring and the conservative matching decision.
 
 Pure functions for scoring how well a story cluster matches candidate events
-and deciding whether to attach, create, or refuse.
+and deciding whether to attach or create.
 
 This module imports neither SQLAlchemy nor httpx.
 """
@@ -23,6 +23,7 @@ from episignal_backend.events.documents import (
     MatchRejection,
     StoryCluster,
 )
+from episignal_backend.geocode.normalize import normalized_form
 
 DEFAULT_MATCH_WEIGHTS: dict[str, float] = {
     "disease": 0.30,
@@ -54,13 +55,16 @@ def _candidate_representative_location(
     return max(candidates, key=lambda loc: _PRECISION_RANK.get(loc.precision, -1))
 
 
-def _is_country_only(location: LocationForMatching | None) -> bool:
-    """Whether a location supplies no administrative or place-level identity."""
-    if location is None:
-        return False
-    return location.precision == Precision.COUNTRY or not any(
-        (location.admin1, location.admin2, location.place_name)
-    )
+def _disease_identity(value: object) -> str | None:
+    identity = getattr(value, "disease_identity", None)
+    if isinstance(identity, str):
+        return identity
+    disease_id = getattr(value, "disease_id", None)
+    if disease_id is not None:
+        return f"id:{disease_id}"
+    disease_text = getattr(value, "disease_text", None)
+    normalized = normalized_form(disease_text) if isinstance(disease_text, str) else ""
+    return f"text:{normalized}" if normalized else None
 
 
 def match_score(
@@ -82,7 +86,8 @@ def match_score(
     If disease or spatial agreement is zero, the total match score is zero.
     """
     # 1. Disease component
-    if cluster.disease_id is None or cluster.disease_id != candidate.disease_id:
+    cluster_identity = _disease_identity(cluster)
+    if cluster_identity is None or cluster_identity != _disease_identity(candidate):
         return 0.0
     disease_score = 1.0
 
@@ -161,7 +166,8 @@ def _deterministic_rejection(
     distance_km: float,
     recency_days: float,
 ) -> MatchRejection | None:
-    if cluster.disease_id is None or cluster.disease_id != candidate.disease_id:
+    cluster_identity = _disease_identity(cluster)
+    if cluster_identity is None or cluster_identity != _disease_identity(candidate):
         return MatchRejection.DISEASE_MISMATCH
 
     cluster_location = cluster.representative_location
@@ -206,11 +212,11 @@ def decide(
     """Make the conservative matching decision for a story cluster.
 
     - attach: exactly one candidate event scores >= threshold.
-    - create: no candidate event scores >= threshold, and none falls in the
-      ambiguous band.
-    - ambiguous: a single candidate scores between the review threshold and
-      the auto threshold, so an LLM judge must decide.
-    - refuse: two or more candidate events score >= threshold.
+    - create: no candidate event scores >= threshold.
+    - ambiguous: a single candidate scores between the optional legacy review
+      threshold and the auto threshold; the caller creates a new event.
+    - refuse: two or more candidate events score >= threshold; the caller
+      creates a new event.
 
     Deterministic guards run before ``similarity_for``. Similarity therefore
     cannot be consulted for a refused pair and can only add to its score.
@@ -245,10 +251,7 @@ def decide(
         if similarity is not None:
             score = min(1.0, score + SIMILARITY_WEIGHT * max(0.0, similarity))
         candidate_scores[cand.event_id] = score
-        country_only = _is_country_only(cluster.representative_location) and _is_country_only(
-            _candidate_representative_location(cand)
-        )
-        if score >= threshold and not country_only:
+        if score >= threshold:
             qualifiers.append((cand, score))
             candidate_rejections[cand.event_id] = None
         elif review_threshold is not None and score >= review_threshold:

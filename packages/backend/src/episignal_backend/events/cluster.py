@@ -1,4 +1,4 @@
-"""Story clustering over geocoded signals.
+"""Story clustering over extracted signals.
 
 Pure functions for precision weighting, spatial compatibility, temporal
 compatibility, and single-link agglomerative clustering.
@@ -10,7 +10,6 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from uuid import UUID
 
 from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.events.documents import (
@@ -137,11 +136,11 @@ def compatible(
     """Evaluate whether two signals report the same outbreak.
 
     Requires:
-    1. Equal, non-null disease_id.
+    1. Equal disease identity: disease_id, or exact normalized disease text.
     2. Temporal compatibility within window_days.
     3. Spatial compatibility between their representative locations within distance_km.
     """
-    if a.disease_id is None or b.disease_id is None or a.disease_id != b.disease_id:
+    if a.disease_identity is None or a.disease_identity != b.disease_identity:
         return False
 
     if not temporally_compatible(a, b, window_days=window_days):
@@ -191,16 +190,21 @@ def build_clusters(
 
     for sig in signals:
         rep_loc = representative_location(sig)
-        if sig.disease_id is None or rep_loc is None or rep_loc.precision == Precision.UNRESOLVED:
+        if (
+            sig.disease_identity is None
+            or rep_loc is None
+            or rep_loc.country_code is None
+            or rep_loc.precision == Precision.UNRESOLVED
+        ):
             unclusterable.append(sig)
         else:
             clusterable.append(sig)
 
     # Group by disease
-    by_disease: dict[UUID, list[SignalForMatching]] = defaultdict(list)
+    by_disease: dict[str, list[SignalForMatching]] = defaultdict(list)
     for sig in clusterable:
-        assert sig.disease_id is not None
-        by_disease[sig.disease_id].append(sig)
+        assert sig.disease_identity is not None
+        by_disease[sig.disease_identity].append(sig)
 
     clusters: list[StoryCluster] = []
 
@@ -233,7 +237,7 @@ def build_clusters(
     sorted_clusters = sorted(
         clusters,
         key=lambda c: (
-            c.disease_id.bytes if c.disease_id else b"",
+            c.disease_identity or "",
             c.span[0],
             c.signals[0].signal_id.bytes,
         ),

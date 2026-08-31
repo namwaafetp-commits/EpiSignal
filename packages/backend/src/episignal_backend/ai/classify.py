@@ -32,7 +32,7 @@ from episignal_backend.ai.prompts import classification_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.ai.schema import ClassificationResponse
 from episignal_backend.ai.validate import validate_classification
-from episignal_backend.db.types import AiPurpose, ReviewReason
+from episignal_backend.db.types import AiPurpose
 
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_LIMIT = 100
@@ -131,7 +131,7 @@ def run_classification(
                 irrelevant += len(batch) - decided
             elif result.outcome is ClimbOutcome.REJECTED:
                 for signal in batch:
-                    repository.open_review(signal.id, reason=ReviewReason.EXTRACTION_REJECTED)
+                    repository.record_extraction_failure(signal.id)
                 reviewed += len(batch)
             else:
                 # GUARD or UNAVAILABLE: nothing was learned about these signals,

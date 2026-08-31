@@ -13,17 +13,13 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
-from uuid import UUID
 
-from episignal_backend.ai.classify_disease import classify_disease
 from episignal_backend.ai.documents import (
     ChatRequest,
     ExtractableCluster,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
-    TokenUsage,
 )
 from episignal_backend.ai.ladder import (
     Attempt,
@@ -43,7 +39,7 @@ from episignal_backend.ai.prompts import (
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.ai.schema import Extraction, extraction_json_schema
 from episignal_backend.ai.validate import validate_extraction
-from episignal_backend.db.types import AiOutcome, AiPurpose, ReviewReason
+from episignal_backend.db.types import AiPurpose
 
 DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
@@ -59,10 +55,6 @@ DEFAULT_WORKERS = 1
 EXTRACTION_MIN_TIER = 2
 EXTRACTION_TEMPERATURE = 0.0
 EXTRACTION_SCHEMA_NAME = "extraction_response"
-# Why a second pass that answered holds no disease: the model said null, or a
-# slug outside the candidate set, and the ledger should say which.
-NO_CANDIDATE_MATCHED = "no candidate matched"
-
 logger = logging.getLogger("episignal_backend.ai.extract")
 
 
@@ -75,6 +67,11 @@ class ExtractionResult:
     storage_failed: int = 0
     requests: int = 0
     stopped_early: bool = False
+
+
+def _top_rung(ladder: Ladder) -> ModelSpec:
+    """Return the highest configured extraction rung."""
+    return ladder.rungs[-1]
 
 
 def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
@@ -98,66 +95,6 @@ def _accept_builder(bodies: Sequence[str], min_confidence: float) -> Callable[[s
         return validate_extraction(content, bodies, min_confidence=min_confidence)
 
     return _accept
-
-
-def _top_rung(ladder: Ladder) -> ModelSpec:
-    """The smartest rung. Rungs are sorted lowest tier first and the ladder is
-    never empty, so the top of the ladder is its last rung."""
-    return ladder.rungs[-1]
-
-
-def _escalate_disease(
-    repository: AiRepository,
-    model: ChatModel,
-    ladder: Ladder,
-    *,
-    signal_id: UUID,
-    name: str,
-    at: datetime,
-) -> UUID | None:
-    """The second pass for a name the vocabulary's exact match missed.
-
-    The smartest rung chooses from the reviewed candidates, where null is an
-    expected answer. The cost row is written even for a miss -- a request is a
-    fact -- but its usage is left unknown rather than invented, because the
-    classifier's contract hides it. Nothing here may raise: an unresolved
-    disease is a review reason, and the escalation must never cost the
-    extraction that earned it.
-    """
-    try:
-        spec = _top_rung(ladder)
-        candidates = repository.disease_candidates()
-        if not candidates:
-            # An empty vocabulary can only produce an invention; do not ask.
-            return None
-        slug = classify_disease(model, spec, name, candidates)
-        repository.record_request(
-            cost_row(
-                Attempt(
-                    spec=spec,
-                    usage=TokenUsage(),
-                    http_status=None,
-                    latency_ms=0,
-                    outcome=AiOutcome.ACCEPTED if slug else AiOutcome.REJECTED,
-                    reason=None if slug else NO_CANDIDATE_MATCHED,
-                    cost=Decimal("0"),
-                ),
-                purpose=AiPurpose.CLASSIFICATION,
-                signal_id=signal_id,
-                batch_size=1,
-                at=at,
-            )
-        )
-        if slug is None:
-            return None
-        return repository.resolve_disease_slug(slug)
-    except Exception as error:
-        logger.warning(
-            "Disease classification for signal %s failed (%s)",
-            signal_id,
-            type(error).__name__,
-        )
-        return None
 
 
 def _chunks(
@@ -232,21 +169,11 @@ def _run_pass(
                     )
 
                 if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
-                    disease_id = None
-                    if result.value.disease is not None:
-                        disease_id = repository.resolve_disease(result.value.disease.name)
-                        if disease_id is None:
-                            # The exact match missed. One request to the smartest
-                            # rung may still resolve it; failing that, the signal
-                            # keeps the DISEASE_UNRESOLVED review path unchanged.
-                            disease_id = _escalate_disease(
-                                repository,
-                                model,
-                                ladder,
-                                signal_id=signal.id,
-                                name=result.value.disease.name,
-                                at=at,
-                            )
+                    disease_id = (
+                        repository.resolve_disease(result.value.disease.name)
+                        if result.value.disease is not None
+                        else None
+                    )
                     repository.record_extraction(
                         signal.id,
                         StoredExtraction(
@@ -257,7 +184,7 @@ def _run_pass(
                         ),
                     )
                 elif result.outcome is ClimbOutcome.REJECTED and demote_on_rejection:
-                    repository.open_review(signal.id, reason=ReviewReason.EXTRACTION_REJECTED)
+                    repository.record_extraction_failure(signal.id)
 
                 repository.commit()
             except Exception as error:
@@ -351,18 +278,11 @@ def _run_cluster_pass(
                 )
 
             if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
-                disease_id = None
-                if result.value.disease is not None:
-                    disease_id = repository.resolve_disease(result.value.disease.name)
-                    if disease_id is None:
-                        disease_id = _escalate_disease(
-                            repository,
-                            model,
-                            ladder,
-                            signal_id=group.representative_id,
-                            name=result.value.disease.name,
-                            at=at,
-                        )
+                disease_id = (
+                    repository.resolve_disease(result.value.disease.name)
+                    if result.value.disease is not None
+                    else None
+                )
                 member_ids = [m.id for m in group.members]
                 repository.record_cluster_extraction(
                     representative_id=group.representative_id,

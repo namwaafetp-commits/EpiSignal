@@ -1,6 +1,6 @@
 """The event assembly pipeline.
 
-Coordinates clustering of geocoded signals into story clusters, matching against
+Coordinates clustering of extracted signals into story clusters, matching against
 candidate events, creating or attaching to events, recording observations, and
 applying dual scores.
 
@@ -15,11 +15,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from episignal_backend.ai.documents import ModelSpec
-from episignal_backend.ai.embeddings import cosine
 from episignal_backend.ai.ladder import cost_row
 from episignal_backend.ai.protocol import ChatModel
 from episignal_backend.ai.schema import BriefPoint
-from episignal_backend.db.types import AiPurpose, RelationshipType, ReviewReason
+from episignal_backend.db.types import AiPurpose, RelationshipType
 from episignal_backend.events.cluster import build_clusters
 from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
 from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
@@ -27,8 +26,7 @@ from episignal_backend.events.finalize import (
     finalize_event_creation,
     finalize_event_link,
 )
-from episignal_backend.events.judge import JudgeOutcome, run_judge
-from episignal_backend.events.match import DEFAULT_MATCH_WEIGHTS, SimilarityFor, decide
+from episignal_backend.events.match import DEFAULT_MATCH_WEIGHTS, decide
 from episignal_backend.events.protocol import EventRepository
 from episignal_backend.events.score import (
     DEFAULT_EARLY_SIGNAL_WEIGHTS,
@@ -39,36 +37,6 @@ from episignal_backend.events.score import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _event_context_label(candidate: CandidateEvent) -> str:
-    """A short human label of where an event is, for the judge."""
-    parts: list[str] = []
-    for loc in candidate.locations:
-        label = loc.place_name or loc.admin2 or loc.admin1 or loc.country_code
-        if label and label not in parts:
-            parts.append(label)
-    return ", ".join(parts) if parts else "location unknown"
-
-
-def _recording_similarity_provider(
-    similarities: dict[UUID, float | None],
-) -> SimilarityFor:
-    def similarity_for(
-        story: StoryCluster,
-        candidate: CandidateEvent,
-    ) -> float | None:
-        cluster_embedding = story.representative_embedding
-        event_embedding = candidate.representative_embedding
-        similarity = (
-            cosine(cluster_embedding, event_embedding)
-            if cluster_embedding is not None and event_embedding is not None
-            else None
-        )
-        similarities[candidate.event_id] = similarity
-        return similarity
-
-    return similarity_for
 
 
 class AssemblySummary(BaseModel):
@@ -160,8 +128,6 @@ def run_event_assembly(
     delta_model: ChatModel | None = None,
     delta_spec: ModelSpec | None = None,
     followup_window_days: float | None = None,
-    judge_model: ChatModel | None = None,
-    judge_spec: ModelSpec | None = None,
 ) -> AssemblySummary:
     """Run the end-to-end event assembly pass.
 
@@ -170,9 +136,8 @@ def run_event_assembly(
     writes what changed onto the newest observation. The pass enriches; it
     never gates the attach, and a pass that cannot run changes nothing.
 
-    When `judge_model` and `judge_spec` are given, a match in the ambiguous band
-    is decided by the LLM judge: same_event attaches, anything else creates a
-    new event. Without a judge, every ambiguous match prefers a new event.
+    Ambiguous, refused, and incomplete matches create new events. Matching
+    never waits for a model or a human decision.
     """
     signals = repo.signals_to_match(limit=limit, stale=stale)
     if not signals:
@@ -206,7 +171,6 @@ def run_event_assembly(
             limit=candidate_limit,
             distance_km=match_distance_km,
         )
-        similarities: dict[UUID, float | None] = {}
         decision = decide(
             cluster,
             candidates,
@@ -215,15 +179,13 @@ def run_event_assembly(
             weights=match_weights,
             distance_km=match_distance_km,
             recency_days=match_recency_days,
-            similarity_for=_recording_similarity_provider(similarities),
         )
 
         for candidate in candidates:
             rejection = decision.candidate_rejections[candidate.event_id]
             logger.info(
-                "event match candidate event_id=%s similarity=%s score=%s reason=%s",
+                "event match candidate event_id=%s score=%s reason=%s",
                 candidate.event_id,
-                similarities.get(candidate.event_id),
                 decision.candidate_scores[candidate.event_id],
                 rejection.value if rejection is not None else None,
             )
@@ -235,9 +197,8 @@ def run_event_assembly(
             chosen = next((cand for cand in candidates if cand.event_id == event_id), None)
             previous_brief = repo.latest_brief(event_id)
             logger.info(
-                "matched event event_id=%s similarity=%s score=%s",
+                "matched event event_id=%s score=%s",
                 event_id,
-                similarities.get(event_id),
                 match_score,
             )
 
@@ -274,96 +235,16 @@ def run_event_assembly(
             )
 
         elif decision.action is MatchAction.AMBIGUOUS:
-            assert decision.event_id is not None
-            event_id = decision.event_id
-            judged_candidate = next(
-                (cand for cand in candidates if cand.event_id == event_id), None
+            created = finalize_event_creation(
+                repo,
+                cluster=cluster,
+                early_signal_weights=early_signal_weights,
+                evidence_weights=evidence_weights,
+                now=now,
             )
-            logger.info(
-                "ambiguous event match event_id=%s score=%s judge=%s",
-                event_id,
-                decision.match_score,
-                "configured" if judge_model is not None and judge_spec is not None else "none",
-            )
-
-            judged_same = False
-            if judge_model is not None and judge_spec is not None and judged_candidate is not None:
-                representative = cluster.signals[0]
-                title = representative.title or (
-                    representative.extraction.title_english
-                    if representative.extraction is not None
-                    else ""
-                )
-                snippet = (
-                    "\n".join(point.text for point in representative.extraction.brief)
-                    if representative.extraction is not None and representative.extraction.brief
-                    else title
-                )
-                result = run_judge(
-                    judge_model,
-                    judge_spec,
-                    new_title=title,
-                    new_snippet=snippet,
-                    event_title=judged_candidate.title,
-                    event_context=_event_context_label(judged_candidate),
-                    recent_source_titles=judged_candidate.recent_source_titles,
-                )
-                if result.attempt is not None:
-                    repo.record_ai_request(
-                        cost_row(
-                            result.attempt,
-                            purpose=AiPurpose.EVENT_MATCH_JUDGE,
-                            signal_id=representative.signal_id,
-                            batch_size=1,
-                            at=now or datetime.now(UTC),
-                        )
-                    )
-                judged_same = (
-                    result.outcome is JudgeOutcome.ACCEPTED
-                    and result.judgement is not None
-                    and result.judgement.same_event
-                )
-                ambiguous_judged += 1
-                logger.info(
-                    "judged event event_id=%s same_event=%s reason=%s",
-                    event_id,
-                    judged_same,
-                    result.judgement.reason if result.judgement is not None else None,
-                )
-
-            if judged_same:
-                previous_brief = repo.latest_brief(event_id)
-                match_score = decision.match_score if decision.match_score is not None else 1.0
-                for sig in cluster.signals:
-                    finalize_event_link(
-                        repo,
-                        event_id=event_id,
-                        signal=sig,
-                        relationship_type=RelationshipType.SUPPORTING_SOURCE,
-                        match_score=match_score,
-                        is_primary=False,
-                        early_signal_weights=early_signal_weights,
-                        evidence_weights=evidence_weights,
-                        now=now,
-                    )
-                    signals_attached += 1
-                    ambiguous_attached += 1
-                early = early_signal_score(cluster.signals, now=now, weights=early_signal_weights)
-                evid = evidence_score(cluster.signals, weights=evidence_weights)
-                v_status = verification_status(cluster.signals)
-                repo.apply_scores(event_id, early.total, evid.total, v_status)
-            else:
-                # Prefer a new event: false merges are worse than duplicates.
-                created = finalize_event_creation(
-                    repo,
-                    cluster=cluster,
-                    early_signal_weights=early_signal_weights,
-                    evidence_weights=evidence_weights,
-                    now=now,
-                )
-                logger.info("judge refused; created new event event_id=%s", created.event_id)
-                events_created += 1
-                signals_attached += len(cluster.signals)
+            logger.info("ambiguous match; created new event event_id=%s", created.event_id)
+            events_created += 1
+            signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.CREATE:
             created = finalize_event_creation(
@@ -378,24 +259,28 @@ def run_event_assembly(
             signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.REFUSE:
-            logger.info("refused ambiguous event match candidates=%s", len(candidates))
-            scores_to_snapshot = {
-                eid: score for eid, score in decision.candidate_scores.items() if score >= 0.60
-            }
-            for sig in cluster.signals:
-                repo.open_review(
-                    sig.signal_id,
-                    reason=ReviewReason.EVENT_MATCH_AMBIGUOUS,
-                    candidate_scores=scores_to_snapshot,
-                )
-                signals_refused += 1
+            created = finalize_event_creation(
+                repo,
+                cluster=cluster,
+                early_signal_weights=early_signal_weights,
+                evidence_weights=evidence_weights,
+                now=now,
+            )
+            logger.info("multiple matches; created new event event_id=%s", created.event_id)
+            events_created += 1
+            signals_attached += len(cluster.signals)
 
     for sig in unclusterable:
-        if sig.disease_id is None:
-            reason = ReviewReason.DISEASE_UNRESOLVED
-        else:
-            reason = ReviewReason.LOCATION_UNRESOLVED
-        repo.open_review(sig.signal_id, reason=reason)
+        created = finalize_event_creation(
+            repo,
+            cluster=StoryCluster(signals=(sig,)),
+            early_signal_weights=early_signal_weights,
+            evidence_weights=evidence_weights,
+            now=now,
+        )
+        logger.info("uncertain event fields; created new event event_id=%s", created.event_id)
+        events_created += 1
+        signals_attached += 1
 
     repo.commit()
 

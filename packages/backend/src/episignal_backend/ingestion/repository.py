@@ -19,7 +19,6 @@ from episignal_backend.db.types import (
     DiscoveryMethod,
     FilterRuleGroup,
     ProcessingStatus,
-    ReviewReason,
     SourceType,
 )
 from episignal_backend.ingestion.documents import (
@@ -42,7 +41,6 @@ from episignal_backend.models import (
     SignalFilterRule,
     Source,
 )
-from episignal_backend.review.repository import SqlAlchemyReviewRepository
 
 
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
@@ -325,18 +323,9 @@ class SqlAlchemyDiscoveryRepository:
         db_signal = build_discovered_signal(signal, source_id)
         self._session.add(db_signal)
         self._session.flush()
-        if (
-            db_signal.processing_status == ProcessingStatus.NEEDS_REVIEW
-            or db_signal.raw_text is None
-        ):
-            SqlAlchemyReviewRepository(self._session).open_review(
-                db_signal.id, reason=ReviewReason.RETRIEVAL_FAILED
-            )
 
     def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
-        return self._retrievals(
-            ProcessingStatus.NEEDS_REVIEW, max_attempts=max_attempts, limit=limit
-        )
+        return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
 
     def _retrievals(
         self, status: ProcessingStatus, *, max_attempts: int, limit: int
@@ -402,7 +391,6 @@ class SqlAlchemyDiscoveryRepository:
             # a spare row costs less than deleting one on a guess.
             self._session.rollback()
             return False
-        SqlAlchemyReviewRepository(self._session).recover_retrieval_automatically(signal_id)
         return True
 
     def record_failed_attempt(self, signal_id: UUID, *, max_attempts: int = 3) -> None:
@@ -410,10 +398,7 @@ class SqlAlchemyDiscoveryRepository:
         if stub is not None:
             stub.retrieval_attempts = stub.retrieval_attempts + 1
             if stub.retrieval_attempts >= max_attempts:
-                stub.processing_status = ProcessingStatus.NEEDS_REVIEW
-                SqlAlchemyReviewRepository(self._session).open_review(
-                    signal_id, reason=ReviewReason.RETRIEVAL_FAILED
-                )
+                stub.processing_status = ProcessingStatus.FAILED
         else:
             self._session.execute(
                 update(Signal)

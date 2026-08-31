@@ -6,9 +6,9 @@ owns transactions.
 Maps between ORM models and pure domain contracts across the boundary.
 """
 
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,10 +22,10 @@ from episignal_backend.ai.schema import BriefPoint, Extraction, StoredExtraction
 from episignal_backend.db.types import (
     EventStatus,
     EventType,
+    LocationRole,
     Precision,
     ProcessingStatus,
     RelationshipType,
-    ReviewReason,
     VerificationStatus,
 )
 from episignal_backend.events.documents import (
@@ -36,6 +36,8 @@ from episignal_backend.events.documents import (
     StoryCluster,
     SummarySource,
 )
+from episignal_backend.geocode.normalize import normalized_form, resolve_country
+from episignal_backend.ingestion.gdelt.locale import country_code as gdelt_country_code
 from episignal_backend.models import (
     AiRequest,
     Disease,
@@ -45,10 +47,9 @@ from episignal_backend.models import (
     EventSignal,
     EventSummary,
     Signal,
-    SignalLocation,
     Source,
 )
-from episignal_backend.review.repository import SqlAlchemyReviewRepository
+from episignal_backend.seeds import load_country_aliases
 
 
 def read_stored_extraction(payload: Any) -> Extraction | None:
@@ -66,19 +67,70 @@ def read_stored_extraction(payload: Any) -> Extraction | None:
         return None
 
 
-def _infer_precision(loc: Any) -> Precision:
-    prec = getattr(loc, "precision", None)
-    if isinstance(prec, Precision):
-        return prec
-    if getattr(loc, "place_name", None):
-        return Precision.PLACE
-    if getattr(loc, "admin2", None):
-        return Precision.ADMIN2
-    if getattr(loc, "admin1", None):
-        return Precision.ADMIN1
-    if getattr(loc, "country_code", None):
-        return Precision.COUNTRY
-    return Precision.UNRESOLVED
+def _country_code(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().upper()
+    return normalized if len(normalized) == 2 and normalized.isalpha() else None
+
+
+@lru_cache(maxsize=1)
+def _country_aliases() -> Mapping[str, str]:
+    return {normalized_form(alias.name): alias.country_code for alias in load_country_aliases()}
+
+
+def _resolve_country(value: str | None) -> str | None:
+    return _country_code(value) or resolve_country(value, _country_aliases()) or (
+        gdelt_country_code(value) if value is not None else None
+    )
+
+
+def _direct_locations(
+    extraction: Any,
+    *,
+    country_code: str | None,
+    admin1: str | None,
+) -> tuple[LocationForMatching, ...]:
+    """Turn accepted extraction metadata into optional, non-geocoded location."""
+    extracted = tuple(getattr(extraction, "locations", ()) or ())
+    primary = next((item for item in extracted if item.role.value == "primary"), None)
+    source = primary or (extracted[0] if extracted else None)
+    source_country = getattr(source, "country", None)
+    code = _country_code(country_code) or _resolve_country(source_country)
+    province = getattr(source, "admin1", None) or admin1
+    place = getattr(source, "place_name", None)
+    if code is None and province is None and place is None and not source_country:
+        return ()
+    precision = (
+        Precision.ADMIN1 if province else Precision.COUNTRY if code else Precision.UNRESOLVED
+    )
+    return (
+        LocationForMatching(
+            location_role=LocationRole.PRIMARY,
+            precision=precision,
+            country_code=code,
+            admin1=province,
+            place_name=place,
+        ),
+    )
+
+
+def _event_location(event: Any) -> LocationForMatching | None:
+    code = _country_code(getattr(event, "country_code", None))
+    admin1 = getattr(event, "admin1", None)
+    admin2 = getattr(event, "admin2", None)
+    place = getattr(event, "place_name", None)
+    if code is None and admin1 is None and admin2 is None and place is None:
+        return None
+    precision = Precision.ADMIN1 if admin1 else Precision.COUNTRY if code else Precision.UNRESOLVED
+    return LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=precision,
+        country_code=code,
+        admin1=admin1,
+        admin2=admin2,
+        place_name=place,
+    )
 
 
 class SqlAlchemyEventRepository:
@@ -88,14 +140,14 @@ class SqlAlchemyEventRepository:
         self._session = session
 
     def signals_to_match(self, limit: int, *, stale: bool = False) -> Sequence[SignalForMatching]:
-        """Select signals awaiting matching or already matched when stale=True."""
+        """Select extracted signals awaiting matching or matched when stale."""
         status_filter: ColumnElement[bool]
         if stale:
             status_filter = Signal.processing_status.in_(
-                [ProcessingStatus.GEOCODED, ProcessingStatus.MATCHED]
+                [ProcessingStatus.EXTRACTED, ProcessingStatus.MATCHED]
             )
         else:
-            status_filter = Signal.processing_status == ProcessingStatus.GEOCODED
+            status_filter = Signal.processing_status == ProcessingStatus.EXTRACTED
 
         query = (
             select(Signal, Source.is_official, Source.credibility_tier)
@@ -109,42 +161,31 @@ class SqlAlchemyEventRepository:
         if not rows:
             return ()
 
-        signal_ids = [sig.id for sig, _, _ in rows]
-
-        loc_query = select(SignalLocation).where(SignalLocation.signal_id.in_(signal_ids))
-        loc_rows = self._session.execute(loc_query).scalars().all()
-
-        locs_by_signal: dict[UUID, list[LocationForMatching]] = defaultdict(list)
-        for loc in loc_rows:
-            locs_by_signal[loc.signal_id].append(
-                LocationForMatching(
-                    location_role=loc.location_role,
-                    precision=loc.precision,
-                    country_code=loc.country_code,
-                    admin1=loc.admin1,
-                    admin2=loc.admin2,
-                    place_name=loc.place_name,
-                    latitude=loc.latitude,
-                    longitude=loc.longitude,
-                )
-            )
-
         signals: list[SignalForMatching] = []
         for sig, is_official, cred_tier in rows:
             extraction = read_stored_extraction(sig.ai_extraction)
+            locations = _direct_locations(
+                extraction,
+                country_code=getattr(sig, "triage_country_code", None),
+                admin1=getattr(sig, "triage_admin1", None),
+            )
             signals.append(
                 SignalForMatching(
                     signal_id=sig.id,
                     disease_id=sig.disease_id,
+                    disease_text=(
+                        extraction.disease.name
+                        if extraction is not None and extraction.disease is not None
+                        else None
+                    ),
                     source_id=sig.source_id,
                     source_is_official=is_official,
                     credibility_tier=cred_tier,
                     published_at=sig.published_at,
                     first_seen_at=sig.first_seen_at,
                     title=sig.title,
-                    locations=tuple(locs_by_signal.get(sig.id, ())),
+                    locations=locations,
                     extraction=extraction,
-                    embedding=tuple(sig.embedding) if sig.embedding is not None else None,
                 )
             )
 
@@ -158,35 +199,20 @@ class SqlAlchemyEventRepository:
         limit: int = 20,
         distance_km: float = 50.0,
     ) -> Sequence[CandidateEvent]:
-        if cluster.disease_id is None:
+        rep_loc = cluster.representative_location
+        if cluster.disease_identity is None or rep_loc is None or rep_loc.country_code is None:
             return ()
 
-        rep_loc = cluster.representative_location
         cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
 
         conditions: list[ColumnElement[bool]] = [
-            Event.disease_id == cluster.disease_id,
             Event.last_updated_at >= cutoff,
+            Event.country_code == rep_loc.country_code,
         ]
-
-        if rep_loc is not None and rep_loc.country_code is not None:
-            conditions.append(
-                or_(
-                    Event.country_code.is_(None),
-                    Event.country_code == rep_loc.country_code,
-                )
-            )
-
-        if (
-            rep_loc is not None
-            and rep_loc.precision in (Precision.PLACE, Precision.ADMIN2)
-            and rep_loc.latitude is not None
-            and rep_loc.longitude is not None
-        ):
-            ref_point = func.ST_SetSRID(
-                func.ST_MakePoint(rep_loc.longitude, rep_loc.latitude), 4326
-            )
-            conditions.append(func.ST_DWithin(Event.geometry, ref_point, distance_km * 1000.0))
+        if cluster.disease_id is not None:
+            conditions.append(Event.disease_id == cluster.disease_id)
+        else:
+            conditions.append(Event.disease_id.is_(None))
         event_query = (
             select(Event).where(*conditions).order_by(Event.last_updated_at.desc()).limit(limit)
         )
@@ -194,44 +220,30 @@ class SqlAlchemyEventRepository:
         if not events:
             return ()
 
-        event_ids = [ev.id for ev in events]
-        loc_query = select(EventLocation).where(EventLocation.event_id.in_(event_ids))
-        loc_rows = self._session.execute(loc_query).scalars().all()
-
-        embedding_query = (
-            select(EventSignal.event_id, Signal.embedding)
-            .join(Signal, Signal.id == EventSignal.signal_id)
-            .where(
-                EventSignal.event_id.in_(event_ids),
-                EventSignal.is_primary.is_(True),
-            )
-        )
-        embedding_rows = self._session.execute(embedding_query).all()
-        embeddings_by_event = {
-            event_id: tuple(embedding) if embedding is not None else None
-            for event_id, embedding in embedding_rows
-        }
-
-        titles_by_event = self._recent_source_titles_by_event(event_ids)
-
-        locs_by_event: dict[UUID, list[LocationForMatching]] = defaultdict(list)
-        for loc in loc_rows:
-            locs_by_event[loc.event_id].append(
-                LocationForMatching(
-                    location_role=loc.location_role,
-                    precision=_infer_precision(loc),
-                    country_code=loc.country_code,
-                    admin1=loc.admin1,
-                    admin2=loc.admin2,
-                    place_name=loc.place_name,
-                    latitude=loc.latitude,
-                    longitude=loc.longitude,
-                )
-            )
+        disease_text_by_event: dict[UUID, str] = {}
+        if cluster.disease_id is None:
+            event_ids = [event.id for event in events]
+            extracted_rows = self._session.execute(
+                select(EventSignal.event_id, EventSignal.is_primary, Signal.ai_extraction)
+                .join(Signal, Signal.id == EventSignal.signal_id)
+                .where(EventSignal.event_id.in_(event_ids))
+                .order_by(EventSignal.event_id, EventSignal.is_primary.desc())
+            ).all()
+            for event_id, is_primary, payload in extracted_rows:
+                if event_id in disease_text_by_event and not is_primary:
+                    continue
+                extraction = read_stored_extraction(payload)
+                if extraction is not None and extraction.disease is not None:
+                    normalized_disease_text = normalized_form(extraction.disease.name)
+                    if normalized_disease_text:
+                        disease_text_by_event[event_id] = normalized_disease_text
 
         candidates: list[CandidateEvent] = []
         for ev in events:
-            assert ev.disease_id is not None
+            disease_text = disease_text_by_event.get(ev.id)
+            if cluster.disease_id is None and disease_text != cluster.disease_text:
+                continue
+            event_location = _event_location(ev)
             first_sig: datetime = (
                 ev.first_signal_at
                 if ev.first_signal_at is not None
@@ -241,52 +253,17 @@ class SqlAlchemyEventRepository:
                 CandidateEvent(
                     event_id=ev.id,
                     disease_id=ev.disease_id,
-                    locations=tuple(locs_by_event.get(ev.id, ())),
+                    disease_text=disease_text,
+                    locations=(event_location,) if event_location is not None else (),
                     first_signal_at=first_sig,
                     last_updated_at=ev.last_updated_at,
-                    representative_embedding=embeddings_by_event.get(ev.id),
                     title=ev.title,
-                    recent_source_titles=titles_by_event.get(ev.id, ()),
                 )
             )
 
         return tuple(candidates)
 
-    def _recent_source_titles_by_event(
-        self, event_ids: Sequence[UUID], *, limit: int = 5
-    ) -> dict[UUID, tuple[str, ...]]:
-        """The newest attached signal titles per event, newest first.
-
-        One query for every candidate event, so a run of twenty candidates is
-        not twenty round trips. The judge reads these as an event's recent
-        voice: what it has been saying lately, distinct from one headline.
-        """
-        if not event_ids:
-            return {}
-        rows = self._session.execute(
-            select(
-                EventSignal.event_id,
-                Signal.title,
-                Signal.published_at,
-                Signal.first_seen_at,
-            )
-            .join(Signal, Signal.id == EventSignal.signal_id)
-            .where(EventSignal.event_id.in_(event_ids), Signal.title.is_not(None))
-            .order_by(
-                EventSignal.event_id,
-                func.coalesce(Signal.published_at, Signal.first_seen_at).desc(),
-                Signal.id.desc(),
-            )
-        ).all()
-        titles: dict[UUID, list[str]] = defaultdict(list)
-        for event_id, title, _published_at, _first_seen_at in rows:
-            titles[event_id].append(title)
-        return {event_id: tuple(items[:limit]) for event_id, items in titles.items()}
-
     def create_event(self, cluster: StoryCluster) -> CandidateEvent:
-        if cluster.disease_id is None:
-            raise ValueError("Cannot create an event for a cluster without a disease_id")
-
         event_id = uuid4()
         public_id = f"EVT-{event_id.hex[:8].upper()}"
         slug = f"event-{event_id.hex[:10].lower()}"
@@ -318,7 +295,11 @@ class SqlAlchemyEventRepository:
             title=title,
             disease_id=cluster.disease_id,
             pathogen_id=None,
-            event_type=EventType.OUTBREAK,
+            event_type=(
+                EventType.OUTBREAK
+                if cluster.disease_id is not None
+                else EventType.UNKNOWN_DISEASE_EVENT
+            ),
             status=EventStatus.MONITORING,
             verification_status=VerificationStatus.SIGNAL,
             country_code=country_code,
@@ -337,10 +318,10 @@ class SqlAlchemyEventRepository:
         return CandidateEvent(
             event_id=event_id,
             disease_id=cluster.disease_id,
+            disease_text=cluster.disease_text,
             locations=locations,
             first_signal_at=first_sig_at,
             last_updated_at=last_updated_at,
-            representative_embedding=cluster.representative_embedding,
             title=title,
             recent_source_titles=(),
         )
@@ -487,22 +468,6 @@ class SqlAlchemyEventRepository:
             update(Signal)
             .where(Signal.id == signal_id)
             .values(processing_status=ProcessingStatus.MATCHED)
-        )
-
-    def open_review(
-        self,
-        signal_id: UUID,
-        *,
-        reason: ReviewReason,
-        candidate_scores: Mapping[UUID, float] | None = None,
-    ) -> None:
-        self._session.execute(
-            update(Signal)
-            .where(Signal.id == signal_id)
-            .values(processing_status=ProcessingStatus.NEEDS_REVIEW)
-        )
-        SqlAlchemyReviewRepository(self._session).open_review(
-            signal_id, reason=reason, candidate_scores=candidate_scores
         )
 
     def latest_brief(self, event_id: UUID) -> tuple[BriefPoint, ...] | None:

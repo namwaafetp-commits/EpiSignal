@@ -16,9 +16,7 @@ from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.ingestion.discovery import (
     DiscoveryResult,
-    RetryResult,
     run_discovery,
-    run_retry,
 )
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
@@ -53,7 +51,7 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
     return Arguments(window_minutes=parsed.window_minutes, max_articles=parsed.max_articles)
 
 
-def _run(arguments: Arguments) -> tuple[RetryResult, DiscoveryResult]:
+def _run(arguments: Arguments) -> DiscoveryResult:
     settings = get_settings()
     connector = GdeltConnector(
         search=GdeltDocClient(),
@@ -65,28 +63,20 @@ def _run(arguments: Arguments) -> tuple[RetryResult, DiscoveryResult]:
     )
     with session_scope() as session:
         repository = SqlAlchemyDiscoveryRepository(session)
-        # Retry first: a stub is a page already known to be wanted, so it has a
-        # better claim on the run budget than an article not yet seen.
-        retried = run_retry(
-            repository,
-            connector,
-            max_attempts=settings.gdelt_max_retrieval_attempts,
-            batch_size=settings.gdelt_retry_batch_size,
-        )
         discovered = run_discovery(
             repository,
             connector,
             window_minutes=arguments.window_minutes or settings.gdelt_query_window_minutes,
             max_articles=arguments.max_articles or settings.gdelt_max_articles_per_run,
         )
-        return retried, discovered
+        return discovered
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
 
     try:
-        retried, result = _run(arguments)
+        result = _run(arguments)
     except Exception:
         print(
             "Discovery failed before completing. Check GDELT and the database.",
@@ -98,10 +88,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("No active query rules. Run pnpm db:seed first.", file=sys.stderr)
         return 1
 
-    print(
-        f"retried={retried.attempted} promoted={retried.promoted} "
-        f"still_failing={retried.still_failing} redundant={retried.redundant}"
-    )
     print(
         f"rules={result.rules_run} rules_failed={result.rules_failed} "
         f"rules_invalid={result.rules_invalid} discovered={result.discovered} "
