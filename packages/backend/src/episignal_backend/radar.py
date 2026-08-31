@@ -18,7 +18,14 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from episignal_backend.ai.schema import BRIEF_SLOT_COUNT, BriefPoint, StoredExtractionPayload
+from episignal_backend.ai.schema import (
+    BACKFILL_MIN_SCHEMA_VERSION,
+    BRIEF_SLOT_COUNT,
+    EXTRACTION_SCHEMA_VERSION,
+    EXTRACTION_VERSION_KEY,
+    BriefPoint,
+    StoredExtractionPayload,
+)
 from episignal_backend.db.types import (
     CredibilityTier,
     LocationRole,
@@ -152,6 +159,19 @@ _PRECISION_RANK: dict[Precision, int] = {
     Precision.COUNTRY: 4,
     Precision.UNRESOLVED: 5,
 }
+
+_SUPPORTED_EXTRACTION_SCHEMA_VERSIONS = tuple(
+    str(version) for version in range(BACKFILL_MIN_SCHEMA_VERSION, EXTRACTION_SCHEMA_VERSION + 1)
+)
+
+
+def _is_supported_extraction_version(raw_extraction: Any) -> bool:
+    if not isinstance(raw_extraction, dict):
+        return False
+    version = raw_extraction.get(EXTRACTION_VERSION_KEY)
+    return (
+        type(version) is int and BACKFILL_MIN_SCHEMA_VERSION <= version <= EXTRACTION_SCHEMA_VERSION
+    )
 
 
 def choose_representative_location(
@@ -306,7 +326,9 @@ def query_radar(
         )
         .join(Source, Source.id == Signal.source_id)
         .where(
-            Signal.ai_extraction.op("->>")("extraction_schema_version") == "2",
+            Signal.ai_extraction.op("->>")(EXTRACTION_VERSION_KEY).in_(
+                _SUPPORTED_EXTRACTION_SCHEMA_VERSIONS
+            ),
             effective_time >= window_start,
             effective_time <= window_end,
             Signal.processing_status.in_(
@@ -338,7 +360,7 @@ def query_radar(
             break
         offset += len(chunk_rows)
         for row in chunk_rows:
-            if not row.ai_extraction:
+            if not _is_supported_extraction_version(row.ai_extraction):
                 continue
             try:
                 payload = StoredExtractionPayload.model_validate(row.ai_extraction)
