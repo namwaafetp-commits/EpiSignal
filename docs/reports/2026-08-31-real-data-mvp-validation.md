@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-31
 **Branch:** `codex/real-data-mvp-validation`
-**Code commit at report time:** recorded after the final review commit below
+**Code commit at report time:** `68902d923a809c869d820e2aa424dfbc03255a82`
 **Database:** shared development PostgreSQL/PostGIS; migration head verified as `20260830_0019`
 
 ## Real-data window

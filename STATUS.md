@@ -133,7 +133,7 @@ ledger against the superseding Lean MVP architecture:
 ## Verified validation baseline
 
 The real-data validation code and report were verified on this branch. The
-verification commit is recorded in the validation report and contains the
+verification commit is `68902d923a809c869d820e2aa424dfbc03255a82` and contains the
 triage ordering change plus the event-detail read-path correction.
 
 | Fact | Value |
