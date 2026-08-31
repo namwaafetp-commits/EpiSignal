@@ -114,3 +114,23 @@ Commit: see PR head
 PR: https://github.com/namwaafetp-commits/EpiSignal/pull/7
 
 Do not merge.
+
+## Recovery reconciliation attempt
+
+The recovery identity assertions passed before mutation: 131 recovery signals,
+131 recovery-created events, and 14 baseline events. Only those 131 recovery
+events' summaries, observations, locations, associations, and event rows were
+removed; the 14 baseline events were preserved. The 131 recovery signals were
+reset to `EXTRACTED`.
+
+The subsequent MATCH-only run failed with a database `OperationalError` after
+the configured connection timeout. A follow-up read-only check confirmed the
+database endpoint was unreachable at TCP level. The last verified persisted
+state is 14 total events, 17 baseline event associations/observations, 14
+baseline summaries, 131 recovery signals at `EXTRACTED`, and zero recovery
+events. Since MATCH did not complete, no recovery events were rebuilt and
+SUMMARIZE was not run. No GDELT, retrieval, dedupe, triage, extraction, or full
+pipeline run was performed.
+
+Reconciliation status: blocked by database connectivity; retry only after the
+database endpoint is available.
