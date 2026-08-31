@@ -133,7 +133,8 @@ ledger against the superseding Lean MVP architecture:
 ## Verified validation baseline
 
 The real-data validation code and report were verified on this branch. The
-final verification commit will be recorded after the required gates complete.
+verification commit is `a79b249b71f66485bd29b6901baa9ba50b9046c8` and contains
+the summary JSONB fix, event-detail regression test, and updated evidence.
 
 | Fact | Value |
 | --- | --- |
