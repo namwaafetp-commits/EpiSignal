@@ -108,7 +108,7 @@ def test_ai_repair_cli_prints_in_memory_cost(capsys, monkeypatch) -> None:
     assert "ai_requests=2 ai_cost_usd=0.012345" in capsys.readouterr().out
 
 
-def test_unresolved_reason_reports_disease_vocabulary_miss() -> None:
+def test_unknown_disease_text_is_not_an_unresolved_reason() -> None:
     reason = unresolved_reason(
         event=SimpleNamespace(disease_id=None, country_code="US", admin1=None),
         evidence=(
@@ -121,7 +121,140 @@ def test_unresolved_reason_reports_disease_vocabulary_miss() -> None:
         resolved=ResolvedMetadata(disease_text="meningococcal disease", country_code="US"),
     )
 
-    assert reason == "disease_vocabulary_miss"
+    assert reason is None
+
+
+def test_known_disease_id_is_a_complete_disease_identity() -> None:
+    reason = unresolved_reason(
+        event=SimpleNamespace(disease_id=None, country_code="US", admin1=None),
+        evidence=(MetadataEvidence(title="Measles outbreak", text="body"),),
+        resolved=ResolvedMetadata(disease_id=uuid4(), country_code="US"),
+    )
+
+    assert reason is None
+
+
+def test_missing_disease_identity_reports_missing_disease() -> None:
+    reason = unresolved_reason(
+        event=SimpleNamespace(disease_id=None, country_code="US", admin1=None),
+        evidence=(MetadataEvidence(title="Outbreak", text="body"),),
+        resolved=ResolvedMetadata(country_code="US"),
+    )
+
+    assert reason == "missing_disease"
+
+
+def test_disease_text_without_country_reports_missing_country() -> None:
+    reason = unresolved_reason(
+        event=SimpleNamespace(disease_id=None, country_code=None, admin1=None),
+        evidence=(
+            MetadataEvidence(
+                title="Meningococcal outbreak",
+                text="body",
+                extraction=MetadataFields(disease="Meningococcal disease"),
+            ),
+        ),
+        resolved=ResolvedMetadata(disease_text="meningococcal disease"),
+    )
+
+    assert reason == "missing_country"
+
+
+def test_unrecognized_raw_disease_without_normalized_text_reports_missing_disease() -> None:
+    reason = unresolved_reason(
+        event=SimpleNamespace(disease_id=None, country_code="US", admin1=None),
+        evidence=(
+            MetadataEvidence(
+                title="Outbreak",
+                text="body",
+                extraction=MetadataFields(disease="???", country="US"),
+            ),
+        ),
+        resolved=ResolvedMetadata(country_code="US"),
+    )
+
+    assert reason == "missing_disease"
+
+
+def test_runner_resolves_unknown_disease_text_without_db_writes(monkeypatch) -> None:
+    event_id = uuid4()
+    signal = SimpleNamespace(
+        id=uuid4(),
+        title="Meningococcal outbreak",
+        raw_text="article body",
+        public_health_relevant=True,
+        ai_extraction=None,
+        ai_model=None,
+    )
+    event = SimpleNamespace(
+        id=event_id,
+        country_code=None,
+        admin1=None,
+        disease_id=None,
+        event_type=None,
+        headline="Meningococcal outbreak",
+    )
+    extraction = SimpleNamespace(
+        disease=SimpleNamespace(name="Meningococcal disease"),
+        confidence=0.9,
+        locations=(SimpleNamespace(role="primary", country="US", admin1=None, place_name=None),),
+    )
+
+    class Session:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.committed = False
+
+        def execute(self, statement):
+            self.calls += 1
+            return (
+                QueryResult(events=[event])
+                if self.calls == 1
+                else QueryResult(rows=[(signal, "source")])
+            )
+
+        def commit(self) -> None:
+            self.committed = True
+
+    repository = Mock()
+    resolver = repair_runner.LocalMetadataResolver(
+        country_aliases={"united states": "US"}, country_codes={"US"}
+    )
+    monkeypatch.setattr(repair_runner, "build_extraction_ladder", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        repair_runner,
+        "extract_signal",
+        lambda *args, **kwargs: ExtractionSignalResult(
+            outcome=ClimbOutcome.ACCEPTED,
+            extraction=extraction,
+            error=None,
+            attempts=(),
+        ),
+    )
+
+    session = Session()
+    result = run_repair_ai(
+        session,
+        repository,
+        Mock(),
+        resolver,
+        apply=False,
+        limit=1,
+        max_ai_requests=1,
+        max_cost_usd=Decimal("1"),
+        max_tier=3,
+    )
+
+    assert result.still_unresolved == 0
+    assert result.proposals[0].proposed_country == "US"
+    assert result.diagnostics[0].result == "proposed"
+    assert result.diagnostics[0].unresolved_reason is None
+    assert result.diagnostics[0].validated_disease_id is None
+    assert result.diagnostics[0].validated_disease_text == "meningococcal disease"
+    assert session.committed is False
+    repository.resolve_disease.assert_not_called()
+    repository.record_request.assert_not_called()
+    repository.record_extraction.assert_not_called()
 
 
 def test_unresolved_reason_reports_country_validation_failure() -> None:
@@ -155,7 +288,7 @@ def test_unresolved_reason_reports_admin1_validation_failure_without_country_los
         resolved=ResolvedMetadata(disease_id=uuid4(), country_code="US"),
     )
 
-    assert reason == "admin1_validation_failed"
+    assert reason is None
 
 
 def test_unresolved_reason_reports_extraction_rejection_and_request_guard() -> None:
@@ -203,13 +336,13 @@ def test_diagnostic_print_is_concise_and_excludes_article_body(capsys) -> None:
             validated_country_code="US",
             validated_admin1=None,
             result="unresolved",
-            unresolved_reason="disease_vocabulary_miss",
+            unresolved_reason="missing_disease",
         )
     )
 
     output = capsys.readouterr().out
     assert "DIAGNOSTIC event_id=event-1" in output
-    assert "reason=disease_vocabulary_miss" in output
+    assert "reason=missing_disease" in output
     assert "Meningococcal outbreak" not in output
 
 

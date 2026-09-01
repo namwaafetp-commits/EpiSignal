@@ -133,9 +133,18 @@ def unresolved_reason(
     ):
         return "extraction_unavailable"
 
-    if getattr(event, "disease_id", None) is None and resolved.disease_id is None:
-        if any(fields.disease is not None for fields in raw_fields):
-            return "disease_vocabulary_miss"
+    final_country = getattr(event, "country_code", None) or resolved.country_code
+    final_disease_id = getattr(event, "disease_id", None) or resolved.disease_id
+    if final_country is not None and (
+        final_disease_id is not None or resolved.disease_text is not None
+    ):
+        return None
+
+    if (
+        getattr(event, "disease_id", None) is None
+        and resolved.disease_id is None
+        and resolved.disease_text is None
+    ):
         return "missing_disease"
     if getattr(event, "country_code", None) is None and resolved.country_code is None:
         if any(fields.country is not None for fields in raw_fields):
@@ -466,8 +475,13 @@ def run_repair_ai(
         disease_resolved += int(patch.disease_id is not None)
         event_type_resolved += int(patch.event_type is not None)
         final_country = event.country_code or patch.country_code
-        final_disease = event.disease_id or patch.disease_id
-        unresolved = final_country is None or final_disease is None
+        final_disease_id = event.disease_id or patch.disease_id
+        final_disease_text = resolved.disease_text
+        unresolved = (
+            bool(resolved.conflicts)
+            or final_country is None
+            or (final_disease_id is None and final_disease_text is None)
+        )
         still_unresolved += int(unresolved)
         if extraction_outcomes:
             extraction_outcome = extraction_outcomes[-1]
@@ -488,6 +502,8 @@ def run_repair_ai(
                 result=(
                     "proposed"
                     if patch.changed
+                    else "resolved"
+                    if not unresolved
                     else "rejected"
                     if extraction_outcome == ClimbOutcome.REJECTED.value
                     else "unresolved"

@@ -36,15 +36,17 @@ def test_unknown_disease_text_groups_by_exact_normalized_text() -> None:
     first = _unknown_disease_signal("Meningococcal disease", now=now)
     same = _unknown_disease_signal(" meningococcal   disease ", now=now)
     different = _unknown_disease_signal("Lassa fever", now=now)
+    near_match = _unknown_disease_signal("Meningococcal diseases", now=now)
 
-    clusters, unclusterable = build_clusters([first, same, different])
+    clusters, unclusterable = build_clusters([first, same, different, near_match])
 
     assert len(unclusterable) == 0
     assert {cluster.disease_identity for cluster in clusters} == {
         "text:meningococcal disease",
         "text:lassa fever",
+        "text:meningococcal diseases",
     }
-    assert sorted(len(cluster.signals) for cluster in clusters) == [1, 2]
+    assert sorted(len(cluster.signals) for cluster in clusters) == [1, 1, 2]
 
 
 def test_precision_weights():

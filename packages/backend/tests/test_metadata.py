@@ -162,6 +162,19 @@ def test_unknown_disease_preserves_exact_normalized_text() -> None:
 
     assert resolved.disease_id is None
     assert resolved.disease_text == "meningococcal disease"
+
+
+def test_punctuation_only_disease_does_not_create_an_empty_identity() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title="Outbreak report",
+            text="",
+            extraction=MetadataFields(disease="???", country="US"),
+        )
+    )
+
+    assert resolved.disease_id is None
+    assert resolved.disease_text is None
     assert resolved.country_code == "US"
 
 

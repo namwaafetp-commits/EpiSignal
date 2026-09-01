@@ -269,11 +269,12 @@ class LocalMetadataResolver:
         """Normalize one structured model answer without reading article text."""
         country_code = self._resolve_country_value(fields.country)
         disease_id = self._resolve_disease_value(fields.disease)
+        normalized_disease = normalized_form(fields.disease) if fields.disease is not None else None
         disease = (
             self._diseases_by_id[disease_id].canonical_name
             if disease_id is not None
-            else normalized_form(fields.disease)
-            if fields.disease is not None
+            else normalized_disease or None
+            if normalized_disease is not None
             else None
         )
         admin1_match = self._resolve_admin1_value(fields.admin1, country_code)
