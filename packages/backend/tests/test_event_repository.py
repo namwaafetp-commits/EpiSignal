@@ -12,7 +12,7 @@ from episignal_backend.db.types import (
     Precision,
     SignalType,
 )
-from episignal_backend.events.documents import LocationForMatching, SignalForMatching, StoryCluster
+from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 from episignal_backend.events.protocol import EventRepository
 from episignal_backend.events.repository import (
     SqlAlchemyEventRepository,
@@ -202,7 +202,7 @@ def test_signals_to_match_uses_direct_extraction_metadata_without_geocoding() ->
     assert "processing_status" in stmt_str
 
 
-def test_signals_to_match_resolves_headline_metadata_from_local_references() -> None:
+def test_signals_to_match_does_not_infer_metadata_from_headline_text() -> None:
     sig_id = uuid4()
     source_id = uuid4()
     now = datetime.now(UTC)
@@ -248,15 +248,8 @@ def test_signals_to_match_resolves_headline_metadata_from_local_references() -> 
 
     signal = SqlAlchemyEventRepository(session).signals_to_match(limit=10)[0]
 
-    assert signal.disease_id == disease.id
-    assert signal.locations[0].country_code == "US"
-    assert signal.locations[0].admin1 == "WI"
-    assert signal.locations[0].precision == Precision.ADMIN1
-
-    event = SqlAlchemyEventRepository(session).create_event(StoryCluster(signals=(signal,)))
-    assert event.disease_id == disease.id
-    assert session.added[-1].country_code == "US"
-    assert session.added[-1].admin1 == "WI"
+    assert signal.disease_id is None
+    assert signal.locations == ()
 
 
 class FakeEvent:

@@ -217,7 +217,11 @@ class SqlAlchemyDiscoveryRepository:
         Distinct from `stubs_awaiting_retrieval`, which serves articles whose
         page already failed. These have never been asked for.
         """
-        return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
+        return self._retrievals(
+            (ProcessingStatus.FETCHED, ProcessingStatus.CLASSIFIED),
+            max_attempts=max_attempts,
+            limit=limit,
+        )
 
     def record_filtered(self, signal_id: UUID) -> None:
         self._session.execute(
@@ -328,8 +332,17 @@ class SqlAlchemyDiscoveryRepository:
         return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
 
     def _retrievals(
-        self, status: ProcessingStatus, *, max_attempts: int, limit: int
+        self,
+        status: ProcessingStatus | Sequence[ProcessingStatus],
+        *,
+        max_attempts: int,
+        limit: int,
     ) -> Sequence[StubRetrieval]:
+        status_filter = (
+            Signal.processing_status.in_(tuple(status))
+            if not isinstance(status, ProcessingStatus)
+            else Signal.processing_status == status
+        )
         rows = self._session.execute(
             select(Signal, Source.domain, Source.country_code)
             .join(Source, Signal.source_id == Source.id)
@@ -337,9 +350,10 @@ class SqlAlchemyDiscoveryRepository:
                 # The status filter is load-bearing: without it this query
                 # returns every bodyless signal, including the ones the gate
                 # has not seen and the ones it filtered.
-                Signal.processing_status == status,
+                status_filter,
                 Signal.discovered_via == DiscoveryMethod.GDELT,
                 Signal.raw_text.is_(None),
+                Signal.public_health_relevant.is_not(False),
                 Signal.retrieval_attempts < max_attempts,
                 Source.domain.is_not(None),
             )
@@ -366,6 +380,7 @@ class SqlAlchemyDiscoveryRepository:
                     ),
                     first_seen_at=signal.first_seen_at,
                     attempts=signal.retrieval_attempts,
+                    public_health_relevant=signal.public_health_relevant,
                 )
             )
         return tuple(stubs)

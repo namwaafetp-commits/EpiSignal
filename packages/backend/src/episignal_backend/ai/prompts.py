@@ -53,22 +53,33 @@ Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
 - Return exactly one result for every id you are given, and no other id.
 - Copy each id back character for character.
+- Return only relevance, confidence, and an optional short reason_code.
+- Do not identify disease, location, cases, deaths, or event type in this pass.
 - When you are unsure, mark it relevant: a missed outbreak costs more than a
   wasted extraction.
 
 The object must match this JSON Schema exactly:
 """
 
-TRIAGE_RULES = """You read one news item and return structured metadata as JSON.
+TRIAGE_RULES = """You are classifying one infectious-disease/public-health news item.
 
 Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
-- TITLE and SNIPPET are both supplied evidence. An entity explicitly written in
-  TITLE counts as reported evidence; do not return null for a disease, country,
-  or province explicitly named in TITLE or SNIPPET.
-- Every field you are not certain of from the supplied TITLE or SNIPPET must be null.
-  Never guess a disease, a country, or a province.
-- country is a two-letter ISO 3166-1 alpha-2 code, or null.
+- Use TITLE and ARTICLE CONTENT as evidence.
+- Decide relevance, identify the disease being reported, and identify where the
+  reported event actually occurred in the supplied content.
+- TITLE counts as evidence. ARTICLE CONTENT counts as evidence.
+- country must be a two-letter ISO 3166-1 alpha-2 code, or null when uncertain.
+- admin1 is the first-level administrative region explicitly stated or clearly
+  supported by the supplied content, or null when uncertain.
+- location_text is the event location as reported in the supplied content.
+- Identify the event location, not every location mentioned in the article.
+- Ignore unrelated comparisons, related-story text, navigation, advertisements,
+  and boilerplate.
+- Do not infer location from the publisher or organization name. FDA, CDC, WHO,
+  HHS, NCDC, and similar organizations are not event-location evidence.
+- Every field you are not certain of from the supplied TITLE or ARTICLE CONTENT
+  must be null. Prefer null over an unsupported guess.
 - Judge relevance generously: when a headline might concern an outbreak, an
   unusual illness, or a public health response, mark it relevant. A missed
   outbreak costs more than a wasted look.
@@ -106,17 +117,25 @@ def extraction_prompt(signal: ExtractableSignal, *, max_characters: int) -> tupl
     return system, user
 
 
-def classification_prompt(batch: Sequence[ClassifiableSignal]) -> tuple[str, str]:
-    """The title-only relevance gate.
+CLASSIFICATION_SNIPPET_CHARACTERS = 400
 
-    The operator's call: relevance is decided from the headline alone, so an
-    irrelevant item leaves the funnel for the cost of a few tokens. Recall is
-    protected by the unsure-means-relevant rule above, and a headline that
-    hides a relevant story is caught one stage later by the full-text
-    extraction pass -- never by a guess at what the article might contain.
-    """
+
+def classification_prompt(batch: Sequence[ClassifiableSignal]) -> tuple[str, str]:
+    """Build the cheap relevance request from discovery metadata only."""
     system = CLASSIFICATION_RULES + json.dumps(classification_json_schema(), sort_keys=True)
-    items = "\n\n".join(f"id: {signal.id}\ntitle: {signal.title}" for signal in batch)
+    items = "\n\n".join(
+        "\n".join(
+            (
+                f"id: {signal.id}",
+                f"TITLE: {signal.title}",
+                f"SNIPPET: {truncate(signal.excerpt, CLASSIFICATION_SNIPPET_CHARACTERS)}",
+                f"SOURCE: {signal.source_name}",
+                "PUBLISHED: "
+                f"{signal.published_at.isoformat() if signal.published_at else 'unknown'}",
+            )
+        )
+        for signal in batch
+    )
     return system, items
 
 
@@ -129,7 +148,7 @@ def triage_prompt(signal: TriageableSignal, *, max_characters: int) -> tuple[str
         f"PUBLISHED: {published}\n"
         f"URL: {signal.url}\n"
         f"LANGUAGE: {signal.language or 'unknown'}\n\n"
-        f"SNIPPET:\n{truncate(signal.excerpt, max_characters)}"
+        f"ARTICLE CONTENT:\n{truncate(signal.article_content, max_characters)}"
     )
     return system, user
 

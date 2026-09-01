@@ -204,20 +204,17 @@ def test_awaiting_embeddings_requires_relevant_completed_triage_and_no_vector() 
     assert "embedding IS NULL" in rendered
 
 
-def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> None:
-    # The keyword gate replaced this pass, but the method must still describe
-    # what it would select. A method stubbed to return () lies to its caller
-    # and makes restoring the pass more than the one line it should be.
+def test_the_classification_query_selects_unclassified_metadata() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
 
     rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
     assert ProcessingStatus.NORMALIZED.value in rendered
-    assert "story_group_members" in rendered.split("WHERE")[1]
+    assert "public_health_relevant IS NULL" in rendered
 
 
-def test_only_relevant_triaged_signals_are_extractable() -> None:
+def test_only_relevant_classified_signals_are_extractable() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -226,7 +223,6 @@ def test_only_relevant_triaged_signals_are_extractable() -> None:
         "WHERE"
     )[1]
     assert ProcessingStatus.NORMALIZED.value in where_part
-    assert TriageStatus.DONE.value in where_part
     assert "public_health_relevant IS true" in where_part
 
 
@@ -250,7 +246,6 @@ def test_an_extracted_signal_does_not_require_story_group_membership() -> None:
         "WHERE"
     )[1]
     assert ProcessingStatus.NORMALIZED.value in where_part
-    assert TriageStatus.DONE.value in where_part
 
 
 def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:
@@ -259,9 +254,9 @@ def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:
     SqlAlchemyAiRepository(session).record_classification(
         uuid4(),
         Verdict(
-            is_public_health_relevant=False,
+            is_public_health_relevant=True,
             signal_type=SignalType.UNKNOWN,
-            relevance=0.04,
+            relevance=0.94,
             model_id="vendor/model:free",
             decided_at=NOW,
         ),

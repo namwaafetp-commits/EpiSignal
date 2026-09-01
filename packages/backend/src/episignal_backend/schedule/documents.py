@@ -18,6 +18,7 @@ class StageName(StrEnum):
     INGEST_ECDC = "ingest_ecdc"
     DISCOVER = "discover"
     RETRIEVE = "retrieve"
+    CLASSIFY = "classify"
     DEDUPE = "dedupe"
     TRIAGE = "triage"
     EMBED = "embed"

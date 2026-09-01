@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -13,7 +11,6 @@ from episignal_backend.metadata import (
     MetadataRepairEvent,
     repair_event_metadata,
 )
-from episignal_backend.metadata_repair_runner import parse_arguments, run_repair
 
 MEASLES = UUID("00000000-0000-0000-0000-000000000001")
 MALARIA = UUID("00000000-0000-0000-0000-000000000002")
@@ -65,18 +62,22 @@ def resolver() -> LocalMetadataResolver:
         ("H5N1 bird flu established across Australia", AVIAN_INFLUENZA, "AU"),
     ],
 )
-def test_explicit_headline_metadata_resolves_without_model_output(
+def test_unstructured_headline_metadata_stays_unresolved(
     title: str, disease_id: UUID, country_code: str
 ) -> None:
     resolved = resolver().resolve(MetadataEvidence(title=title, text=""))
 
-    assert resolved.disease_id == disease_id
-    assert resolved.country_code == country_code
+    assert resolved.disease_id is None
+    assert resolved.country_code is None
 
 
-def test_unique_admin1_in_headline_supplies_country_and_admin1_code() -> None:
+def test_structured_admin1_is_validated_against_country() -> None:
     resolved = resolver().resolve(
-        MetadataEvidence(title="Measles Outbreak Grows to 98 Cases in Wisconsin", text="")
+        MetadataEvidence(
+            title="Measles Outbreak Grows to 98 Cases in Wisconsin",
+            text="",
+            triage=MetadataFields(disease="measles", country="US", admin1="Wisconsin"),
+        )
     )
 
     assert resolved.disease_id == MEASLES
@@ -87,34 +88,48 @@ def test_unique_admin1_in_headline_supplies_country_and_admin1_code() -> None:
 @pytest.mark.parametrize(
     ("title", "country_code", "admin1"),
     [
-        ("New Mexico measles outbreak", "US", "NM"),
-        ("Diphtheria outbreak in Niger State", "NG", "NI"),
+        ("New Mexico measles outbreak", "US", "New Mexico"),
+        ("Diphtheria outbreak in Niger State", "NG", "Niger State"),
     ],
 )
 def test_specific_admin1_wins_over_contained_country_alias(
     title: str, country_code: str, admin1: str
 ) -> None:
-    resolved = resolver().resolve(MetadataEvidence(title=title, text=""))
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title=title,
+            text="",
+            triage=MetadataFields(country=country_code, admin1=admin1),
+        )
+    )
 
     assert resolved.country_code == country_code
-    assert resolved.admin1 == admin1
+    assert resolved.admin1 == {"New Mexico": "NM", "Niger State": "NI"}[admin1]
 
 
 def test_conflicting_country_and_admin1_evidence_stays_unresolved() -> None:
     resolved = resolver().resolve(
-        MetadataEvidence(title="New Mexico, Mexico measles outbreak", text="")
+        MetadataEvidence(
+            title="New Mexico, Mexico measles outbreak",
+            text="",
+            triage=MetadataFields(country="MX", admin1="New Mexico"),
+        )
     )
 
     assert resolved.country_code is None
     assert resolved.admin1 is None
 
 
-def test_multiple_admin1_mentions_do_not_fall_back_to_contained_country() -> None:
+def test_invalid_admin1_rejects_location_metadata() -> None:
     resolved = resolver().resolve(
-        MetadataEvidence(title="New Mexico and Arizona measles outbreak", text="")
+        MetadataEvidence(
+            title="Unknown province measles outbreak",
+            text="",
+            triage=MetadataFields(country="US", admin1="Unknown Province"),
+        )
     )
 
-    assert resolved.country_code == "US"
+    assert resolved.country_code is None
     assert resolved.admin1 is None
 
 
@@ -123,7 +138,7 @@ def test_structured_country_conflicting_with_admin1_stays_unresolved() -> None:
         MetadataEvidence(
             title="New Mexico measles outbreak",
             text="",
-            extraction=MetadataFields(country="MX"),
+            extraction=MetadataFields(country="MX", admin1="New Mexico"),
         )
     )
 
@@ -131,12 +146,16 @@ def test_structured_country_conflicting_with_admin1_stays_unresolved() -> None:
     assert resolved.admin1 is None
 
 
-def test_arbitrary_uppercase_two_letter_prose_is_not_a_country() -> None:
+def test_country_aliases_are_normalized_only_from_structured_fields() -> None:
     resolved = resolver().resolve(
-        MetadataEvidence(title="The US lab reported a measles outbreak", text="")
+        MetadataEvidence(
+            title="The US lab reported a measles outbreak",
+            text="",
+            triage=MetadataFields(country="United States"),
+        )
     )
 
-    assert resolved.country_code is None
+    assert resolved.country_code == "US"
 
 
 def test_ambiguous_admin1_stays_unresolved() -> None:
@@ -198,11 +217,11 @@ def test_triage_location_wins_when_extraction_has_no_location() -> None:
     )
 
     assert resolved.disease_id == MEASLES
-    assert resolved.country_code == "KE"
+    assert resolved.country_code is None
     assert resolved.admin1 is None
 
 
-def test_extracted_place_name_can_resolve_a_unique_admin1() -> None:
+def test_unstructured_place_name_is_not_resolved_without_model_country_and_admin1() -> None:
     resolved = resolver().resolve(
         MetadataEvidence(
             title="Measles outbreak",
@@ -211,11 +230,11 @@ def test_extracted_place_name_can_resolve_a_unique_admin1() -> None:
         )
     )
 
-    assert resolved.country_code == "US"
-    assert resolved.admin1 == "WI"
+    assert resolved.country_code is None
+    assert resolved.admin1 is None
 
 
-def test_fallback_reads_title_and_body_but_does_not_guess() -> None:
+def test_article_text_is_never_scanned_for_metadata() -> None:
     known = resolver().resolve(
         MetadataEvidence(title="A report", text="Officials in Arizona reported malaria.")
     )
@@ -223,11 +242,28 @@ def test_fallback_reads_title_and_body_but_does_not_guess() -> None:
         MetadataEvidence(title="A report", text="Officials reported an outbreak in Springfield.")
     )
 
-    assert known.disease_id == MALARIA
-    assert known.country_code == "US"
-    assert known.admin1 == "AZ"
+    assert known.disease_id is None
+    assert known.country_code is None
+    assert known.admin1 is None
     assert ambiguous.country_code is None
     assert ambiguous.admin1 is None
+
+
+def test_resolved_metadata_exposes_field_provenance() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title="ignored",
+            text="ignored",
+            extraction=MetadataFields(disease="measles", country="US"),
+            triage=MetadataFields(disease="malaria", country="Canada"),
+        )
+    )
+
+    assert resolved.disease_id == MEASLES
+    assert resolved.country_code == "US"
+    assert resolved.disease_source == "extraction"
+    assert resolved.country_source == "extraction"
+    assert set(resolved.conflicts) == {"disease_id", "disease_text", "country_code"}
 
 
 def test_distinct_disease_names_of_different_lengths_stay_unresolved() -> None:
@@ -238,7 +274,7 @@ def test_distinct_disease_names_of_different_lengths_stay_unresolved() -> None:
     assert resolved.disease_id is None
 
 
-def test_repair_adds_outbreak_type_when_filling_unknown_disease() -> None:
+def test_repair_does_not_infer_from_unstructured_headline() -> None:
     patch = repair_event_metadata(
         MetadataRepairEvent(
             event_id=UUID("00000000-0000-0000-0000-000000000013"),
@@ -251,11 +287,11 @@ def test_repair_adds_outbreak_type_when_filling_unknown_disease() -> None:
         resolver(),
     )
 
-    assert patch.disease_id == MEASLES
-    assert patch.event_type == EventType.OUTBREAK
+    assert patch.disease_id is None
+    assert patch.event_type is None
 
 
-def test_repair_patch_only_fills_missing_event_fields() -> None:
+def test_repair_only_uses_validated_structured_metadata() -> None:
     patch = repair_event_metadata(
         MetadataRepairEvent(
             event_id=UUID("00000000-0000-0000-0000-000000000010"),
@@ -273,99 +309,6 @@ def test_repair_patch_only_fills_missing_event_fields() -> None:
         resolver(),
     )
 
-    assert patch.country_code == "ZA"
-    assert patch.disease_id == MEASLES
+    assert patch.country_code is None
+    assert patch.disease_id is None
     assert patch.admin1 is None
-
-
-def test_metadata_repair_defaults_to_dry_run() -> None:
-    assert parse_arguments([]).apply is False
-    assert parse_arguments(["--dry-run"]).apply is False
-    assert parse_arguments(["--apply"]).apply is True
-
-
-class RepairResult:
-    def __init__(self, value: Any) -> None:
-        self.value = value
-
-    def scalars(self) -> "RepairResult":
-        return self
-
-    def all(self) -> Any:
-        return self.value
-
-
-class RepairSession:
-    def __init__(self, event: Any, signal: Any) -> None:
-        self.results = [RepairResult([event]), RepairResult([(signal, True)])]
-        self.executed: list[Any] = []
-        self.commits = 0
-
-    def execute(self, statement: Any) -> RepairResult:
-        self.executed.append(statement)
-        return self.results.pop(0) if self.results else RepairResult([])
-
-    def commit(self) -> None:
-        self.commits += 1
-
-
-def test_repair_runner_updates_existing_event_only_when_apply_is_explicit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import episignal_backend.metadata_repair_runner as repair_runner
-
-    event = SimpleNamespace(
-        id=UUID("00000000-0000-0000-0000-000000000011"),
-        country_code=None,
-        admin1=None,
-        disease_id=None,
-        event_type=EventType.UNKNOWN_DISEASE_EVENT,
-    )
-    signal = SimpleNamespace(
-        id=UUID("00000000-0000-0000-0000-000000000012"),
-        title="South Africa measles outbreak",
-        raw_text="Officials reported an outbreak.",
-        ai_extraction=None,
-        triage_disease_text=None,
-        triage_country_code=None,
-        triage_admin1=None,
-        triage_admin2=None,
-        triage_location_text=None,
-    )
-    monkeypatch.setattr(repair_runner, "local_metadata_resolver", lambda session: resolver())
-
-    dry_run = RepairSession(event, signal)
-    result = run_repair(dry_run, apply=False)
-    assert result.country_resolved == 1
-    assert result.disease_resolved == 1
-    assert result.event_type_resolved == 1
-    assert dry_run.commits == 0
-    assert len(dry_run.executed) == 2
-
-    apply_run = RepairSession(event, signal)
-    apply_result = run_repair(apply_run, apply=True)
-    assert apply_run.commits == 1
-    assert len(apply_run.executed) == 3
-    assert apply_result.event_type_resolved == 1
-    assert "event_type" in str(apply_run.executed[-1])
-
-    repaired_event = SimpleNamespace(
-        **{
-            **vars(event),
-            "country_code": "ZA",
-            "disease_id": MEASLES,
-            "event_type": EventType.OUTBREAK,
-        }
-    )
-    idempotent = repair_event_metadata(
-        MetadataRepairEvent(
-            event_id=repaired_event.id,
-            country_code=repaired_event.country_code,
-            admin1=repaired_event.admin1,
-            disease_id=repaired_event.disease_id,
-            event_type=repaired_event.event_type,
-            signals=(MetadataEvidence(title=signal.title, text=signal.raw_text),),
-        ),
-        resolver(),
-    )
-    assert idempotent.changed is False

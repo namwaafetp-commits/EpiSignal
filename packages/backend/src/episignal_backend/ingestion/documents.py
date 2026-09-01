@@ -239,6 +239,7 @@ class StubRetrieval(BaseModel):
     article: DiscoveredArticle
     first_seen_at: datetime
     attempts: int = Field(ge=0)
+    public_health_relevant: bool | None = None
 
     @property
     def normalized_title(self) -> str:

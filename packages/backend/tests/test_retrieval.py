@@ -169,6 +169,18 @@ def test_a_passing_title_is_fetched_exactly_once() -> None:
     assert repository.promoted == [MEASLES_STORY.signal_id]
 
 
+def test_a_relevant_model_decision_overrides_the_legacy_keyword_fallback() -> None:
+    classified = STADIUM.model_copy(update={"public_health_relevant": True})
+    repository = FakeRetrievalRepository(waiting=(classified,), rules=(OUTBREAK,))
+    connector = CountingConnector()
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.filtered == 0
+    assert result.retrieved == 1
+    assert connector.retrieved == 1
+
+
 def test_an_unfetchable_page_records_a_failed_attempt() -> None:
     repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,))
     connector = CountingConnector(failing=True)

@@ -22,30 +22,32 @@ FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
 SIGNAL = TriageableSignal(
     id=FIRST,
     title="Dengue outbreak in Chiang Mai",
-    excerpt="Officials reported 42 cases in Chiang Mai province.",
+    article_content="Officials reported 42 cases in Chiang Mai province.",
     source_name="Bangkok Post",
     url="https://example.com/dengue",
     published_at=datetime(2026, 8, 30, 8, 0, tzinfo=UTC),
     language="en",
 )
-LONG_SIGNAL = SIGNAL.model_copy(update={"excerpt": "word " * 500})
+LONG_SIGNAL = SIGNAL.model_copy(update={"article_content": "word " * 500})
 
 
 def test_the_triage_prompt_carries_the_metadata_a_blocking_key_needs() -> None:
     system, user = triage_prompt(SIGNAL, max_characters=1200)
 
     assert "null" in system
-    assert "explicitly written" in system
+    assert "ARTICLE CONTENT" in system
+    assert "event actually occurred" in system
     assert "TITLE:" in user
     assert "SOURCE:" in user
     assert "PUBLISHED:" in user
     assert "URL:" in user
 
 
-def test_the_triage_prompt_truncates_the_snippet() -> None:
+def test_the_triage_prompt_sends_clean_article_content() -> None:
     _, user = triage_prompt(LONG_SIGNAL, max_characters=100)
 
-    assert LONG_SIGNAL.excerpt not in user
+    assert LONG_SIGNAL.article_content not in user
+    assert "ARTICLE CONTENT:" in user
 
 
 def test_a_repair_prompt_carries_the_validation_error() -> None:
@@ -111,15 +113,15 @@ def test_a_classification_prompt_addresses_every_signal_by_id() -> None:
     assert "Cholera cases rise" in user
 
 
-def test_a_classification_prompt_sends_titles_only() -> None:
-    """The relevance gate is intentionally cheap: the headline decides, and the
-    unsure-means-relevant rule protects recall."""
+def test_a_classification_prompt_sends_bounded_discovery_metadata() -> None:
     batch = (ClassifiableSignal(id=FIRST, title="Cholera cases rise", excerpt="word " * 200),)
 
     _, user = classification_prompt(batch)
 
-    assert "excerpt" not in user
-    assert len(user) < 200
+    assert "SNIPPET:" in user
+    assert "SOURCE:" in user
+    assert "PUBLISHED:" in user
+    assert len(user) < 700
 
 
 def test_the_extraction_system_prompt_contains_the_generated_schema() -> None:

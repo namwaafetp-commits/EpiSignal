@@ -69,6 +69,46 @@ class ExtractionResult:
     stopped_early: bool = False
 
 
+@dataclass(frozen=True)
+class ExtractionSignalResult:
+    outcome: ClimbOutcome
+    extraction: Extraction | None
+    error: str | None
+    attempts: tuple[Attempt, ...]
+
+
+def build_extraction_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
+    return Ladder.build(repository.models(), max_tier=max_tier, min_tier=EXTRACTION_MIN_TIER)
+
+
+def extract_signal(
+    signal: ExtractableSignal,
+    model: ChatModel,
+    *,
+    ladder: Ladder,
+    budget: RunBudget,
+    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+) -> ExtractionSignalResult:
+    """Run one signal through the same validated extraction seam as the pass."""
+    system, user = extraction_prompt(signal, max_characters=max_input_characters)
+    attempts: list[Attempt] = []
+    result = climb(
+        ladder=ladder,
+        budget=budget,
+        model=model,
+        request_for=_request_builder(system, user),
+        accept=_accept_builder((signal.title,), (signal.raw_text,), min_confidence),
+        on_attempt=attempts.append,
+    )
+    return ExtractionSignalResult(
+        outcome=result.outcome,
+        extraction=result.value,
+        error=result.reason,
+        attempts=tuple(attempts),
+    )
+
+
 def _top_rung(ladder: Ladder) -> ModelSpec:
     """Return the highest configured extraction rung."""
     return ladder.rungs[-1]

@@ -2191,6 +2191,7 @@
           "ingest_ecdc",
           "discover",
           "retrieve",
+          "classify",
           "dedupe",
           "triage",
           "embed",

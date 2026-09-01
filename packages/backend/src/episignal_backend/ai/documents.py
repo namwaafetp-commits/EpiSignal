@@ -53,39 +53,36 @@ class ModelSpec(BaseModel):
 
 
 class ClassifiableSignal(BaseModel):
-    """A stored signal awaiting a relevance decision.
-
-    Carries an excerpt rather than the body: relevance is decided from the title
-    and the opening, and sending whole articles for a decision this cheap would
-    spend the batch's whole input budget on one of them.
-    """
+    """Discovery metadata and a bounded snippet awaiting relevance review."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: UUID
     title: str = Field(min_length=1)
     excerpt: str = Field(min_length=1)
+    source_name: str = Field(default="unknown", min_length=1)
+    published_at: datetime | None = None
 
-    @field_validator("title", "excerpt")
+    @field_validator("title", "excerpt", "source_name")
     @classmethod
     def text_is_not_blank(cls, value: str) -> str:
         return _require_text(value)
 
 
 class TriageableSignal(BaseModel):
-    """A retrieved signal with source metadata for early structured triage."""
+    """A retrieved signal with clean article content for structured triage."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: UUID
     title: str = Field(min_length=1)
-    excerpt: str = Field(min_length=1)
+    article_content: str = Field(min_length=1)
     source_name: str = Field(min_length=1)
     url: str = Field(min_length=1)
     published_at: datetime | None = None
     language: str | None = None
 
-    @field_validator("title", "excerpt", "source_name", "url")
+    @field_validator("title", "article_content", "source_name", "url")
     @classmethod
     def text_is_not_blank(cls, value: str) -> str:
         return _require_text(value)

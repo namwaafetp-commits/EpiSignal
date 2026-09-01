@@ -115,30 +115,28 @@ class SqlAlchemyAiRepository:
         )
 
     def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
-        """Signals a relevance pass would read.
-
-        No stage calls this any more: the keyword gate decides relevance in the
-        retrieve stage for zero model requests. The query is kept honest rather
-        than stubbed out, so restoring the pass is one line in `stages.py` and
-        this method never lies to a caller about what is waiting.
-        """
+        """Discovery metadata waiting for the cheap relevance decision."""
         stmt = (
-            select(Signal)
+            select(Signal, Source.name)
+            .join(Source, Source.id == Signal.source_id)
             .where(
-                Signal.processing_status == ProcessingStatus.NORMALIZED,
-                Signal.raw_text.is_not(None),
-                ~_deferred_by_open_group(),
+                Signal.processing_status.in_(
+                    (ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED)
+                ),
+                Signal.public_health_relevant.is_(None),
             )
             .order_by(Signal.first_seen_at)
         )
-        rows = self._scan_valid_signals(stmt, limit, "classification")
+        rows = self._session.execute(stmt.limit(limit)).all()
         return tuple(
             ClassifiableSignal(
                 id=row.id,
                 title=row.title,
-                excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
+                excerpt=(row.raw_text or row.title)[:EXCERPT_CHARACTERS],
+                source_name=source_name,
+                published_at=row.published_at,
             )
-            for row in rows
+            for row, source_name in rows
         )
 
     def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]:
@@ -173,7 +171,7 @@ class SqlAlchemyAiRepository:
                     TriageableSignal(
                         id=row.id,
                         title=row.title,
-                        excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
+                        article_content=(row.raw_text or "")[:EXCERPT_CHARACTERS],
                         source_name=source_name,
                         url=row.url,
                         published_at=row.published_at,
@@ -210,8 +208,9 @@ class SqlAlchemyAiRepository:
         stmt = (
             select(Signal)
             .where(
-                Signal.processing_status == ProcessingStatus.NORMALIZED,
-                Signal.triage_status == TriageStatus.DONE,
+                Signal.processing_status.in_(
+                    (ProcessingStatus.NORMALIZED, ProcessingStatus.CLASSIFIED)
+                ),
                 Signal.public_health_relevant.is_(True),
                 Signal.raw_text.is_not(None),
             )
@@ -316,11 +315,16 @@ class SqlAlchemyAiRepository:
         )
 
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None:
+        status = (
+            ProcessingStatus.CLASSIFIED
+            if verdict.is_public_health_relevant
+            else ProcessingStatus.FILTERED
+        )
         self._session.execute(
             update(Signal)
             .where(Signal.id == signal_id)
             .values(
-                processing_status=ProcessingStatus.CLASSIFIED,
+                processing_status=status,
                 public_health_relevant=verdict.is_public_health_relevant,
                 relevance_score=verdict.relevance,
                 signal_type=verdict.signal_type,

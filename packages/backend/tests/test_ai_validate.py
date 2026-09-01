@@ -287,9 +287,8 @@ SECOND = UUID("b3f1c2d4-0000-4000-8000-000000000002")
 def verdict(identifier: UUID, relevant: bool = True) -> dict[str, object]:
     return {
         "id": str(identifier),
-        "is_public_health_relevant": relevant,
-        "signal_type": "outbreak_report" if relevant else "unknown",
-        "relevance": 0.88 if relevant else 0.04,
+        "relevant": relevant,
+        "confidence": 0.88 if relevant else 0.04,
     }
 
 

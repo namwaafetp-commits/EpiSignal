@@ -1,15 +1,13 @@
-"""Conservative metadata resolution from accepted fields and local references.
+"""Validation and normalization for metadata already extracted by a model.
 
-The resolver never calls a model or a network service. It first accepts exact
-metadata already produced by extraction or triage, then checks the reviewed
-disease vocabulary and gazetteer for exact names in the title and text.
+This module never interprets article prose. It only checks structured extraction
+or triage fields against reviewed local vocabularies and reports conflicts.
 """
 
-import re
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from episignal_backend.db.types import EventType, Precision
@@ -53,6 +51,9 @@ class MetadataEvidence:
     triage: MetadataFields | None = None
 
 
+MetadataSource = Literal["extraction", "triage", "unresolved"]
+
+
 @dataclass(frozen=True)
 class MetadataRepairEvent:
     event_id: UUID
@@ -83,7 +84,7 @@ def metadata_fields_from_extraction(extraction: Any) -> MetadataFields | None:
         return None
     locations = tuple(getattr(extraction, "locations", ()) or ())
     source = next(
-        (item for item in locations if item.role.value == "primary"),
+        (item for item in locations if getattr(item.role, "value", item.role) == "primary"),
         next(iter(locations), None),
     )
     return MetadataFields(
@@ -112,21 +113,17 @@ def metadata_evidence_for_signal(signal: Any, extraction: Any) -> MetadataEviden
 def repair_event_metadata(
     event: MetadataRepairEvent, resolver: "LocalMetadataResolver"
 ) -> EventMetadataPatch:
-    resolved = tuple(resolver.resolve(evidence) for evidence in event.signals)
-    country_code = (
-        _unique(value.country_code for value in resolved) if event.country_code is None else None
-    )
-    disease_id = (
-        _unique(value.disease_id for value in resolved) if event.disease_id is None else None
-    )
+    resolved = resolve_repair_evidence(event.signals, resolver)
+    country_code = resolved.country_code if event.country_code is None else None
+    disease_id = resolved.disease_id if event.disease_id is None else None
     wanted_country = event.country_code or country_code
     admin1 = None
-    if event.admin1 is None and wanted_country is not None:
-        admin1 = _unique(
-            value.admin1
-            for value in resolved
-            if value.admin1 is not None and value.country_code == wanted_country
-        )
+    if (
+        event.admin1 is None
+        and wanted_country is not None
+        and resolved.country_code == wanted_country
+    ):
+        admin1 = resolved.admin1
     event_type = (
         EventType.OUTBREAK
         if disease_id is not None
@@ -142,6 +139,56 @@ def repair_event_metadata(
     )
 
 
+def resolve_repair_evidence(
+    evidence: Sequence[MetadataEvidence], resolver: "LocalMetadataResolver"
+) -> "ResolvedMetadata":
+    """Conservatively combine validated metadata from linked signals."""
+    values = tuple(resolver.resolve(item) for item in evidence)
+    conflicts: list[str] = []
+
+    def choose(field: str) -> tuple[Any, MetadataSource]:
+        populated = [
+            (getattr(value, field), getattr(value, f"{field}_source", "unresolved"))
+            for value in values
+            if getattr(value, field) is not None
+        ]
+        unique = {value for value, _ in populated}
+        if len(unique) != 1:
+            if len(unique) > 1:
+                conflicts.append(field)
+            return None, "unresolved"
+        selected = next(iter(unique))
+        sources = {source for value, source in populated if value == selected}
+        source: MetadataSource = "extraction" if "extraction" in sources else "triage"
+        return selected, source
+
+    disease_id, disease_source = choose("disease_id")
+    disease_text, _ = choose("disease_text")
+    country_code, country_source = choose("country_code")
+    admin1, admin1_source = choose("admin1")
+    admin2, _ = choose("admin2")
+    place_name, _ = choose("place_name")
+    location_text, _ = choose("location_text")
+    if admin1 is not None and resolver._country_for_admin1(admin1) != country_code:
+        conflicts.append("admin1")
+        admin1 = None
+        admin1_source = "unresolved"
+
+    return ResolvedMetadata(
+        disease_id=disease_id,
+        disease_text=disease_text,
+        country_code=country_code,
+        admin1=admin1,
+        admin2=admin2,
+        place_name=place_name,
+        location_text=location_text,
+        disease_source=disease_source,
+        country_source=country_source,
+        admin1_source=admin1_source,
+        conflicts=tuple(dict.fromkeys(conflicts)),
+    )
+
+
 @dataclass(frozen=True)
 class ResolvedMetadata:
     disease_id: UUID | None = None
@@ -151,6 +198,10 @@ class ResolvedMetadata:
     admin2: str | None = None
     place_name: str | None = None
     location_text: str | None = None
+    disease_source: MetadataSource = "unresolved"
+    country_source: MetadataSource = "unresolved"
+    admin1_source: MetadataSource = "unresolved"
+    conflicts: tuple[str, ...] = ()
 
     @property
     def precision(self) -> Precision:
@@ -181,7 +232,7 @@ class _Admin1Match:
 
 
 class LocalMetadataResolver:
-    """Resolve metadata with exact, reviewed local data only."""
+    """Validate structured metadata with exact, reviewed local data only."""
 
     def __init__(
         self,
@@ -213,123 +264,76 @@ class LocalMetadataResolver:
         self._disease_aliases = {name: frozenset(ids) for name, ids in disease_aliases.items()}
         self._diseases_by_id = {disease.id: disease for disease in self._diseases}
 
+    def validate_metadata(self, fields: MetadataFields) -> ResolvedMetadata:
+        """Normalize one structured model answer without reading article text."""
+        country_code = self._resolve_country_value(fields.country)
+        disease_id = self._resolve_disease_value(fields.disease)
+        disease = self._diseases_by_id[disease_id].canonical_name if disease_id else None
+        admin1_match = self._resolve_admin1_value(fields.admin1, country_code)
+        if fields.admin1 is not None and admin1_match is None:
+            # A model supplied a geographic hierarchy that cannot be validated
+            # together. Keep the whole location unresolved rather than pairing
+            # a country with a rejected province.
+            country_code = None
+        location_text = fields.location_text or fields.place_name
+        return ResolvedMetadata(
+            disease_id=disease_id,
+            disease_text=disease,
+            country_code=country_code,
+            admin1=admin1_match.entry.code if admin1_match is not None else None,
+            admin2=fields.admin2,
+            place_name=fields.place_name,
+            location_text=location_text,
+        )
+
     def resolve(self, evidence: MetadataEvidence) -> ResolvedMetadata:
-        sources = tuple(source for source in (evidence.extraction, evidence.triage) if source)
-        disease_id = None
-        disease_text = None
-        for source in sources:
-            if source.disease:
-                disease_id = self._resolve_disease_value(source.disease)
-                if disease_id is not None:
-                    disease_text = source.disease
-                    break
-        if disease_id is None:
-            disease_id, fallback_text = self._resolve_disease_in_text(
-                f"{evidence.title}\n{evidence.text}"
-            )
-            if disease_id is not None:
-                disease_text = fallback_text
+        """Choose extraction metadata before triage metadata, field by field."""
+        source_values: list[tuple[MetadataSource, ResolvedMetadata]] = []
+        if evidence.extraction is not None:
+            source_values.append(("extraction", self.validate_metadata(evidence.extraction)))
+        if evidence.triage is not None:
+            source_values.append(("triage", self.validate_metadata(evidence.triage)))
 
-        structured_country = next(
-            (
-                code
-                for source in sources
-                for value in (source.country, source.location_text, source.place_name)
-                if (code := self._resolve_country_value(value)) is not None
-            ),
-            None,
-        )
-        all_text = f"{evidence.title}\n{evidence.text}"
-        location_text = next(
-            (
-                value
-                for source in sources
-                for value in (source.location_text, source.place_name)
-                if value
-            ),
-            None,
-        )
-        if location_text is None and structured_country is None:
-            location_text = next(
-                (source.country for source in sources if source.country),
-                None,
-            )
-        admin1_name = next(
-            (
-                value
-                for source in sources
-                for value in (source.admin1, source.location_text, source.place_name)
-                if value
-            ),
-            None,
-        )
-        structured_admin1 = self._resolve_admin1_value(admin1_name, None)
-        text_admin1s = self._admin1_matches_in_text(all_text)
-        admin1_match = structured_admin1
-        if admin1_match is None and len(text_admin1s) == 1:
-            admin1_match = next(iter(text_admin1s.values()))
-        elif admin1_match is not None and text_admin1s:
-            text_admin1_ids = set(text_admin1s)
-            if text_admin1_ids != {(admin1_match.entry.country_code, admin1_match.entry.code)}:
-                admin1_match = None
+        conflicts: list[str] = []
 
-        text_admin1_countries = {country for country, _ in text_admin1s}
-        country_codes = self._resolve_country_in_text(
-            all_text,
-            ignored_phrases=(
-                tuple(
-                    name
-                    for match in text_admin1s.values()
-                    for name in self._admin1_names(match.entry)
-                )
-                if text_admin1s
-                else ()
-            ),
-        )
-        if structured_country is not None:
-            if (
-                admin1_match is not None
-                and structured_country != admin1_match.entry.country_code
-                or text_admin1s
-                and structured_country not in text_admin1_countries
-            ):
-                country_code = None
-                admin1_match = None
-            else:
-                country_code = structured_country
-        elif admin1_match is not None:
-            if country_codes is not None and country_codes != admin1_match.entry.country_code:
-                country_code = None
-                admin1_match = None
-            else:
-                country_code = admin1_match.entry.country_code
-        elif text_admin1s:
-            if country_codes is not None:
-                country_code = country_codes if country_codes in text_admin1_countries else None
-            elif len(text_admin1_countries) == 1:
-                country_code = next(iter(text_admin1_countries))
-            else:
-                country_code = None
-        else:
-            country_code = country_codes
+        def choose(field: str) -> tuple[Any, MetadataSource]:
+            populated = [
+                (source, getattr(value, field))
+                for source, value in source_values
+                if getattr(value, field) is not None
+            ]
+            unique = {value for _, value in populated}
+            if len(unique) > 1:
+                conflicts.append(field)
+            return (populated[0][1], populated[0][0]) if populated else (None, "unresolved")
 
-        if admin1_match is None and country_code is not None:
-            admin1_match = self._resolve_admin1_in_text(all_text, country_code)
-        if admin1_match is not None:
-            if country_code is None:
-                country_code = admin1_match.entry.country_code
-            if location_text is None:
-                location_text = admin1_match.matched_name
+        disease_id, disease_source = choose("disease_id")
+        disease_text, _ = choose("disease_text")
+        country_code, country_source = choose("country_code")
+        admin1, admin1_source = choose("admin1")
+        admin2, _ = choose("admin2")
+        place_name, _ = choose("place_name")
+        location_text, _ = choose("location_text")
 
-        admin2 = next((source.admin2 for source in sources if source.admin2), None)
+        if admin1 is not None:
+            admin1_country = self._country_for_admin1(admin1)
+            if admin1_country != country_code:
+                conflicts.append("admin1")
+                admin1 = None
+                admin1_source = "unresolved"
+
         return ResolvedMetadata(
             disease_id=disease_id,
             disease_text=disease_text,
             country_code=country_code,
-            admin1=admin1_match.entry.code if admin1_match is not None else None,
+            admin1=admin1,
             admin2=admin2,
-            place_name=location_text,
+            place_name=place_name,
             location_text=location_text,
+            disease_source=disease_source,
+            country_source=country_source,
+            admin1_source=admin1_source,
+            conflicts=tuple(dict.fromkeys(conflicts)),
         )
 
     def _resolve_country_value(self, value: str | None) -> str | None:
@@ -340,41 +344,11 @@ class LocalMetadataResolver:
             return code
         return self._country_aliases.get(normalized_form(value))
 
-    def _resolve_country_in_text(
-        self, text: str, *, ignored_phrases: Sequence[str] = ()
-    ) -> str | None:
-        normalized = normalized_form(text)
-        ignored_spans = tuple(
-            span
-            for phrase in ignored_phrases
-            for span in _phrase_spans(normalized, normalized_form(phrase))
-        )
-        found = {
-            code
-            for alias, code in self._country_aliases.items()
-            if any(
-                not _span_is_inside(candidate, ignored_spans)
-                for candidate in _phrase_spans(normalized, alias)
-            )
-        }
-        return next(iter(found)) if len(found) == 1 else None
-
     def _resolve_disease_value(self, value: str | None) -> UUID | None:
         if value is None:
             return None
         ids = self._disease_aliases.get(normalized_form(value), frozenset())
         return next(iter(ids)) if len(ids) == 1 else None
-
-    def _resolve_disease_in_text(self, text: str) -> tuple[UUID | None, str | None]:
-        normalized = normalized_form(text)
-        matches: set[UUID] = set()
-        for alias, ids in self._disease_aliases.items():
-            if len(ids) == 1 and _contains_phrase(normalized, alias):
-                matches.add(next(iter(ids)))
-        if len(matches) != 1:
-            return None, None
-        disease = self._diseases_by_id[next(iter(matches))]
-        return disease.id, disease.canonical_name
 
     def _resolve_admin1_value(
         self, value: str | None, country_code: str | None
@@ -401,52 +375,6 @@ class LocalMetadataResolver:
                 return None
         return None
 
-    def _resolve_admin1_in_text(self, text: str, country_code: str | None) -> _Admin1Match | None:
-        matches = self._admin1_matches_in_text(text, country_code=country_code)
-        if len(matches) != 1:
-            return None
-        return next(iter(matches.values()))
-
-    def _admin1_matches_in_text(
-        self, text: str, *, country_code: str | None = None
-    ) -> dict[tuple[str, str], _Admin1Match]:
-        normalized = normalized_form(text)
-        matches: dict[tuple[str, str], _Admin1Match] = {}
-        for entry in self._admin1s:
-            if country_code is not None and entry.country_code != country_code:
-                continue
-            names = (entry.name, *entry.alternate_names)
-            matching_names = [
-                name
-                for name in names
-                if normalized_form(name) and _contains_phrase(normalized, normalized_form(name))
-            ]
-            if matching_names:
-                key = (entry.country_code, entry.code)
-                name = max(matching_names, key=lambda value: len(normalized_form(value)))
-                matches[key] = _Admin1Match(entry, name)
-        return matches
-
-    @staticmethod
-    def _admin1_names(entry: Admin1VocabularyEntry) -> tuple[str, ...]:
-        return (entry.name, *entry.alternate_names)
-
-
-def _contains_phrase(text: str, phrase: str) -> bool:
-    return bool(_phrase_spans(text, phrase))
-
-
-def _phrase_spans(text: str, phrase: str) -> tuple[tuple[int, int], ...]:
-    if not phrase:
-        return ()
-    pattern = rf"(?<![\w]){re.escape(phrase)}(?![\w])"
-    return tuple((match.start(), match.end()) for match in re.finditer(pattern, text))
-
-
-def _span_is_inside(span: tuple[int, int], containers: Sequence[tuple[int, int]]) -> bool:
-    return any(start <= span[0] and span[1] <= end for start, end in containers)
-
-
-def _unique[T](values: Iterable[T]) -> T | None:
-    found = {value for value in values if value is not None}
-    return next(iter(found)) if len(found) == 1 else None
+    def _country_for_admin1(self, code: str) -> str | None:
+        countries = {entry.country_code for entry in self._admin1s if entry.code == code}
+        return next(iter(countries)) if len(countries) == 1 else None

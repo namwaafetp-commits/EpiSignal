@@ -15,7 +15,7 @@ from episignal_backend.ai.extract import DEFAULT_MAX_INPUT_CHARACTERS, EXTRACTIO
 from episignal_backend.ai.prompts import extraction_prompt, triage_prompt
 from episignal_backend.ai.protocol import ModelUnavailable
 from episignal_backend.ai.schema import extraction_json_schema, triage_json_schema
-from episignal_backend.ai.triage import TRIAGE_SNIPPET_CHARACTERS
+from episignal_backend.ai.triage import TRIAGE_CONTENT_CHARACTERS
 from episignal_backend.db.types import AiProvider
 from episignal_backend.model_check import (
     FIXTURE_ROOT,
@@ -89,14 +89,14 @@ def test_model_check_uses_production_prompt_seams_and_request_contract() -> None
     triage_signal = TriageableSignal(
         id=_fixture_id(triage_case.case_id),
         title=triage_case.input["title"],
-        excerpt=triage_case.input["excerpt"],
+        article_content=triage_case.input["excerpt"],
         source_name=FIXTURE_SOURCE_NAME,
         url=f"{FIXTURE_URL_BASE}{triage_case.case_id}",
         language="en",
     )
     triage_request = triage_model.requests[0]
     expected_system, expected_user = triage_prompt(
-        triage_signal, max_characters=TRIAGE_SNIPPET_CHARACTERS
+        triage_signal, max_characters=TRIAGE_CONTENT_CHARACTERS
     )
     assert (triage_request.system, triage_request.user) == (expected_system, expected_user)
     assert triage_request.response_schema == triage_json_schema()

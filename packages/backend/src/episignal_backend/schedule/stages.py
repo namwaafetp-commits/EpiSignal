@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
+from episignal_backend.ai.classify import run_classification
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards, cost_row
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
@@ -125,6 +126,36 @@ def _retrieve() -> Mapping[str, int]:
     }
 
 
+def _classify() -> Mapping[str, int]:
+    settings = get_settings()
+    guards = Guards(
+        max_requests=settings.ai_max_requests_per_run,
+        max_cost_usd=settings.ai_max_cost_usd_per_run,
+    )
+
+    with session_scope() as session:
+        repository = SqlAlchemyAiRepository(session)
+        try:
+            model = routed_from_settings(settings, list(repository.models()))
+        except NoProviderKey as error:
+            raise RuntimeError(str(error)) from error
+        result = run_classification(
+            repository,
+            model,
+            guards=guards,
+            limit=settings.ai_triage_batch_limit,
+            max_tier=settings.ai_max_tier,
+        )
+    return {
+        "examined": result.examined,
+        "relevant": result.relevant,
+        "irrelevant": result.irrelevant,
+        "reviewed": result.reviewed,
+        "unavailable": result.unavailable,
+        "requests": result.requests,
+    }
+
+
 def _dedupe() -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
@@ -192,9 +223,6 @@ def _extract() -> Mapping[str, int]:
             model = routed_from_settings(settings, list(repository.models()))
         except NoProviderKey as error:
             raise RuntimeError(str(error)) from error
-        # The relevance pass is gone from the chain: the keyword gate decides
-        # relevance in the retrieve stage, for zero model requests. The pass
-        # itself is kept in `ai/classify.py` so a rollback is one line here.
         extracted = run_extraction(
             repository,
             model,
@@ -356,9 +384,9 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
     return {
         StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector()),
         StageName.DISCOVER: lambda: _discover(window),
+        StageName.CLASSIFY: _classify,
         StageName.RETRIEVE: _retrieve,
         StageName.DEDUPE: _dedupe,
-        StageName.TRIAGE: _triage,
         StageName.EXTRACT: _extract,
         StageName.MATCH: _match,
         StageName.SUMMARIZE: _summarize,

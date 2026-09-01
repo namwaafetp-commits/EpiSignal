@@ -207,16 +207,23 @@ def test_a_classification_response_carries_one_verdict_per_signal() -> None:
             "results": [
                 {
                     "id": "b3f1c2d4-0000-4000-8000-000000000001",
-                    "is_public_health_relevant": True,
-                    "signal_type": "outbreak_report",
-                    "relevance": 0.88,
+                    "relevant": True,
+                    "confidence": 0.88,
                 }
             ]
         }
     )
 
     assert len(response.results) == 1
-    assert response.results[0].relevance == 0.88
+    assert response.results[0].confidence == 0.88
+
+
+def test_classification_schema_contains_relevance_only_fields() -> None:
+    from episignal_backend.ai.schema import classification_json_schema
+
+    schema = classification_json_schema()
+    properties = schema["$defs"]["ClassificationVerdict"]["properties"]
+    assert set(properties) == {"id", "relevant", "confidence", "reason_code"}
 
 
 def test_a_classification_verdict_with_an_unparseable_id_is_rejected() -> None:
@@ -228,9 +235,8 @@ def test_a_classification_verdict_with_an_unparseable_id_is_rejected() -> None:
                 "results": [
                     {
                         "id": "the first one",
-                        "is_public_health_relevant": True,
-                        "signal_type": "outbreak_report",
-                        "relevance": 0.88,
+                        "relevant": True,
+                        "confidence": 0.88,
                     }
                 ]
             }

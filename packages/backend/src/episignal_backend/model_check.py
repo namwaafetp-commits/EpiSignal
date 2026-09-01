@@ -40,7 +40,7 @@ from episignal_backend.ai.schema import (
     extraction_json_schema,
     triage_json_schema,
 )
-from episignal_backend.ai.triage import TRIAGE_SNIPPET_CHARACTERS
+from episignal_backend.ai.triage import TRIAGE_CONTENT_CHARACTERS
 from episignal_backend.ai.validate import check_grounding
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "model_check"
@@ -85,12 +85,12 @@ def _request(purpose: str, model_id: str, case_id: str, payload: dict[str, Any])
         triage_signal = TriageableSignal(
             id=_fixture_id(case_id),
             title=payload["title"],
-            excerpt=payload["excerpt"],
+            article_content=payload["excerpt"],
             source_name=FIXTURE_SOURCE_NAME,
             url=f"{FIXTURE_URL_BASE}{case_id}",
             language="en",
         )
-        system, user = triage_prompt(triage_signal, max_characters=TRIAGE_SNIPPET_CHARACTERS)
+        system, user = triage_prompt(triage_signal, max_characters=TRIAGE_CONTENT_CHARACTERS)
         schema = triage_json_schema()
         schema_name = "triage_verdict"
         temperature = 0.0

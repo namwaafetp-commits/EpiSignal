@@ -479,9 +479,9 @@ class ClassificationVerdict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: UUID
-    is_public_health_relevant: bool
-    signal_type: SignalType
-    relevance: float = Field(ge=0.0, le=1.0)
+    relevant: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason_code: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ClassificationResponse(BaseModel):

@@ -22,9 +22,9 @@ def test_daily_runtime_is_lean_mvp_chain() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
         StageName.DISCOVER,
+        StageName.CLASSIFY,
         StageName.RETRIEVE,
         StageName.DEDUPE,
-        StageName.TRIAGE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,
@@ -104,7 +104,10 @@ def test_match_repository_resolves_extraction_country_aliases(
 
     result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
 
-    assert result[0].locations[0].country_code == expected
+    if expected is None:
+        assert result[0].locations == ()
+    else:
+        assert result[0].locations[0].country_code == expected
 
 
 def test_extraction_country_takes_priority_over_triage_country() -> None:

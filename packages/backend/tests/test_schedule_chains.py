@@ -7,9 +7,9 @@ def test_daily_chain_contains_only_the_lean_mvp_runtime_stages() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
         StageName.DISCOVER,
+        StageName.CLASSIFY,
         StageName.RETRIEVE,
         StageName.DEDUPE,
-        StageName.TRIAGE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,
@@ -40,9 +40,9 @@ def test_every_stage_appears_exactly_once() -> None:
     assert set(DAILY_CHAIN) == {
         StageName.INGEST_WHO,
         StageName.DISCOVER,
+        StageName.CLASSIFY,
         StageName.RETRIEVE,
         StageName.DEDUPE,
-        StageName.TRIAGE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,

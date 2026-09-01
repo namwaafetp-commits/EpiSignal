@@ -32,7 +32,7 @@ from episignal_backend.ai.prompts import classification_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.ai.schema import ClassificationResponse
 from episignal_backend.ai.validate import validate_classification
-from episignal_backend.db.types import AiPurpose
+from episignal_backend.db.types import AiPurpose, SignalType
 
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_LIMIT = 100
@@ -168,12 +168,12 @@ def _write(
         repository.record_classification(
             entry.id,
             Verdict(
-                is_public_health_relevant=entry.is_public_health_relevant,
-                signal_type=entry.signal_type,
-                relevance=entry.relevance,
+                is_public_health_relevant=entry.relevant,
+                signal_type=SignalType.UNKNOWN,
+                relevance=entry.confidence,
                 model_id=model_id,
                 decided_at=at,
             ),
         )
-        relevant += 1 if entry.is_public_health_relevant else 0
+        relevant += 1 if entry.relevant else 0
     return relevant
