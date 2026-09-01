@@ -505,9 +505,9 @@ class SqlAlchemyEventRepository:
         """Events that may need a new summary, newest update first.
 
         The candidate set is any event with an attached signal that was never
-        summarized, gained new material since its last summary, or whose last
-        summary is older than the max age. Material-change detection then makes
-        the final per-event decision.
+        summarized or gained a new observation since its last summary.
+        Material-change detection then makes the final per-event decision, so
+        a copied report or unchanged source attachment cannot trigger a call.
         """
         event_ids = (
             self._session.execute(
