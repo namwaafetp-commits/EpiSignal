@@ -155,6 +155,21 @@ def test_an_extraction_whose_spans_are_in_the_article_is_accepted() -> None:
     assert extraction.epidemiology.deaths.value == 14
 
 
+def test_an_extraction_may_ground_a_count_in_the_supplied_title() -> None:
+    payload = grounded_payload()
+    payload["epidemiology"] = {"confirmed_cases": {"value": 98, "source_span": "98 cases"}}
+    payload["transmission"] = None
+
+    extraction = validate_extraction(
+        json.dumps(payload),
+        "Officials discussed the outbreak.",
+        title="Measles outbreak grows to 98 cases",
+    )
+
+    assert extraction.epidemiology.confirmed_cases is not None
+    assert extraction.epidemiology.confirmed_cases.value == 98
+
+
 def test_a_span_the_article_does_not_contain_is_rejected() -> None:
     content = (FIXTURES / "ai_ungrounded_response.json").read_text(encoding="utf-8")
 

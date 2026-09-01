@@ -111,7 +111,7 @@ class StoryCluster(BaseModel):
 
     @property
     def disease_id(self) -> UUID | None:
-        return self.signals[0].disease_id
+        return next((signal.disease_id for signal in self.signals if signal.disease_id), None)
 
     @property
     def disease_text(self) -> str | None:

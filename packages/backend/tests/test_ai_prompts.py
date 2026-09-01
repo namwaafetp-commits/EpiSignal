@@ -35,6 +35,7 @@ def test_the_triage_prompt_carries_the_metadata_a_blocking_key_needs() -> None:
     system, user = triage_prompt(SIGNAL, max_characters=1200)
 
     assert "null" in system
+    assert "explicitly written" in system
     assert "TITLE:" in user
     assert "SOURCE:" in user
     assert "PUBLISHED:" in user
@@ -78,6 +79,7 @@ def test_an_extraction_prompt_carries_the_schema_and_the_article() -> None:
     system, user = extraction_prompt(signal, max_characters=1000)
 
     assert "source_span" in system
+    assert "explicitly written" in system
     assert "327 confirmed cases were recorded." in user
     assert "Cholera cases rise" in user
 

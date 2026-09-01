@@ -176,10 +176,18 @@ def validate_extraction(
     content: str,
     raw_text: str | Sequence[str],
     *,
+    title: str | Sequence[str] | None = None,
     min_confidence: float = MIN_CONFIDENCE_DEFAULT,
 ) -> Extraction:
     """Every check, in the design's order. The first failure raises."""
-    bodies = (raw_text,) if isinstance(raw_text, str) else raw_text
+    bodies = (raw_text,) if isinstance(raw_text, str) else tuple(raw_text)
+    if title is not None:
+        titles = (title,) if isinstance(title, str) else tuple(title)
+        if len(titles) != len(bodies):
+            raise ValueError("title and raw_text must have the same number of sources")
+        bodies = tuple(
+            f"{source_title}\n{body}" for source_title, body in zip(titles, bodies, strict=True)
+        )
     extraction = parse_extraction(content)
 
     check_grounding(extraction, bodies)

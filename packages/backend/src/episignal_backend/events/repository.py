@@ -6,9 +6,8 @@ owns transactions.
 Maps between ORM models and pure domain contracts across the boundary.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -36,8 +35,13 @@ from episignal_backend.events.documents import (
     StoryCluster,
     SummarySource,
 )
-from episignal_backend.geocode.normalize import normalized_form, resolve_country
-from episignal_backend.ingestion.gdelt.locale import country_code as gdelt_country_code
+from episignal_backend.geocode.normalize import normalized_form
+from episignal_backend.metadata import (
+    LocalMetadataResolver,
+    ResolvedMetadata,
+    metadata_evidence_for_signal,
+)
+from episignal_backend.metadata_repository import local_metadata_resolver
 from episignal_backend.models import (
     AiRequest,
     Disease,
@@ -49,7 +53,6 @@ from episignal_backend.models import (
     Signal,
     Source,
 )
-from episignal_backend.seeds import load_country_aliases
 
 
 def read_stored_extraction(payload: Any) -> Extraction | None:
@@ -74,45 +77,17 @@ def _country_code(value: str | None) -> str | None:
     return normalized if len(normalized) == 2 and normalized.isalpha() else None
 
 
-@lru_cache(maxsize=1)
-def _country_aliases() -> Mapping[str, str]:
-    return {normalized_form(alias.name): alias.country_code for alias in load_country_aliases()}
-
-
-def _resolve_country(value: str | None) -> str | None:
-    return (
-        _country_code(value)
-        or resolve_country(value, _country_aliases())
-        or (gdelt_country_code(value) if value is not None else None)
-    )
-
-
-def _direct_locations(
-    extraction: Any,
-    *,
-    country_code: str | None,
-    admin1: str | None,
-) -> tuple[LocationForMatching, ...]:
-    """Turn accepted extraction metadata into optional, non-geocoded location."""
-    extracted = tuple(getattr(extraction, "locations", ()) or ())
-    primary = next((item for item in extracted if item.role.value == "primary"), None)
-    source = primary or (extracted[0] if extracted else None)
-    source_country = getattr(source, "country", None)
-    code = _country_code(country_code) or _resolve_country(source_country)
-    province = getattr(source, "admin1", None) or admin1
-    place = getattr(source, "place_name", None)
-    if code is None and province is None and place is None and not source_country:
+def _metadata_location(metadata: ResolvedMetadata) -> tuple[LocationForMatching, ...]:
+    if not metadata.has_location:
         return ()
-    precision = (
-        Precision.ADMIN1 if province else Precision.COUNTRY if code else Precision.UNRESOLVED
-    )
     return (
         LocationForMatching(
             location_role=LocationRole.PRIMARY,
-            precision=precision,
-            country_code=code,
-            admin1=province,
-            place_name=place,
+            precision=metadata.precision,
+            country_code=metadata.country_code,
+            admin1=metadata.admin1,
+            admin2=metadata.admin2,
+            place_name=metadata.place_name,
         ),
     )
 
@@ -140,6 +115,12 @@ class SqlAlchemyEventRepository:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._metadata_resolver: LocalMetadataResolver | None = None
+
+    def _local_metadata_resolver(self) -> LocalMetadataResolver:
+        if self._metadata_resolver is None:
+            self._metadata_resolver = local_metadata_resolver(self._session)
+        return self._metadata_resolver
 
     def signals_to_match(self, limit: int, *, stale: bool = False) -> Sequence[SignalForMatching]:
         """Select extracted signals awaiting matching or matched when stale."""
@@ -163,30 +144,23 @@ class SqlAlchemyEventRepository:
         if not rows:
             return ()
 
+        resolver = self._local_metadata_resolver()
         signals: list[SignalForMatching] = []
         for sig, is_official, cred_tier in rows:
             extraction = read_stored_extraction(sig.ai_extraction)
-            locations = _direct_locations(
-                extraction,
-                country_code=getattr(sig, "triage_country_code", None),
-                admin1=getattr(sig, "triage_admin1", None),
-            )
+            metadata = resolver.resolve(metadata_evidence_for_signal(sig, extraction))
             signals.append(
                 SignalForMatching(
                     signal_id=sig.id,
-                    disease_id=sig.disease_id,
-                    disease_text=(
-                        extraction.disease.name
-                        if extraction is not None and extraction.disease is not None
-                        else None
-                    ),
+                    disease_id=metadata.disease_id or sig.disease_id,
+                    disease_text=metadata.disease_text,
                     source_id=sig.source_id,
                     source_is_official=is_official,
                     credibility_tier=cred_tier,
                     published_at=sig.published_at,
                     first_seen_at=sig.first_seen_at,
                     title=sig.title,
-                    locations=locations,
+                    locations=_metadata_location(metadata),
                     extraction=extraction,
                 )
             )

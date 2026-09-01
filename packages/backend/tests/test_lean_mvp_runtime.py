@@ -107,7 +107,7 @@ def test_match_repository_resolves_extraction_country_aliases(
     assert result[0].locations[0].country_code == expected
 
 
-def test_triage_iso2_country_takes_priority_over_extraction_alias() -> None:
+def test_extraction_country_takes_priority_over_triage_country() -> None:
     extraction = _valid_extraction()
     extraction["locations"] = [{"role": "primary", "country": "Thailand"}]
     signal = SimpleNamespace(
@@ -129,7 +129,7 @@ def test_triage_iso2_country_takes_priority_over_extraction_alias() -> None:
 
     result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
 
-    assert result[0].locations[0].country_code == "UG"
+    assert result[0].locations[0].country_code == "TH"
 
 
 def test_same_disease_and_country_can_attach_without_admin1() -> None:

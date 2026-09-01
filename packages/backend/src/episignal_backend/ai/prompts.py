@@ -28,6 +28,9 @@ Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
 - Every count and every transmission flag must include source_span: a short
   phrase copied word for word from the article that states it.
+- TITLE and ARTICLE are both supplied evidence. An entity explicitly written in
+  TITLE counts as reported evidence; do not return null for a disease, country,
+  or province explicitly named in TITLE or ARTICLE.
 - Copy every source_span in the article's own language. Do not translate a span.
 - Write title_english and every brief point in English. Translate rather than
   transliterate. An article already in English keeps its own headline, with
@@ -60,7 +63,10 @@ TRIAGE_RULES = """You read one news item and return structured metadata as JSON.
 
 Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
-- Every field you are not certain of from the text you were given must be null.
+- TITLE and SNIPPET are both supplied evidence. An entity explicitly written in
+  TITLE counts as reported evidence; do not return null for a disease, country,
+  or province explicitly named in TITLE or SNIPPET.
+- Every field you are not certain of from the supplied TITLE or SNIPPET must be null.
   Never guess a disease, a country, or a province.
 - country is a two-letter ISO 3166-1 alpha-2 code, or null.
 - Judge relevance generously: when a headline might concern an outbreak, an
