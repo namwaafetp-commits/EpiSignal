@@ -13,6 +13,39 @@ from episignal_backend.models import Disease, GazetteerPlace
 from episignal_backend.seeds import load_country_aliases
 
 
+def event_display_location(
+    session: Session, *, country_code: str | None, admin1: str | None
+) -> str:
+    """Return a local, human-readable event location without network lookup."""
+    if country_code is None:
+        return "Unresolved location"
+
+    statement = select(GazetteerPlace.name, GazetteerPlace.precision).where(
+        GazetteerPlace.country_code == country_code
+    )
+    if admin1 is not None:
+        statement = statement.where(GazetteerPlace.admin1_code == admin1)
+    rows = session.execute(statement).all()
+    admin1_name = next((name for name, precision in rows if precision is Precision.ADMIN1), None)
+    country_name = next((name for name, precision in rows if precision is Precision.COUNTRY), None)
+    if country_name is None:
+        # A country-only fallback query is needed when the admin1 filter above
+        # correctly excludes the country row.
+        country_name = session.execute(
+            select(GazetteerPlace.name)
+            .where(
+                GazetteerPlace.country_code == country_code,
+                GazetteerPlace.precision == Precision.COUNTRY,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+    if country_name is None:
+        return "Unresolved location"
+    if admin1_name and country_name:
+        return f"{admin1_name}, {country_name}"
+    return country_name or "Unresolved location"
+
+
 def local_metadata_resolver(session: Session) -> LocalMetadataResolver:
     aliases = {alias.name: alias.country_code for alias in load_country_aliases()}
     disease_result = session.execute(select(Disease).order_by(Disease.id))

@@ -11,6 +11,7 @@ from episignal_backend.metadata import (
     MetadataRepairEvent,
     repair_event_metadata,
 )
+from episignal_backend.metadata_repair_ai_runner import _metadata_can_be_reused
 
 MEASLES = UUID("00000000-0000-0000-0000-000000000001")
 MALARIA = UUID("00000000-0000-0000-0000-000000000002")
@@ -76,7 +77,7 @@ def test_structured_admin1_is_validated_against_country() -> None:
         MetadataEvidence(
             title="Measles Outbreak Grows to 98 Cases in Wisconsin",
             text="",
-            triage=MetadataFields(disease="measles", country="US", admin1="Wisconsin"),
+            extraction=MetadataFields(disease="measles", country="US", admin1="Wisconsin"),
         )
     )
 
@@ -99,7 +100,7 @@ def test_specific_admin1_wins_over_contained_country_alias(
         MetadataEvidence(
             title=title,
             text="",
-            triage=MetadataFields(country=country_code, admin1=admin1),
+            extraction=MetadataFields(country=country_code, admin1=admin1),
         )
     )
 
@@ -112,7 +113,7 @@ def test_conflicting_country_and_admin1_evidence_stays_unresolved() -> None:
         MetadataEvidence(
             title="New Mexico, Mexico measles outbreak",
             text="",
-            triage=MetadataFields(country="MX", admin1="New Mexico"),
+            extraction=MetadataFields(country="MX", admin1="New Mexico"),
         )
     )
 
@@ -125,7 +126,7 @@ def test_invalid_admin1_rejects_location_metadata() -> None:
         MetadataEvidence(
             title="Unknown province measles outbreak",
             text="",
-            triage=MetadataFields(country="US", admin1="Unknown Province"),
+            extraction=MetadataFields(country="US", admin1="Unknown Province"),
         )
     )
 
@@ -151,7 +152,7 @@ def test_country_aliases_are_normalized_only_from_structured_fields() -> None:
         MetadataEvidence(
             title="The US lab reported a measles outbreak",
             text="",
-            triage=MetadataFields(country="United States"),
+            extraction=MetadataFields(country="United States"),
         )
     )
 
@@ -184,7 +185,7 @@ def test_extraction_metadata_wins_over_deterministic_headline_fallback() -> None
     assert resolved.country_code == "IN"
 
 
-def test_invalid_extraction_disease_falls_through_to_triage() -> None:
+def test_invalid_extraction_disease_stays_unresolved() -> None:
     resolved = resolver().resolve(
         MetadataEvidence(
             title="Measles outbreak",
@@ -194,13 +195,13 @@ def test_invalid_extraction_disease_falls_through_to_triage() -> None:
         )
     )
 
-    assert resolved.disease_id == MALARIA
-    assert resolved.country_code == "IN"
+    assert resolved.disease_id is None
+    assert resolved.country_code is None
 
 
 def test_unknown_two_letter_country_code_stays_unresolved() -> None:
     resolved = resolver().resolve(
-        MetadataEvidence(title="Outbreak report", text="", triage=MetadataFields(country="ZZ"))
+        MetadataEvidence(title="Outbreak report", text="", extraction=MetadataFields(country="ZZ"))
     )
 
     assert resolved.country_code is None
@@ -263,7 +264,7 @@ def test_resolved_metadata_exposes_field_provenance() -> None:
     assert resolved.country_code == "US"
     assert resolved.disease_source == "extraction"
     assert resolved.country_source == "extraction"
-    assert set(resolved.conflicts) == {"disease_id", "disease_text", "country_code"}
+    assert resolved.conflicts == ()
 
 
 def test_distinct_disease_names_of_different_lengths_stay_unresolved() -> None:
@@ -312,3 +313,41 @@ def test_repair_only_uses_validated_structured_metadata() -> None:
     assert patch.country_code is None
     assert patch.disease_id is None
     assert patch.admin1 is None
+
+
+class IncompleteEvent:
+    country_code = None
+    disease_id = None
+
+
+def test_metadata_repair_reextracts_when_country_exists_only_in_legacy_triage() -> None:
+    evidence = MetadataEvidence(
+        title="Measles outbreak",
+        text="article",
+        extraction=MetadataFields(disease="measles"),
+        triage=MetadataFields(disease="measles", country="US"),
+    )
+
+    assert not _metadata_can_be_reused(evidence, IncompleteEvent(), resolver())
+
+
+def test_metadata_repair_reextracts_when_disease_exists_only_in_legacy_triage() -> None:
+    evidence = MetadataEvidence(
+        title="Outbreak report",
+        text="article",
+        extraction=MetadataFields(country="US"),
+        triage=MetadataFields(disease="measles", country="US"),
+    )
+
+    assert not _metadata_can_be_reused(evidence, IncompleteEvent(), resolver())
+
+
+def test_metadata_repair_reuses_a_valid_extraction() -> None:
+    evidence = MetadataEvidence(
+        title="Measles outbreak",
+        text="article",
+        extraction=MetadataFields(disease="measles", country="US"),
+        triage=MetadataFields(disease="malaria", country="IN"),
+    )
+
+    assert _metadata_can_be_reused(evidence, IncompleteEvent(), resolver())

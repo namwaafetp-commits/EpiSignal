@@ -240,6 +240,7 @@ def _extract() -> Mapping[str, int]:
         "rejected": extracted.reviewed,
         "unavailable": extracted.unavailable,
         "requests": extracted.requests,
+        "expanded_retries": extracted.expanded_retries,
     }
 
 

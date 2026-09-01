@@ -41,7 +41,7 @@ from episignal_backend.metadata import (
     ResolvedMetadata,
     metadata_evidence_for_signal,
 )
-from episignal_backend.metadata_repository import local_metadata_resolver
+from episignal_backend.metadata_repository import event_display_location, local_metadata_resolver
 from episignal_backend.models import (
     AiRequest,
     Disease,
@@ -191,7 +191,7 @@ class SqlAlchemyEventRepository:
             signals.append(
                 SignalForMatching(
                     signal_id=sig.id,
-                    disease_id=metadata.disease_id or sig.disease_id,
+                    disease_id=metadata.disease_id,
                     disease_text=metadata.disease_text,
                     source_id=sig.source_id,
                     source_is_official=is_official,
@@ -683,7 +683,11 @@ class SqlAlchemyEventRepository:
             event_id=event.id,
             public_id=event.public_id,
             disease=disease or "",
-            location=event.admin1 or event.country_code or "",
+            location=event_display_location(
+                self._session,
+                country_code=event.country_code,
+                admin1=event.admin1,
+            ),
             headline=headline,
             summary=summary,
             previous_counts=previous_counts,

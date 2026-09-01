@@ -1,7 +1,8 @@
 """Validation and normalization for metadata already extracted by a model.
 
-This module never interprets article prose. It only checks structured extraction
-or triage fields against reviewed local vocabularies and reports conflicts.
+This module never interprets article prose. It validates extraction fields
+against reviewed local vocabularies. Legacy triage fields remain on evidence
+objects for audit history, but are not an authority for event metadata.
 """
 
 from collections import defaultdict
@@ -33,7 +34,7 @@ class Admin1VocabularyEntry:
 
 @dataclass(frozen=True)
 class MetadataFields:
-    """One accepted metadata answer from extraction or triage."""
+    """One accepted metadata answer from an extraction or legacy audit row."""
 
     disease: str | None = None
     country: str | None = None
@@ -287,53 +288,27 @@ class LocalMetadataResolver:
         )
 
     def resolve(self, evidence: MetadataEvidence) -> ResolvedMetadata:
-        """Choose extraction metadata before triage metadata, field by field."""
-        source_values: list[tuple[MetadataSource, ResolvedMetadata]] = []
-        if evidence.extraction is not None:
-            source_values.append(("extraction", self.validate_metadata(evidence.extraction)))
-        if evidence.triage is not None:
-            source_values.append(("triage", self.validate_metadata(evidence.triage)))
-
+        """Resolve only validated extraction metadata; legacy triage is audit-only."""
+        if evidence.extraction is None:
+            return ResolvedMetadata()
+        value = self.validate_metadata(evidence.extraction)
         conflicts: list[str] = []
-
-        def choose(field: str) -> tuple[Any, MetadataSource]:
-            populated = [
-                (source, getattr(value, field))
-                for source, value in source_values
-                if getattr(value, field) is not None
-            ]
-            unique = {value for _, value in populated}
-            if len(unique) > 1:
-                conflicts.append(field)
-            return (populated[0][1], populated[0][0]) if populated else (None, "unresolved")
-
-        disease_id, disease_source = choose("disease_id")
-        disease_text, _ = choose("disease_text")
-        country_code, country_source = choose("country_code")
-        admin1, admin1_source = choose("admin1")
-        admin2, _ = choose("admin2")
-        place_name, _ = choose("place_name")
-        location_text, _ = choose("location_text")
-
-        if admin1 is not None:
-            admin1_country = self._country_for_admin1(admin1)
-            if admin1_country != country_code:
-                conflicts.append("admin1")
-                admin1 = None
-                admin1_source = "unresolved"
-
+        admin1 = value.admin1
+        if admin1 is not None and self._country_for_admin1(admin1) != value.country_code:
+            conflicts.append("admin1")
+            admin1 = None
         return ResolvedMetadata(
-            disease_id=disease_id,
-            disease_text=disease_text,
-            country_code=country_code,
+            disease_id=value.disease_id,
+            disease_text=value.disease_text,
+            country_code=value.country_code,
             admin1=admin1,
-            admin2=admin2,
-            place_name=place_name,
-            location_text=location_text,
-            disease_source=disease_source,
-            country_source=country_source,
-            admin1_source=admin1_source,
-            conflicts=tuple(dict.fromkeys(conflicts)),
+            admin2=value.admin2,
+            place_name=value.place_name,
+            location_text=value.location_text,
+            disease_source="extraction" if value.disease_id is not None else "unresolved",
+            country_source="extraction" if value.country_code is not None else "unresolved",
+            admin1_source="extraction" if admin1 is not None else "unresolved",
+            conflicts=tuple(conflicts),
         )
 
     def _resolve_country_value(self, value: str | None) -> str | None:

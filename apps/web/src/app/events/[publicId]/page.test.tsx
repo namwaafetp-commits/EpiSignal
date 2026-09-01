@@ -82,4 +82,46 @@ describe("EventPage", () => {
       "/",
     );
   });
+
+  it("renders the latest structured flash brief sections and values", async () => {
+    const page = await EventPage({
+      params: Promise.resolve({ publicId: detail.public_id }),
+    });
+    render(page);
+
+    expect(screen.getByRole("heading", { name: "The Snapshot" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Key Driver" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Response" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Public/Global Risk" }),
+    ).toBeVisible();
+    expect(screen.getByText(/68 confirmed cases \| Not reported \| Cacuaco/)).toBeVisible();
+    expect(screen.getByText("Ongoing local transmission.")).toBeVisible();
+    expect(screen.getByText("Case investigation is underway.")).toBeVisible();
+  });
+
+  it("falls back to legacy summary text when structured fields are absent", async () => {
+    vi.spyOn(apiEvents, "getEventDetail").mockResolvedValueOnce({
+      ...detail,
+      summary: "Legacy summary text.",
+      summaries: [
+        {
+          ...detail.summaries[0],
+          summary: "Legacy summary text.",
+          snapshot: null,
+          key_driver: null,
+          response: null,
+          risk: null,
+        },
+      ],
+    });
+
+    const page = await EventPage({
+      params: Promise.resolve({ publicId: detail.public_id }),
+    });
+    render(page);
+
+    expect(screen.getByText("Legacy summary text.")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "The Snapshot" })).toBeNull();
+  });
 });

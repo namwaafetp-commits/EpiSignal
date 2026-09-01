@@ -1,5 +1,6 @@
 import json
 from collections.abc import Sequence
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from episignal_backend.ai.documents import (
     Verdict,
 )
 from episignal_backend.ai.extract import ExtractionResult, run_backfill, run_extraction
+from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.protocol import ModelUnavailable
 from episignal_backend.db.types import AiOutcome, AiPurpose
 from test_ai_classify import (
@@ -191,6 +193,73 @@ def test_extraction_requests_carry_schema_and_low_temperature() -> None:
     assert model.requests[0].response_schema is not None
     assert model.requests[0].schema_name == "extraction_response"
     assert model.requests[0].temperature == 0.0
+
+
+def _answer_without_location() -> str:
+    payload = json.loads(GOOD)
+    payload["locations"] = []
+    return json.dumps(payload)
+
+
+def test_missing_identity_in_initial_context_gets_one_expanded_retry() -> None:
+    long_body = BODY + "\n" + ("Additional context. " * 500)
+    signal = ExtractableSignal(id=FIRST, title="Cholera cases rise", raw_text=long_body)
+    model = ScriptedModel([_answer_without_location(), GOOD])
+
+    result = run_extraction(
+        ExtractRepository((signal,)),
+        model,
+        guards=guards(),
+        max_input_characters=12000,
+        now=lambda: NOW,
+    )
+
+    assert result.extracted == 1
+    assert result.requests == 2
+    assert result.expanded_retries == 1
+    assert len(model.requests) == 2
+    assert len(model.requests[1].user) > len(model.requests[0].user)
+
+
+def test_complete_initial_extraction_does_not_expand() -> None:
+    repository = ExtractRepository((english(),))
+    model = ScriptedModel([GOOD])
+
+    result = run(repository, model)
+
+    assert result.requests == 1
+    assert result.expanded_retries == 0
+
+
+def test_short_article_does_not_expand_an_incomplete_identity() -> None:
+    repository = ExtractRepository((english(),))
+    model = ScriptedModel([_answer_without_location()])
+
+    result = run(repository, model)
+
+    assert result.extracted == 1
+    assert result.requests == 1
+    assert result.expanded_retries == 0
+
+
+def test_request_guard_stops_before_expansion_and_keeps_initial_answer() -> None:
+    long_body = BODY + "\n" + ("Additional context. " * 500)
+    signal = ExtractableSignal(id=FIRST, title="Cholera cases rise", raw_text=long_body)
+    repository = ExtractRepository((signal,))
+    model = ScriptedModel([_answer_without_location()])
+
+    result = run_extraction(
+        repository,
+        model,
+        guards=Guards(max_requests=1, max_cost_usd=Decimal("1")),
+        max_input_characters=12000,
+        now=lambda: NOW,
+    )
+
+    assert result.extracted == 1
+    assert result.requests == 1
+    assert result.expanded_retries == 1
+    assert result.stopped_early is True
 
 
 def test_the_resolved_disease_is_attached_when_the_vocabulary_knows_it() -> None:

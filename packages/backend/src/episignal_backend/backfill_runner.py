@@ -87,6 +87,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"examined={result.examined} re_extracted={result.extracted} "
         f"rejected={result.reviewed} unavailable={result.unavailable} "
         f"storage_failed={result.storage_failed} requests={result.requests} "
+        f"expanded_retries={result.expanded_retries} "
         f"stopped_early={result.stopped_early}"
     )
     return (

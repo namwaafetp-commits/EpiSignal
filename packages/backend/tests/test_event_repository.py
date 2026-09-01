@@ -18,6 +18,7 @@ from episignal_backend.events.repository import (
     SqlAlchemyEventRepository,
     read_stored_extraction,
 )
+from episignal_backend.metadata_repository import event_display_location
 
 
 class FakeResult:
@@ -148,12 +149,37 @@ def test_events_awaiting_summary_deduplicates_signal_join_before_limit() -> None
     assert session.executed[0]._group_by_clauses
 
 
+def test_event_display_location_uses_admin1_and_country_names_from_local_data() -> None:
+    session = FakeSession(
+        [
+            FakeResult([("Wisconsin", Precision.ADMIN1)]),
+            FakeResult("United States"),
+        ]
+    )
+
+    assert event_display_location(session, country_code="US", admin1="WI") == (
+        "Wisconsin, United States"
+    )
+
+
+def test_event_display_location_uses_country_name_when_admin1_is_absent() -> None:
+    session = FakeSession([FakeResult([("United States", Precision.COUNTRY)])])
+
+    assert event_display_location(session, country_code="US", admin1=None) == "United States"
+
+
+def test_event_display_location_reports_unresolved_without_validated_country() -> None:
+    session = FakeSession()
+
+    assert event_display_location(session, country_code=None, admin1=None) == "Unresolved location"
+
+
 def test_it_satisfies_the_event_repository_boundary() -> None:
     repo = SqlAlchemyEventRepository(FakeSession())
     assert isinstance(repo, EventRepository)
 
 
-def test_signals_to_match_uses_direct_extraction_metadata_without_geocoding() -> None:
+def test_signals_to_match_does_not_use_legacy_disease_metadata_without_extraction() -> None:
     sig_id = uuid4()
     disease_id = uuid4()
     src_id = uuid4()
@@ -189,7 +215,7 @@ def test_signals_to_match_uses_direct_extraction_metadata_without_geocoding() ->
     assert len(signals) == 1
     sig = signals[0]
     assert sig.signal_id == sig_id
-    assert sig.disease_id == disease_id
+    assert sig.disease_id is None
     assert sig.source_is_official is True
     assert sig.credibility_tier == CredibilityTier.OFFICIAL
     assert sig.locations == ()

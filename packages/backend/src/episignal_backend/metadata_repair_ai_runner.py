@@ -67,6 +67,7 @@ class RepairResult:
     existing_extraction_reused: int = 0
     reextracted: int = 0
     ai_requests: int = 0
+    expanded_retries: int = 0
     ai_cost_usd: Decimal = Decimal("0")
     country_resolved: int = 0
     admin1_resolved: int = 0
@@ -112,22 +113,23 @@ def _metadata_can_be_reused(
     event: Any,
     resolver: LocalMetadataResolver,
 ) -> bool:
-    resolved = resolver.resolve(evidence)
-    if evidence.extraction is None and evidence.triage is None:
+    # Triage fields are retained as historical evidence, never as a reason to
+    # skip extraction. Only a complete, currently valid extraction can be
+    # reused by metadata repair.
+    if evidence.extraction is None:
         return False
-    for fields in (evidence.extraction, evidence.triage):
-        if fields is None:
-            continue
-        validated = resolver.validate_metadata(fields)
-        if any(
-            raw is not None and normalized is None
-            for raw, normalized in (
-                (fields.disease, validated.disease_id),
-                (fields.country, validated.country_code),
-                (fields.admin1, validated.admin1),
-            )
-        ):
-            return False
+    resolved = resolver.resolve(evidence)
+    fields = evidence.extraction
+    validated = resolver.validate_metadata(fields)
+    if any(
+        raw is not None and normalized is None
+        for raw, normalized in (
+            (fields.disease, validated.disease_id),
+            (fields.country, validated.country_code),
+            (fields.admin1, validated.admin1),
+        )
+    ):
+        return False
     if event.country_code is None and resolved.country_code is None:
         return False
     return not (event.disease_id is None and resolved.disease_id is None)
@@ -195,7 +197,7 @@ def run_repair_ai(
     budget = RunBudget(Guards(max_requests=max_ai_requests, max_cost_usd=max_cost_usd))
     moment = now or datetime.now(UTC)
     proposals: list[RepairProposal] = []
-    existing_extraction_reused = reextracted = requests = conflicts = 0
+    existing_extraction_reused = reextracted = requests = expanded_retries = conflicts = 0
     ai_cost_usd = Decimal("0")
     country_resolved = admin1_resolved = disease_resolved = event_type_resolved = 0
     still_unresolved = 0
@@ -235,6 +237,7 @@ def run_repair_ai(
                     min_confidence=min_confidence,
                 )
                 requests += len(result.attempts)
+                expanded_retries += result.expanded_retries
                 ai_cost_usd += sum((attempt.cost for attempt in result.attempts), Decimal("0"))
                 evidence = _apply_extraction(evidence, result)
                 if apply:
@@ -315,6 +318,7 @@ def run_repair_ai(
         existing_extraction_reused=existing_extraction_reused,
         reextracted=reextracted,
         ai_requests=requests,
+        expanded_retries=expanded_retries,
         ai_cost_usd=ai_cost_usd,
         country_resolved=country_resolved,
         admin1_resolved=admin1_resolved,
@@ -384,7 +388,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"examined={result.examined} "
         f"existing_extraction_reused={result.existing_extraction_reused} "
-        f"reextracted={result.reextracted} ai_requests={result.ai_requests} "
+        f"reextracted={result.reextracted} expanded_retries={result.expanded_retries} "
+        f"ai_requests={result.ai_requests} "
         f"ai_cost_usd={result.ai_cost_usd} "
         f"country_resolved={result.country_resolved} "
         f"admin1_resolved={result.admin1_resolved} "

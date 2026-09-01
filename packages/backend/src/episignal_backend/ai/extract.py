@@ -24,7 +24,6 @@ from episignal_backend.ai.documents import (
 from episignal_backend.ai.ladder import (
     Attempt,
     ClimbOutcome,
-    ClimbResult,
     Guards,
     Ladder,
     RunBudget,
@@ -44,6 +43,7 @@ from episignal_backend.db.types import AiPurpose
 DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
 DEFAULT_MAX_INPUT_CHARACTERS = 12000
+DEFAULT_INITIAL_INPUT_CHARACTERS = 7000
 DEFAULT_MIN_CONFIDENCE = 0.5
 # Sequential by default so a pass stays deterministic unless the caller asks
 # for concurrency; production wires EPISIGNAL_AI_EXTRACTION_WORKERS here.
@@ -66,6 +66,7 @@ class ExtractionResult:
     unavailable: int = 0
     storage_failed: int = 0
     requests: int = 0
+    expanded_retries: int = 0
     stopped_early: bool = False
 
 
@@ -75,6 +76,8 @@ class ExtractionSignalResult:
     extraction: Extraction | None
     error: str | None
     attempts: tuple[Attempt, ...]
+    expanded_retries: int = 0
+    stopped_early: bool = False
 
 
 def build_extraction_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
@@ -90,23 +93,66 @@ def extract_signal(
     max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> ExtractionSignalResult:
-    """Run one signal through the same validated extraction seam as the pass."""
-    system, user = extraction_prompt(signal, max_characters=max_input_characters)
-    attempts: list[Attempt] = []
-    result = climb(
-        ladder=ladder,
-        budget=budget,
-        model=model,
-        request_for=_request_builder(system, user),
-        accept=_accept_builder((signal.title,), (signal.raw_text,), min_confidence),
-        on_attempt=attempts.append,
-    )
+    """Run extraction with one bounded content-expansion retry at most."""
+
+    def extract_once(limit: int) -> ExtractionSignalResult:
+        system, user = extraction_prompt(signal, max_characters=limit)
+        attempts: list[Attempt] = []
+        result = climb(
+            ladder=ladder,
+            budget=budget,
+            model=model,
+            request_for=_request_builder(system, user),
+            accept=_accept_builder((signal.title,), (signal.raw_text,), min_confidence),
+            on_attempt=attempts.append,
+        )
+        return ExtractionSignalResult(
+            outcome=result.outcome,
+            extraction=result.value,
+            error=result.reason,
+            attempts=tuple(attempts),
+            stopped_early=result.outcome is ClimbOutcome.GUARD,
+        )
+
+    initial_limit = min(DEFAULT_INITIAL_INPUT_CHARACTERS, max_input_characters)
+    initial = extract_once(initial_limit)
+    extraction = initial.extraction
+    if (
+        initial.outcome is not ClimbOutcome.ACCEPTED
+        or extraction is None
+        or _has_event_identity(extraction)
+        or len(signal.raw_text) <= initial_limit
+        or max_input_characters <= initial_limit
+    ):
+        return initial
+
+    expanded = extract_once(max_input_characters)
+    if expanded.outcome is ClimbOutcome.ACCEPTED and expanded.extraction is not None:
+        chosen = expanded
+    else:
+        # Expansion enriches an accepted answer. A guarded, unavailable, or
+        # rejected retry must not discard the valid initial extraction.
+        chosen = initial
+
     return ExtractionSignalResult(
-        outcome=result.outcome,
-        extraction=result.value,
-        error=result.reason,
-        attempts=tuple(attempts),
+        outcome=chosen.outcome,
+        extraction=chosen.extraction,
+        error=chosen.error,
+        attempts=initial.attempts + expanded.attempts,
+        expanded_retries=1,
+        stopped_early=expanded.stopped_early,
     )
+
+
+def _has_event_identity(extraction: Extraction) -> bool:
+    """Whether extraction has the identity needed to group an event."""
+    if extraction.disease is None:
+        return False
+    primary = next(
+        (location for location in extraction.locations if location.role.value == "primary"),
+        None,
+    )
+    return primary is not None and primary.country is not None
 
 
 def _top_rung(ladder: Ladder) -> ModelSpec:
@@ -163,27 +209,25 @@ def _run_pass(
     ladder = Ladder.build(repository.models(), max_tier=max_tier, min_tier=min_tier)
     budget = RunBudget(guards)
 
-    def climb_one(signal: ExtractableSignal) -> tuple[list[Attempt], ClimbResult[Extraction]]:
+    def climb_one(signal: ExtractableSignal) -> ExtractionSignalResult:
         """The network work for one signal. Touches no repository, so it is
         safe to run on a worker thread; the budget lock keeps the guard's
         arithmetic honest across concurrent climbs."""
-        system, user = extraction_prompt(signal, max_characters=max_input_characters)
-        attempts: list[Attempt] = []
-        result = climb(
+        return extract_signal(
+            signal,
+            model,
             ladder=ladder,
             budget=budget,
-            model=model,
-            request_for=_request_builder(system, user),
-            accept=_accept_builder((signal.title,), (signal.raw_text,), min_confidence),
-            on_attempt=attempts.append,
+            max_input_characters=max_input_characters,
+            min_confidence=min_confidence,
         )
-        return attempts, result
 
     extracted = 0
     reviewed = 0
     unavailable = 0
     storage_failed = 0
     requests = 0
+    expanded_retries = 0
     stopped_early = False
 
     # Chunks bound the work in flight and let the writes stream: finished
@@ -194,8 +238,10 @@ def _run_pass(
     for chunk in _chunks(pending, chunk_size):
         with ThreadPoolExecutor(max_workers=max(workers, 1)) as pool:
             outcomes = list(pool.map(climb_one, chunk))
-        for signal, (attempts, result) in zip(chunk, outcomes, strict=True):
+        for signal, result in zip(chunk, outcomes, strict=True):
+            attempts = result.attempts
             requests += len(attempts)
+            expanded_retries += result.expanded_retries
 
             try:
                 at = now()
@@ -210,16 +256,16 @@ def _run_pass(
                         )
                     )
 
-                if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
+                if result.outcome is ClimbOutcome.ACCEPTED and result.extraction is not None:
                     disease_id = (
-                        repository.resolve_disease(result.value.disease.name)
-                        if result.value.disease is not None
+                        repository.resolve_disease(result.extraction.disease.name)
+                        if result.extraction.disease is not None
                         else None
                     )
                     repository.record_extraction(
                         signal.id,
                         StoredExtraction(
-                            extraction=result.value,
+                            extraction=result.extraction,
                             disease_id=disease_id,
                             model_id=attempts[-1].spec.model_id,
                             processed_at=at,
@@ -238,14 +284,14 @@ def _run_pass(
                     type(error).__name__,
                 )
             else:
-                if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
+                if result.outcome is ClimbOutcome.ACCEPTED and result.extraction is not None:
                     extracted += 1
                 elif result.outcome is ClimbOutcome.REJECTED:
                     reviewed += 1
                 else:
                     unavailable += 1
 
-            if result.outcome is ClimbOutcome.GUARD:
+            if result.stopped_early:
                 stopped_early = True
         if stopped_early:
             break
@@ -257,6 +303,7 @@ def _run_pass(
         unavailable=unavailable,
         storage_failed=storage_failed,
         requests=requests,
+        expanded_retries=expanded_retries,
         stopped_early=stopped_early,
     )
 
@@ -440,6 +487,7 @@ def run_extraction(
         unavailable=cluster_result.unavailable + single_result.unavailable,
         storage_failed=cluster_result.storage_failed + single_result.storage_failed,
         requests=cluster_result.requests + single_result.requests,
+        expanded_retries=cluster_result.expanded_retries + single_result.expanded_retries,
         stopped_early=cluster_result.stopped_early or single_result.stopped_early,
     )
 
