@@ -117,7 +117,7 @@ class EventSummaryItem:
     headline: str
     summary: str
     trajectory: str
-    snapshot: dict[str, object] | None
+    snapshot: tuple[str, ...] | None
     key_driver: str | None
     response: str | None
     risk: str | None
@@ -146,6 +146,35 @@ class EventDetail:
     sources: tuple[EventSourceItem, ...]
     observations: tuple[EventObservationItem, ...]
     summaries: tuple[EventSummaryItem, ...]
+
+
+def normalize_summary_snapshot(value: object) -> tuple[str, ...] | None:
+    """Expose new fact arrays and legacy snapshot objects uniformly."""
+    if isinstance(value, (list, tuple)):
+        facts = value
+    elif isinstance(value, dict):
+        facts = []
+        cases = value.get("cases")
+        geographic_extent = value.get("geographic_extent")
+        if isinstance(cases, str) and cases.strip():
+            facts.append(cases)
+        deaths = value.get("deaths")
+        cfr = value.get("cfr")
+        if isinstance(deaths, str) and deaths.strip() and isinstance(cfr, str) and cfr.strip():
+            facts.append(f"{deaths} / {cfr}")
+        elif isinstance(deaths, str) and deaths.strip():
+            facts.append(deaths)
+        elif isinstance(cfr, str) and cfr.strip():
+            facts.append(cfr)
+        if isinstance(geographic_extent, str) and geographic_extent.strip():
+            facts.append(geographic_extent)
+    else:
+        return None
+
+    normalized = tuple(
+        " ".join(item.split()) for item in facts if isinstance(item, str) and item.strip()
+    )
+    return normalized or None
 
 
 def _dashboard_location(
@@ -448,7 +477,7 @@ def query_event_detail(
             headline=summary.headline,
             summary=summary.summary,
             trajectory=summary.trajectory or "Unclear",
-            snapshot=summary.snapshot,
+            snapshot=normalize_summary_snapshot(summary.snapshot),
             key_driver=summary.key_driver,
             response=summary.response,
             risk=summary.risk,

@@ -113,7 +113,7 @@ class EventSummaryResponse(BaseModel):
     headline: str
     summary: str
     trajectory: str
-    snapshot: dict[str, object] | None
+    snapshot: list[str] | None
     key_driver: str | None
     response: str | None
     risk: str | None

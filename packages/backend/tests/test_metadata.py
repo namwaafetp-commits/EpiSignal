@@ -117,7 +117,7 @@ def test_conflicting_country_and_admin1_evidence_stays_unresolved() -> None:
         )
     )
 
-    assert resolved.country_code is None
+    assert resolved.country_code == "MX"
     assert resolved.admin1 is None
 
 
@@ -130,8 +130,39 @@ def test_invalid_admin1_rejects_location_metadata() -> None:
         )
     )
 
-    assert resolved.country_code is None
+    assert resolved.country_code == "US"
     assert resolved.admin1 is None
+
+
+def test_valid_disease_survives_invalid_admin1() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title="Measles outbreak",
+            text="",
+            extraction=MetadataFields(disease="measles", country="US", admin1="Unknown Province"),
+        )
+    )
+
+    assert resolved.disease_id == MEASLES
+    assert resolved.disease_text == "Measles"
+    assert resolved.country_code == "US"
+    assert resolved.admin1 is None
+
+
+def test_unknown_disease_preserves_exact_normalized_text() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title="Meningococcal disease outbreak",
+            text="",
+            extraction=MetadataFields(
+                disease="  Meningococcal   disease ", country="United States"
+            ),
+        )
+    )
+
+    assert resolved.disease_id is None
+    assert resolved.disease_text == "meningococcal disease"
+    assert resolved.country_code == "US"
 
 
 def test_structured_country_conflicting_with_admin1_stays_unresolved() -> None:
@@ -143,7 +174,7 @@ def test_structured_country_conflicting_with_admin1_stays_unresolved() -> None:
         )
     )
 
-    assert resolved.country_code is None
+    assert resolved.country_code == "MX"
     assert resolved.admin1 is None
 
 
@@ -348,6 +379,26 @@ def test_metadata_repair_reuses_a_valid_extraction() -> None:
         text="article",
         extraction=MetadataFields(disease="measles", country="US"),
         triage=MetadataFields(disease="malaria", country="IN"),
+    )
+
+    assert _metadata_can_be_reused(evidence, IncompleteEvent(), resolver())
+
+
+def test_metadata_repair_reuses_valid_fields_when_admin1_is_invalid() -> None:
+    evidence = MetadataEvidence(
+        title="Measles outbreak",
+        text="article",
+        extraction=MetadataFields(disease="measles", country="US", admin1="Pennsylvania"),
+    )
+
+    assert _metadata_can_be_reused(evidence, IncompleteEvent(), resolver())
+
+
+def test_metadata_repair_reuses_unknown_disease_text_for_diagnostics_and_grouping() -> None:
+    evidence = MetadataEvidence(
+        title="Meningococcal outbreak",
+        text="article",
+        extraction=MetadataFields(disease="Meningococcal disease", country="US"),
     )
 
     assert _metadata_can_be_reused(evidence, IncompleteEvent(), resolver())

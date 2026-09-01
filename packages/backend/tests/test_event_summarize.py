@@ -268,12 +268,7 @@ def test_picking_preserves_the_newest_useful_report_after_official_sources() -> 
 _SUMMARY_JSON = """{
   "headline": "Dengue Outbreak: Chiang Mai — Increasing",
   "trajectory": "Increasing",
-  "snapshot": {
-    "cases": "68 total cases",
-    "deaths": "3 deaths",
-    "cfr": null,
-    "geographic_extent": "Chiang Mai"
-  },
+  "snapshot": ["68 total cases", "3 deaths", "Chiang Mai"],
   "key_driver": "Ongoing local transmission.",
   "response": "Case investigation is underway.",
   "risk": "Insufficient evidence for a broader risk assessment."
@@ -319,7 +314,7 @@ def test_the_summarizer_accepts_a_valid_verdict() -> None:
     assert result.verdict is not None
     assert result.verdict.headline == "Dengue Outbreak: Chiang Mai — Increasing"
     assert result.verdict.trajectory is SummaryTrajectory.INCREASING
-    assert result.verdict.snapshot.cases == "68 total cases"
+    assert result.verdict.snapshot == ("68 total cases", "3 deaths", "Chiang Mai")
     assert result.verdict.risk == "Insufficient evidence for a broader risk assessment."
     assert render_event_flash_brief(result.verdict) == (
         "Dengue Outbreak: Chiang Mai — Increasing\n\n"
@@ -383,15 +378,69 @@ def test_the_summary_prompt_requires_the_epi_signal_flash_brief() -> None:
     assert [source["source_name"] for source in payload["sources"]] == ["official", "local"]
 
 
-def test_the_snapshot_contract_requires_all_four_nullable_fields() -> None:
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        ["98 confirmed cases"],
+        ["27 illnesses", "12 hospitalized"],
+        ["98 confirmed cases", "4 counties affected", "Cases increasing"],
+        ["6 farms affected", "H5N1 confirmed", "Control zones established"],
+    ],
+)
+def test_snapshot_accepts_one_to_three_informative_facts(snapshot: list[str]) -> None:
     payload = json.loads(_SUMMARY_JSON)
-    del payload["snapshot"]["cfr"]
+    payload["snapshot"] = snapshot
+
+    result = run_summary(
+        FakeSummaryModel(json.dumps(payload)),
+        _summary_spec(),
+        event=_summary_input(),
+        sources=(_source("x"),),
+    )
+
+    assert result.outcome is SummaryOutcome.ACCEPTED
+    assert result.verdict is not None
+    assert result.verdict.snapshot == tuple(snapshot)
+
+
+def test_snapshot_contract_rejects_more_than_three_facts() -> None:
+    payload = json.loads(_SUMMARY_JSON)
+    payload["snapshot"] = ["one", "two", "three", "four"]
     model = FakeSummaryModel(json.dumps(payload))
 
     result = run_summary(model, _summary_spec(), event=_summary_input(), sources=(_source("x"),))
 
     assert result.outcome is SummaryOutcome.REJECTED
     assert result.verdict is None
+
+
+def test_snapshot_does_not_require_cases_deaths_or_cfr() -> None:
+    payload = json.loads(_SUMMARY_JSON)
+    payload["snapshot"] = ["6 farms affected", "H5N1 confirmed"]
+
+    result = run_summary(
+        FakeSummaryModel(json.dumps(payload)),
+        _summary_spec(),
+        event=_summary_input(),
+        sources=(_source("x"),),
+    )
+
+    assert result.outcome is SummaryOutcome.ACCEPTED
+
+
+@pytest.mark.parametrize("snapshot", [["one"], ["one", "two"], ["one", "two", "three"]])
+def test_renderer_joins_only_supplied_snapshot_facts(snapshot: list[str]) -> None:
+    payload = json.loads(_SUMMARY_JSON)
+    payload["snapshot"] = snapshot
+    result = run_summary(
+        FakeSummaryModel(json.dumps(payload)),
+        _summary_spec(),
+        event=_summary_input(),
+        sources=(_source("x"),),
+    )
+
+    assert result.verdict is not None
+    assert "The Snapshot:\n" + " | ".join(snapshot) in render_event_flash_brief(result.verdict)
 
 
 def test_the_summarizer_rejects_malformed_output() -> None:

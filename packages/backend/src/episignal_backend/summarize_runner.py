@@ -116,7 +116,7 @@ def _run(arguments: Arguments) -> dict[str, int]:
                     headline=result.verdict.headline,
                     summary=render_event_flash_brief(result.verdict),
                     trajectory=result.verdict.trajectory.value,
-                    snapshot=result.verdict.snapshot.model_dump(mode="json"),
+                    snapshot=list(result.verdict.snapshot),
                     key_driver=result.verdict.key_driver,
                     response=result.verdict.response,
                     risk=result.verdict.risk,

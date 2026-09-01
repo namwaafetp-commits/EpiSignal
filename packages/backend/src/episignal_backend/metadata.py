@@ -269,13 +269,14 @@ class LocalMetadataResolver:
         """Normalize one structured model answer without reading article text."""
         country_code = self._resolve_country_value(fields.country)
         disease_id = self._resolve_disease_value(fields.disease)
-        disease = self._diseases_by_id[disease_id].canonical_name if disease_id else None
+        disease = (
+            self._diseases_by_id[disease_id].canonical_name
+            if disease_id is not None
+            else normalized_form(fields.disease)
+            if fields.disease is not None
+            else None
+        )
         admin1_match = self._resolve_admin1_value(fields.admin1, country_code)
-        if fields.admin1 is not None and admin1_match is None:
-            # A model supplied a geographic hierarchy that cannot be validated
-            # together. Keep the whole location unresolved rather than pairing
-            # a country with a rejected province.
-            country_code = None
         location_text = fields.location_text or fields.place_name
         return ResolvedMetadata(
             disease_id=disease_id,
@@ -305,7 +306,7 @@ class LocalMetadataResolver:
             admin2=value.admin2,
             place_name=value.place_name,
             location_text=value.location_text,
-            disease_source="extraction" if value.disease_id is not None else "unresolved",
+            disease_source="extraction" if value.disease_text is not None else "unresolved",
             country_source="extraction" if value.country_code is not None else "unresolved",
             admin1_source="extraction" if admin1 is not None else "unresolved",
             conflicts=tuple(conflicts),

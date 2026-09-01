@@ -529,9 +529,7 @@ export interface components {
             /** Risk */
             risk: string | null;
             /** Snapshot */
-            snapshot: {
-                [key: string]: unknown;
-            } | null;
+            snapshot: string[] | null;
             /** Summary */
             summary: string;
             /** Trajectory */

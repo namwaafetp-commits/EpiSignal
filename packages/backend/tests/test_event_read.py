@@ -10,7 +10,11 @@ from episignal_backend.db.types import (
     RelationshipType,
     VerificationStatus,
 )
-from episignal_backend.events.read import query_dashboard_events, query_event_detail
+from episignal_backend.events.read import (
+    normalize_summary_snapshot,
+    query_dashboard_events,
+    query_event_detail,
+)
 
 
 class FakeResult:
@@ -89,6 +93,80 @@ def test_event_detail_loads_sources_through_event_signal_join() -> None:
     assert len(detail.sources) == 1
     assert detail.sources[0].signal_id == signal_id
     assert detail.sources[0].source_name == "Public Health Office"
+
+
+def test_event_detail_normalizes_legacy_snapshot_objects_to_fact_lists() -> None:
+    event_id = uuid4()
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    event = SimpleNamespace(
+        id=event_id,
+        public_id="EVT-2026-LEGACY",
+        headline="Dengue outbreak",
+        summary="Legacy summary",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        verification_status=VerificationStatus.SIGNAL,
+        country_code="TH",
+        admin1=None,
+        admin2=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+        early_signal_score=None,
+        evidence_score=None,
+    )
+    legacy = SimpleNamespace(
+        version=1,
+        headline="Dengue outbreak",
+        summary="Legacy summary",
+        trajectory=None,
+        snapshot={
+            "cases": "42 confirmed cases",
+            "deaths": None,
+            "cfr": "4.2% CFR",
+            "geographic_extent": "Chiang Mai",
+        },
+        key_driver=None,
+        response=None,
+        risk=None,
+        model_id="old-model",
+        created_at=now,
+    )
+    session = FakeSession(
+        [
+            FakeResult((event, "Dengue")),
+            FakeResult([]),
+            FakeResult([]),
+            FakeResult([legacy]),
+        ]
+    )
+
+    detail = query_event_detail(session, public_id=event.public_id)
+
+    assert detail is not None
+    assert detail.summaries[0].snapshot == (
+        "42 confirmed cases",
+        "4.2% CFR",
+        "Chiang Mai",
+    )
+
+
+def test_legacy_snapshot_combines_deaths_and_cfr_without_exceeding_three_facts() -> None:
+    assert normalize_summary_snapshot(
+        {
+            "cases": "412 cases",
+            "deaths": "18 deaths",
+            "cfr": "CFR 4.4%",
+            "geographic_extent": "4 counties",
+        }
+    ) == ("412 cases", "18 deaths / CFR 4.4%", "4 counties")
+
+
+def test_legacy_snapshot_preserves_deaths_when_cfr_is_missing() -> None:
+    assert normalize_summary_snapshot(
+        {"cases": "27 illnesses", "deaths": "2 deaths", "cfr": None}
+    ) == ("27 illnesses", "2 deaths")
 
 
 def test_dashboard_resolves_admin1_then_country_and_leaves_missing_country_unmapped() -> None:

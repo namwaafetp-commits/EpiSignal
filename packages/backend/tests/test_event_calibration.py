@@ -46,12 +46,10 @@ class FakeSummaryModel:
                 {
                     "headline": "Dengue Outbreak: Chiang Mai — Increasing",
                     "trajectory": "Increasing",
-                    "snapshot": {
-                        "cases": "The reported case count changed.",
-                        "deaths": None,
-                        "cfr": None,
-                        "geographic_extent": "Chiang Mai",
-                    },
+                    "snapshot": [
+                        "The reported case count changed.",
+                        "Chiang Mai",
+                    ],
                     "key_driver": "Not yet established.",
                     "response": "No specific response reported.",
                     "risk": "Insufficient evidence for a broader risk assessment.",

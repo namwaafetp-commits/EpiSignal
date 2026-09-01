@@ -19,7 +19,7 @@ from episignal_backend.ai.extract import (
     build_extraction_ladder,
     extract_signal,
 )
-from episignal_backend.ai.ladder import Guards, RunBudget, cost_row
+from episignal_backend.ai.ladder import ClimbOutcome, Guards, RunBudget, cost_row
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.db.session import enforce_read_only_transaction, session_scope
 from episignal_backend.db.types import AiPurpose, EventType
@@ -63,6 +63,33 @@ class RepairProposal:
 
 
 @dataclass(frozen=True)
+class RepairDiagnostic:
+    """In-memory explanation of one metadata repair decision."""
+
+    event_id: Any
+    headline: str
+    extraction_reused: bool
+    extraction_reextracted: bool
+    extraction_outcome: str
+    model_id: str | None
+    confidence: float | None
+    initial: bool
+    expanded: bool
+    raw_disease: str | None
+    raw_country: str | None
+    raw_admin1: str | None
+    validated_disease_id: Any
+    validated_disease_text: str | None
+    validated_country_code: str | None
+    validated_admin1: str | None
+    result: str
+    unresolved_reason: str | None
+    raw_disease_values: tuple[str | None, ...] = ()
+    raw_country_values: tuple[str | None, ...] = ()
+    raw_admin1_values: tuple[str | None, ...] = ()
+
+
+@dataclass(frozen=True)
 class RepairResult:
     examined: int = 0
     existing_extraction_reused: int = 0
@@ -77,6 +104,50 @@ class RepairResult:
     still_unresolved: int = 0
     conflicts: int = 0
     proposals: tuple[RepairProposal, ...] = ()
+    diagnostics: tuple[RepairDiagnostic, ...] = ()
+
+
+def unresolved_reason(
+    *,
+    event: Any,
+    evidence: Sequence[MetadataEvidence],
+    resolved: ResolvedMetadata,
+    extraction_outcomes: Sequence[str] = (),
+    request_guard: bool = False,
+) -> str | None:
+    """Return one evidence-bounded reason for an unresolved event."""
+    if request_guard:
+        return "request_guard"
+    if resolved.conflicts:
+        return "linked_signal_conflict"
+
+    raw_fields = [item.extraction for item in evidence if item.extraction is not None]
+    if any(not item.text for item in evidence):
+        return "no_article_body"
+    if extraction_outcomes and all(
+        outcome == ClimbOutcome.REJECTED.value for outcome in extraction_outcomes
+    ):
+        return "extraction_rejected"
+    if extraction_outcomes and all(
+        outcome == ClimbOutcome.UNAVAILABLE.value for outcome in extraction_outcomes
+    ):
+        return "extraction_unavailable"
+
+    if getattr(event, "disease_id", None) is None and resolved.disease_id is None:
+        if any(fields.disease is not None for fields in raw_fields):
+            return "disease_vocabulary_miss"
+        return "missing_disease"
+    if getattr(event, "country_code", None) is None and resolved.country_code is None:
+        if any(fields.country is not None for fields in raw_fields):
+            return "country_validation_failed"
+        return "missing_country"
+    if (
+        getattr(event, "admin1", None) is None
+        and any(fields.admin1 is not None for fields in raw_fields)
+        and resolved.admin1 is None
+    ):
+        return "admin1_validation_failed"
+    return "other"
 
 
 def parse_arguments(argv: Sequence[str]) -> Arguments:
@@ -123,25 +194,17 @@ def _metadata_can_be_reused(
     resolver: LocalMetadataResolver,
 ) -> bool:
     # Triage fields are retained as historical evidence, never as a reason to
-    # skip extraction. Only a complete, currently valid extraction can be
-    # reused by metadata repair.
+    # skip extraction. Reuse any extraction that supplies the currently
+    # missing event-level fields; invalid optional fields must not discard
+    # unrelated valid metadata.
     if evidence.extraction is None:
         return False
     resolved = resolver.resolve(evidence)
-    fields = evidence.extraction
-    validated = resolver.validate_metadata(fields)
-    if any(
-        raw is not None and normalized is None
-        for raw, normalized in (
-            (fields.disease, validated.disease_id),
-            (fields.country, validated.country_code),
-            (fields.admin1, validated.admin1),
-        )
-    ):
-        return False
     if event.country_code is None and resolved.country_code is None:
         return False
-    return not (event.disease_id is None and resolved.disease_id is None)
+    return not (
+        event.disease_id is None and resolved.disease_id is None and resolved.disease_text is None
+    )
 
 
 def _apply_extraction(
@@ -179,6 +242,64 @@ def _proposal(
     )
 
 
+def _diagnostic(
+    event: Any,
+    *,
+    evidence: Sequence[MetadataEvidence],
+    resolved: ResolvedMetadata,
+    extraction_reused: bool,
+    extraction_reextracted: bool,
+    extraction_outcome: str,
+    model_id: str | None,
+    confidence: float | None,
+    initial: bool,
+    expanded: bool,
+    result: str,
+    extraction_outcomes: Sequence[str] = (),
+    unresolved: bool = True,
+    request_guard: bool = False,
+) -> RepairDiagnostic:
+    raw = next(
+        (item.extraction for item in reversed(evidence) if item.extraction is not None),
+        None,
+    )
+    raw_extractions = tuple(item.extraction for item in evidence if item.extraction is not None)
+    reason = (
+        unresolved_reason(
+            event=event,
+            evidence=evidence,
+            resolved=resolved,
+            extraction_outcomes=extraction_outcomes,
+            request_guard=request_guard,
+        )
+        if unresolved
+        else None
+    )
+    return RepairDiagnostic(
+        event_id=event.id,
+        headline=str(getattr(event, "headline", None) or getattr(event, "title", "") or ""),
+        extraction_reused=extraction_reused,
+        extraction_reextracted=extraction_reextracted,
+        extraction_outcome=extraction_outcome,
+        model_id=model_id,
+        confidence=confidence,
+        initial=initial,
+        expanded=expanded,
+        raw_disease=raw.disease if raw is not None else None,
+        raw_country=raw.country if raw is not None else None,
+        raw_admin1=raw.admin1 if raw is not None else None,
+        validated_disease_id=resolved.disease_id,
+        validated_disease_text=resolved.disease_text,
+        validated_country_code=resolved.country_code,
+        validated_admin1=resolved.admin1,
+        result=result,
+        unresolved_reason=reason,
+        raw_disease_values=tuple(item.disease for item in raw_extractions),
+        raw_country_values=tuple(item.country for item in raw_extractions),
+        raw_admin1_values=tuple(item.admin1 for item in raw_extractions),
+    )
+
+
 def run_repair_ai(
     session: Session,
     repository: AiRepository,
@@ -206,6 +327,7 @@ def run_repair_ai(
     budget = RunBudget(Guards(max_requests=max_ai_requests, max_cost_usd=max_cost_usd))
     moment = now or datetime.now(UTC)
     proposals: list[RepairProposal] = []
+    diagnostics: list[RepairDiagnostic] = []
     existing_extraction_reused = reextracted = requests = expanded_retries = conflicts = 0
     ai_cost_usd = Decimal("0")
     country_resolved = admin1_resolved = disease_resolved = event_type_resolved = 0
@@ -223,6 +345,16 @@ def run_repair_ai(
         ).all()
         eligible_rows = [signal for signal, _ in rows if signal.public_health_relevant is not False]
         evidence_list: list[MetadataEvidence] = []
+        reused = False
+        reextracted_for_event = False
+        extraction_outcome = "reused"
+        model_id: str | None = None
+        confidence: float | None = None
+        initial = False
+        expanded = False
+        extraction_outcomes: list[str] = []
+        no_article_body = False
+        request_guard_hit = False
         for signal, _source_name in rows:
             if signal.public_health_relevant is False:
                 continue
@@ -231,12 +363,19 @@ def run_repair_ai(
             )
             if _metadata_can_be_reused(evidence, event, resolver):
                 existing_extraction_reused += 1
+                reused = True
+                model_id = signal.ai_model
+                existing = read_stored_extraction(signal.ai_extraction)
+                confidence = existing.confidence if existing is not None else None
             else:
                 extractable = _extractable_signal(signal)
                 if extractable is None:
+                    no_article_body = True
                     evidence_list.append(evidence)
                     continue
                 reextracted += 1
+                reextracted_for_event = True
+                initial = True
                 result = extract_signal(
                     extractable,
                     model,
@@ -247,6 +386,12 @@ def run_repair_ai(
                 )
                 requests += len(result.attempts)
                 expanded_retries += result.expanded_retries
+                extraction_outcome = result.outcome.value
+                extraction_outcomes.append(extraction_outcome)
+                request_guard_hit = request_guard_hit or result.outcome is ClimbOutcome.GUARD
+                model_id = result.attempts[-1].spec.model_id if result.attempts else None
+                confidence = result.extraction.confidence if result.extraction is not None else None
+                expanded = expanded or result.expanded_retries > 0
                 ai_cost_usd += sum((attempt.cost for attempt in result.attempts), Decimal("0"))
                 evidence = _apply_extraction(evidence, result)
                 if apply:
@@ -282,7 +427,27 @@ def run_repair_ai(
         # Do not reconcile an event from a partial linked-signal set after a
         # request guard trips; an unseen contradictory source must remain able
         # to veto the proposal on a later bounded run.
-        if budget.exhausted and len(evidence_list) < len(eligible_rows):
+        if request_guard_hit or budget.exhausted and len(evidence_list) < len(eligible_rows):
+            still_unresolved += 1
+            partial = resolve_repair_evidence(evidence_list, resolver)
+            diagnostics.append(
+                _diagnostic(
+                    event,
+                    evidence=evidence_list,
+                    resolved=partial,
+                    extraction_reused=reused,
+                    extraction_reextracted=reextracted_for_event,
+                    extraction_outcome=extraction_outcome,
+                    model_id=model_id,
+                    confidence=confidence,
+                    initial=initial,
+                    expanded=expanded,
+                    result="unresolved",
+                    extraction_outcomes=tuple(extraction_outcomes),
+                    unresolved=True,
+                    request_guard=True,
+                )
+            )
             break
 
         resolved = resolve_repair_evidence(evidence_list, resolver)
@@ -302,7 +467,35 @@ def run_repair_ai(
         event_type_resolved += int(patch.event_type is not None)
         final_country = event.country_code or patch.country_code
         final_disease = event.disease_id or patch.disease_id
-        still_unresolved += int(final_country is None or final_disease is None)
+        unresolved = final_country is None or final_disease is None
+        still_unresolved += int(unresolved)
+        if extraction_outcomes:
+            extraction_outcome = extraction_outcomes[-1]
+        elif not reused:
+            extraction_outcome = "not_run" if no_article_body else "unavailable"
+        diagnostics.append(
+            _diagnostic(
+                event,
+                evidence=evidence_list,
+                resolved=resolved,
+                extraction_reused=reused,
+                extraction_reextracted=reextracted_for_event,
+                extraction_outcome=extraction_outcome,
+                model_id=model_id,
+                confidence=confidence,
+                initial=initial,
+                expanded=expanded,
+                result=(
+                    "proposed"
+                    if patch.changed
+                    else "rejected"
+                    if extraction_outcome == ClimbOutcome.REJECTED.value
+                    else "unresolved"
+                ),
+                extraction_outcomes=tuple(extraction_outcomes),
+                unresolved=unresolved,
+            )
+        )
         if patch.changed:
             proposals.append(_proposal(event, patch, resolved))
             if apply:
@@ -336,6 +529,7 @@ def run_repair_ai(
         still_unresolved=still_unresolved,
         conflicts=conflicts,
         proposals=tuple(proposals),
+        diagnostics=tuple(diagnostics),
     )
 
 
@@ -386,6 +580,27 @@ def _print_proposal(proposal: RepairProposal) -> None:
     )
 
 
+def _print_diagnostic(diagnostic: RepairDiagnostic) -> None:
+    print(
+        "DIAGNOSTIC "
+        f"event_id={diagnostic.event_id} result={diagnostic.result} "
+        f"reason={diagnostic.unresolved_reason or 'none'} "
+        f"extraction={diagnostic.extraction_outcome} "
+        f"model_id={diagnostic.model_id or 'none'} "
+        f"confidence={diagnostic.confidence if diagnostic.confidence is not None else 'none'} "
+        f"initial={diagnostic.initial} expanded={diagnostic.expanded} "
+        f"raw_disease={diagnostic.raw_disease!r} raw_country={diagnostic.raw_country!r} "
+        f"raw_admin1={diagnostic.raw_admin1!r} "
+        f"raw_disease_values={diagnostic.raw_disease_values!r} "
+        f"raw_country_values={diagnostic.raw_country_values!r} "
+        f"raw_admin1_values={diagnostic.raw_admin1_values!r} "
+        f"validated_disease_id={diagnostic.validated_disease_id or 'none'} "
+        f"validated_disease_text={diagnostic.validated_disease_text!r} "
+        f"validated_country={diagnostic.validated_country_code or 'none'} "
+        f"validated_admin1={diagnostic.validated_admin1 or 'none'}"
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
     try:
@@ -410,6 +625,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     for proposal in result.proposals[:20]:
         _print_proposal(proposal)
+    if not arguments.apply:
+        for diagnostic in result.diagnostics[:20]:
+            _print_diagnostic(diagnostic)
     return 0
 
 

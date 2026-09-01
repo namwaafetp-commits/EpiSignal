@@ -705,7 +705,7 @@ class SqlAlchemyEventRepository:
         headline: str,
         summary: str,
         trajectory: str,
-        snapshot: dict[str, object],
+        snapshot: Sequence[str],
         key_driver: str,
         response: str,
         risk: str,
@@ -730,7 +730,7 @@ class SqlAlchemyEventRepository:
             # trajectory is the authoritative summary status contract.
             status=EventStatus.MONITORING,
             trajectory=trajectory,
-            snapshot=snapshot,
+            snapshot=list(snapshot),
             key_driver=key_driver,
             response=response,
             risk=risk,

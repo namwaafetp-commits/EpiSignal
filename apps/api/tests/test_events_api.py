@@ -218,12 +218,7 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
                 headline="Dengue outbreak in Chiang Mai",
                 summary="Ongoing dengue outbreak in Chiang Mai.",
                 trajectory="Increasing",
-                snapshot={
-                    "cases": "42 confirmed cases",
-                    "deaths": "2 deaths",
-                    "cfr": None,
-                    "geographic_extent": "Chiang Mai",
-                },
+                snapshot=("42 confirmed cases", "2 deaths", "Chiang Mai"),
                 key_driver="Ongoing local transmission.",
                 response="Case investigation is underway.",
                 risk="Risk remains regional.",
@@ -259,7 +254,11 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
     assert data["observations"][0]["deaths"] == 2
     assert len(data["summaries"]) == 1
     assert data["summaries"][0]["trajectory"] == "Increasing"
-    assert data["summaries"][0]["snapshot"]["cases"] == "42 confirmed cases"
+    assert data["summaries"][0]["snapshot"] == [
+        "42 confirmed cases",
+        "2 deaths",
+        "Chiang Mai",
+    ]
     # Publication datetime is always visible on sources.
     assert data["sources"][0]["published_at"] is not None
 

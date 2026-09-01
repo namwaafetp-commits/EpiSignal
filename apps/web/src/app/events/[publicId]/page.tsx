@@ -208,14 +208,14 @@ export default async function EventPage({
 function hasStructuredFlashBrief(
   summary: NonNullable<EventDetailResponse["summaries"]>[number],
 ): summary is typeof summary & {
-  snapshot: Record<string, unknown>;
+  snapshot: string[];
   key_driver: string;
   response: string;
   risk: string;
 } {
   return (
     summary.snapshot !== null &&
-    typeof summary.snapshot === "object" &&
+    Array.isArray(summary.snapshot) &&
     summary.key_driver !== null &&
     summary.response !== null &&
     summary.risk !== null
@@ -226,28 +226,18 @@ function StructuredFlashBrief({
   summary,
 }: {
   summary: NonNullable<EventDetailResponse["summaries"]>[number] & {
-    snapshot: Record<string, unknown>;
+    snapshot: string[];
     key_driver: string;
     response: string;
     risk: string;
   };
 }) {
-  const snapshot = summary.snapshot;
-  const deaths = snapshot.deaths ?? snapshot.cfr ?? "Not reported";
-  const deathsOrCfr =
-    snapshot.deaths !== undefined && snapshot.deaths !== null && snapshot.cfr
-      ? `${snapshot.deaths} / ${snapshot.cfr}`
-      : deaths;
-
   return (
     <article className="event-page__section" aria-labelledby="overview-heading">
       <h2 id="overview-heading">{summary.headline}</h2>
       <p className="event-page__muted">{summary.trajectory}</p>
       <h3>The Snapshot</h3>
-      <p>
-        {String(snapshot.cases ?? "Not reported")} | {String(deathsOrCfr)} |{" "}
-        {String(snapshot.geographic_extent ?? "Not reported")}
-      </p>
+      <p>{summary.snapshot.join(" | ")}</p>
       <h3>Key Driver</h3>
       <p>{summary.key_driver}</p>
       <h3>Response</h3>

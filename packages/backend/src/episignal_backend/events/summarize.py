@@ -50,7 +50,10 @@ SUMMARY_SYSTEM = (
     "trajectory from the grouped event.\n"
     "- The rendered brief uses these exact labels: The Snapshot:, Key Driver:, "
     "Response:, and Public/Global Risk:.\n"
-    "- Snapshot values are concise evidence-grounded strings or null.\n\n"
+    "- Choose 1 to 3 concise, evidence-grounded snapshot facts that are most\n"
+    "  decision-relevant for this event. Cases, deaths, and CFR are optional;\n"
+    "  never force a metric that is unsupported or less informative.\n"
+    "- If linked sources disagree, state the disagreement explicitly.\n\n"
     "The object must match this JSON Schema exactly:\n"
 )
 
@@ -65,26 +68,7 @@ class SummaryTrajectory(StrEnum):
     UNCLEAR = "Unclear"
 
 
-class SummarySnapshot(BaseModel):
-    """The evidence snapshot rendered in the flash brief."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    # Keep every contract key present even when evidence is absent. A missing
-    # key would make old and new payloads indistinguishable at the boundary;
-    # explicit null preserves the evidence distinction required by the brief.
-    cases: str | None
-    deaths: str | None
-    cfr: str | None
-    geographic_extent: str | None
-
-    @field_validator("cases", "deaths", "cfr", "geographic_extent")
-    @classmethod
-    def blank_is_null(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        collapsed = " ".join(value.split())
-        return collapsed or None
+SummarySnapshot = tuple[str, ...]
 
 
 class EventSummaryVerdict(BaseModel):
@@ -94,7 +78,7 @@ class EventSummaryVerdict(BaseModel):
 
     headline: str = Field(min_length=1)
     trajectory: SummaryTrajectory
-    snapshot: SummarySnapshot
+    snapshot: SummarySnapshot = Field(min_length=1, max_length=3)
     key_driver: str = Field(min_length=1)
     response: str = Field(min_length=1)
     risk: str = Field(min_length=1)
@@ -106,6 +90,14 @@ class EventSummaryVerdict(BaseModel):
         if not collapsed:
             raise ValueError("summary text must say something")
         return collapsed
+
+    @field_validator("snapshot")
+    @classmethod
+    def snapshot_facts_are_not_blank(cls, value: SummarySnapshot) -> SummarySnapshot:
+        facts = tuple(" ".join(fact.split()) for fact in value)
+        if any(not fact for fact in facts):
+            raise ValueError("snapshot facts must say something")
+        return facts
 
 
 class SummaryOutcome(StrEnum):
@@ -160,16 +152,10 @@ def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict:
 
 def render_event_flash_brief(verdict: EventSummaryVerdict) -> str:
     """Render the only public event-summary narrative format."""
-    snapshot = verdict.snapshot
-    deaths_or_cfr = snapshot.deaths or snapshot.cfr or "Not reported"
-    if snapshot.deaths is not None and snapshot.cfr is not None:
-        deaths_or_cfr = f"{snapshot.deaths} / {snapshot.cfr}"
     return "\n\n".join(
         (
             verdict.headline,
-            "The Snapshot:\n"
-            f"{snapshot.cases or 'Not reported'} | {deaths_or_cfr} | "
-            f"{snapshot.geographic_extent or 'Not reported'}",
+            "The Snapshot:\n" + " | ".join(verdict.snapshot),
             f"Key Driver:\n{verdict.key_driver}",
             f"Response:\n{verdict.response}",
             f"Public/Global Risk:\n{verdict.risk}",

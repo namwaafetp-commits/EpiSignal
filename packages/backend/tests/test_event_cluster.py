@@ -4,12 +4,47 @@ from uuid import uuid4
 import pytest
 from episignal_backend.db.types import CredibilityTier, LocationRole, Precision
 from episignal_backend.events.cluster import (
+    build_clusters,
     compatible,
     precision_weight,
     spatially_compatible,
     temporally_compatible,
 )
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching
+
+
+def _unknown_disease_signal(text: str, *, now: datetime) -> SignalForMatching:
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="US",
+    )
+    return SignalForMatching(
+        signal_id=uuid4(),
+        disease_text=text,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        published_at=now,
+        first_seen_at=now,
+        locations=(location,),
+    )
+
+
+def test_unknown_disease_text_groups_by_exact_normalized_text() -> None:
+    now = datetime.now(UTC)
+    first = _unknown_disease_signal("Meningococcal disease", now=now)
+    same = _unknown_disease_signal(" meningococcal   disease ", now=now)
+    different = _unknown_disease_signal("Lassa fever", now=now)
+
+    clusters, unclusterable = build_clusters([first, same, different])
+
+    assert len(unclusterable) == 0
+    assert {cluster.disease_identity for cluster in clusters} == {
+        "text:meningococcal disease",
+        "text:lassa fever",
+    }
+    assert sorted(len(cluster.signals) for cluster in clusters) == [1, 2]
 
 
 def test_precision_weights():

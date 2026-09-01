@@ -243,7 +243,7 @@ class EventSummary(IdentityMixin, Base):
     latest_development: Mapped[str | None] = mapped_column(Text)
     uncertainties: Mapped[list[str] | None] = mapped_column(JSONB)
     trajectory: Mapped[str | None] = mapped_column(Text)
-    snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    snapshot: Mapped[list[str] | dict[str, Any] | None] = mapped_column(JSONB)
     key_driver: Mapped[str | None] = mapped_column(Text)
     response: Mapped[str | None] = mapped_column(Text)
     risk: Mapped[str | None] = mapped_column(Text)

@@ -46,12 +46,7 @@ const detail = {
       headline: "Cholera activity increasing in Cacuaco",
       summary: "Health officials are monitoring a cholera outbreak.",
       trajectory: "Increasing",
-      snapshot: {
-        cases: "68 confirmed cases",
-        deaths: null,
-        cfr: null,
-        geographic_extent: "Cacuaco",
-      },
+      snapshot: ["68 confirmed cases", "Cacuaco"],
       key_driver: "Ongoing local transmission.",
       response: "Case investigation is underway.",
       risk: "Risk remains regional.",
@@ -95,9 +90,7 @@ describe("EventPage", () => {
     expect(
       screen.getByRole("heading", { name: "Public/Global Risk" }),
     ).toBeVisible();
-    expect(
-      screen.getByText(/68 confirmed cases \| Not reported \| Cacuaco/),
-    ).toBeVisible();
+    expect(screen.getByText(/68 confirmed cases \| Cacuaco/)).toBeVisible();
     expect(screen.getByText("Ongoing local transmission.")).toBeVisible();
     expect(screen.getByText("Case investigation is underway.")).toBeVisible();
   });

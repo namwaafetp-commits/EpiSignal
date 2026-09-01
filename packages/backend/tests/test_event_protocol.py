@@ -131,7 +131,7 @@ class InMemoryEventRepository:
         headline: str,
         summary: str,
         trajectory: str,
-        snapshot: dict[str, object],
+        snapshot: Sequence[str],
         key_driver: str,
         response: str,
         risk: str,

@@ -792,7 +792,7 @@ def test_store_summary_persists_structured_flash_brief_and_denormalized_text() -
         headline="Dengue Outbreak: Chiang Mai — Increasing",
         summary="Dengue Outbreak: Chiang Mai — Increasing",
         trajectory="Increasing",
-        snapshot={"cases": "68 confirmed cases"},
+        snapshot=["68 confirmed cases"],
         key_driver="Ongoing local transmission.",
         response="Case investigation is underway.",
         risk="Risk remains regional.",
@@ -804,7 +804,7 @@ def test_store_summary_persists_structured_flash_brief_and_denormalized_text() -
     assert version == 1
     assert isinstance(session.added[0], EventSummary)
     assert session.added[0].trajectory == "Increasing"
-    assert session.added[0].snapshot == {"cases": "68 confirmed cases"}
+    assert session.added[0].snapshot == ["68 confirmed cases"]
     assert session.added[0].key_driver == "Ongoing local transmission."
     update_statement = session.executed[-1]
     assert "status" not in {key.key for key in update_statement._values}
