@@ -1,10 +1,11 @@
-"""Stage 0, gate two: resolve syndicated copies to one primary.
+"""Stage 0 deduplication: resolve syndicated copies to one primary.
 
-The conservative direction is deliberate. Two outlets reporting the same
-outbreak independently are corroboration, which is the raw material of the
-evidence score, and merging them deletes that with no trace. Carrying a
-duplicate that should have been merged is visible and correctable, so a match
-requires agreement on both the title and the body.
+The normal scheduled pass runs before retrieval and therefore uses only
+canonical URL, normalized title, and near-exact title metadata. The standalone
+body-aware pass remains available after retrieval for callers that explicitly
+need content similarity. The conservative direction is deliberate: two
+outlets reporting the same outbreak independently are corroboration, which is
+the raw material of the evidence score.
 
 This module imports neither SQLAlchemy nor httpx.
 """
@@ -16,6 +17,7 @@ from datetime import timedelta
 from rapidfuzz import fuzz
 
 from episignal_backend.ingestion.documents import ComparableSignal
+from episignal_backend.ingestion.normalize_title import normalize_title
 from episignal_backend.ingestion.protocol import DedupeRepository
 from episignal_backend.ingestion.similarity import body_similarity, title_similarity
 
@@ -91,8 +93,22 @@ def near_exact_title_match(
 
 
 def matches(
-    signal: ComparableSignal, candidate: ComparableSignal, thresholds: DedupeThresholds
+    signal: ComparableSignal,
+    candidate: ComparableSignal,
+    thresholds: DedupeThresholds,
+    *,
+    metadata_only: bool = False,
 ) -> bool:
+    if metadata_only:
+        if signal.canonical_url == candidate.canonical_url:
+            return True
+        if normalize_title(signal.title) == normalize_title(candidate.title):
+            return True
+        gap = abs(signal.first_seen_at - candidate.first_seen_at)
+        return (
+            gap <= timedelta(hours=thresholds.near_exact_window_hours)
+            and thresholds.near_exact_title <= fuzz.ratio(signal.title, candidate.title) < 100.0
+        )
     if candidate.content_hash == signal.content_hash:
         return True
     if near_exact_title_match(signal, candidate, thresholds):
@@ -111,6 +127,7 @@ def run_dedupe(
     thresholds: DedupeThresholds | None = None,
     window_hours: int = DEFAULT_WINDOW_HOURS,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    metadata_only: bool = False,
 ) -> DedupeResult:
     limits = thresholds or DedupeThresholds()
     pending = repository.pending(limit=batch_size)
@@ -125,7 +142,7 @@ def run_dedupe(
             for candidate in repository.candidates(signal, window_hours=window_hours):
                 if candidate.id == signal.id:
                     continue
-                if not matches(signal, candidate, limits):
+                if not matches(signal, candidate, limits, metadata_only=metadata_only):
                     continue
                 if primary is None or precedes(candidate, primary):
                     primary = candidate

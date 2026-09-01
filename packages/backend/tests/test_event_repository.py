@@ -736,8 +736,7 @@ def test_apply_scores_executes_update_on_event() -> None:
     assert "verification_status" in stmt_str
 
 
-def test_store_summary_propagates_verdict_status_to_event() -> None:
-    from episignal_backend.db.types import EventStatus
+def test_store_summary_persists_structured_flash_brief_and_denormalized_text() -> None:
     from episignal_backend.models import EventSummary
 
     event_id = uuid4()
@@ -746,11 +745,13 @@ def test_store_summary_propagates_verdict_status_to_event() -> None:
 
     version = repo.store_summary(
         event_id=event_id,
-        headline="Dengue outbreak continues",
-        summary="Officials report an ongoing outbreak.",
-        status=EventStatus.ONGOING.value,
-        latest_development="Cases increased.",
-        uncertainties=[],
+        headline="Dengue Outbreak: Chiang Mai — Increasing",
+        summary="Dengue Outbreak: Chiang Mai — Increasing",
+        trajectory="Increasing",
+        snapshot={"cases": "68 confirmed cases"},
+        key_driver="Ongoing local transmission.",
+        response="Case investigation is underway.",
+        risk="Risk remains regional.",
         model_id="fake-summary-model",
         source_signal_ids=[],
         counts=None,
@@ -758,19 +759,14 @@ def test_store_summary_propagates_verdict_status_to_event() -> None:
 
     assert version == 1
     assert isinstance(session.added[0], EventSummary)
-    assert session.added[0].status is EventStatus.ONGOING
+    assert session.added[0].trajectory == "Increasing"
+    assert session.added[0].snapshot == {"cases": "68 confirmed cases"}
+    assert session.added[0].key_driver == "Ongoing local transmission."
     update_statement = session.executed[-1]
-    status_values = {
-        key.key: value.value
-        for key, value in update_statement._values.items()
-        if key.key == "status"
-    }
-    assert status_values == {"status": EventStatus.ONGOING}
+    assert "status" not in {key.key for key in update_statement._values}
 
 
 def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
-    from episignal_backend.db.types import EventStatus
-
     event_id = uuid4()
     signal_id = uuid4()
     session = FakeSession([FakeResult(None), FakeResult(1)])
@@ -778,11 +774,13 @@ def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
 
     repo.store_summary(
         event_id=event_id,
-        headline="Dengue outbreak continues",
-        summary="Officials report an ongoing outbreak.",
-        status=EventStatus.ONGOING.value,
-        latest_development="Cases increased.",
-        uncertainties=[],
+        headline="Dengue Outbreak: Chiang Mai — Increasing",
+        summary="Dengue Outbreak: Chiang Mai — Increasing",
+        trajectory="Increasing",
+        snapshot={"cases": "68 confirmed cases"},
+        key_driver="Ongoing local transmission.",
+        response="Case investigation is underway.",
+        risk="Risk remains regional.",
         model_id="fake-summary-model",
         source_signal_ids=[signal_id],
         counts=None,

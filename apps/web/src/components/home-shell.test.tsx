@@ -160,9 +160,16 @@ const detail = {
       version: 1,
       headline: EVENTS[0].headline,
       summary: EVENTS[0].summary,
-      status: "ongoing",
-      latest_development: "Two additional districts reported cases.",
-      uncertainties: null,
+      trajectory: "Increasing",
+      snapshot: {
+        cases: "68 confirmed cases",
+        deaths: null,
+        cfr: null,
+        geographic_extent: "Cacuaco",
+      },
+      key_driver: "Ongoing local transmission.",
+      response: "Case investigation is underway.",
+      risk: "Risk remains regional.",
       model_id: "test-model",
       created_at: "2026-08-30T13:00:00Z",
     },
@@ -212,13 +219,11 @@ describe("HomeShell", () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole("dialog", { name: /event details/i })).getByText(
-        "Latest development",
+        "Public/global risk",
       ),
     ).toBeInTheDocument();
     await waitFor(() =>
-      expect(
-        screen.getByText("Two additional districts reported cases."),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("Risk remains regional.")).toBeInTheDocument(),
     );
     const dialog = screen.getByRole("dialog", { name: /event details/i });
     expect(dialog.querySelector(".event-detail-panel__summary")).toHaveClass(

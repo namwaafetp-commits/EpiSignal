@@ -22,9 +22,9 @@ def test_daily_runtime_is_lean_mvp_chain() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
         StageName.DISCOVER,
+        StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
-        StageName.DEDUPE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,

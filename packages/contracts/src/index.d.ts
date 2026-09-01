@@ -516,15 +516,22 @@ export interface components {
             created_at: string;
             /** Headline */
             headline: string;
-            /** Latest Development */
-            latest_development: string | null;
+            /** Key Driver */
+            key_driver: string | null;
             /** Model Id */
             model_id: string;
-            status: components["schemas"]["EventStatus"];
+            /** Response */
+            response: string | null;
+            /** Risk */
+            risk: string | null;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            } | null;
             /** Summary */
             summary: string;
-            /** Uncertainties */
-            uncertainties: string[] | null;
+            /** Trajectory */
+            trajectory: string;
             /** Version */
             version: number;
         };

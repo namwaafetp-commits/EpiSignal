@@ -5,9 +5,9 @@ from episignal_backend.schedule.documents import StageName
 DAILY_CHAIN: tuple[StageName, ...] = (
     StageName.INGEST_WHO,
     StageName.DISCOVER,
+    StageName.DEDUPE,
     StageName.CLASSIFY,
     StageName.RETRIEVE,
-    StageName.DEDUPE,
     StageName.EXTRACT,
     StageName.MATCH,
     StageName.SUMMARIZE,

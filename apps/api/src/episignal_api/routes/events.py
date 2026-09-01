@@ -111,9 +111,11 @@ class EventSummaryResponse(BaseModel):
     version: int
     headline: str
     summary: str
-    status: EventStatus
-    latest_development: str | None
-    uncertainties: list[str] | None
+    trajectory: str
+    snapshot: dict[str, object] | None
+    key_driver: str | None
+    response: str | None
+    risk: str | None
     model_id: str
     created_at: datetime
 

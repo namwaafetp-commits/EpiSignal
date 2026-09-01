@@ -209,7 +209,11 @@ class SqlAlchemyAiRepository:
             select(Signal)
             .where(
                 Signal.processing_status.in_(
-                    (ProcessingStatus.NORMALIZED, ProcessingStatus.CLASSIFIED)
+                    (
+                        ProcessingStatus.FETCHED,
+                        ProcessingStatus.NORMALIZED,
+                        ProcessingStatus.CLASSIFIED,
+                    )
                 ),
                 Signal.public_health_relevant.is_(True),
                 Signal.raw_text.is_not(None),

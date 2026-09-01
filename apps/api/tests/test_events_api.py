@@ -217,9 +217,16 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
                 version=1,
                 headline="Dengue outbreak in Chiang Mai",
                 summary="Ongoing dengue outbreak in Chiang Mai.",
-                status=EventStatus.ONGOING.value,
-                latest_development="Case count rose to 68.",
-                uncertainties=["Reporting may lag."],
+                trajectory="Increasing",
+                snapshot={
+                    "cases": "42 confirmed cases",
+                    "deaths": "2 deaths",
+                    "cfr": None,
+                    "geographic_extent": "Chiang Mai",
+                },
+                key_driver="Ongoing local transmission.",
+                response="Case investigation is underway.",
+                risk="Risk remains regional.",
                 model_id="deepseek/deepseek-v4-flash-0731",
                 created_at=NOW,
             ),
@@ -251,7 +258,8 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
     assert data["observations"][0]["confirmed_cases"] == 42
     assert data["observations"][0]["deaths"] == 2
     assert len(data["summaries"]) == 1
-    assert data["summaries"][0]["latest_development"] == "Case count rose to 68."
+    assert data["summaries"][0]["trajectory"] == "Increasing"
+    assert data["summaries"][0]["snapshot"]["cases"] == "42 confirmed cases"
     # Publication datetime is always visible on sources.
     assert data["sources"][0]["published_at"] is not None
 

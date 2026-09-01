@@ -30,7 +30,7 @@ from episignal_backend.events.summarize import (
     SummaryOutcome,
     SummaryResult,
     configure_summary,
-    pick_representative_sources,
+    render_event_flash_brief,
     run_summary,
     should_resummarize,
     unique_summary_candidates,
@@ -170,6 +170,7 @@ def _dedupe() -> Mapping[str, int]:
             ),
             window_hours=settings.stage0_candidate_window_hours,
             batch_size=settings.stage0_batch_size,
+            metadata_only=True,
         )
     return {
         "examined": result.examined,
@@ -314,10 +315,7 @@ def _summarize() -> Mapping[str, int]:
                 skipped += 1
                 continue
 
-            sources = pick_representative_sources(
-                event.sources,
-                max_sources=settings.summary_max_sources,
-            )
+            sources = event.sources
             pending.append((event, sources))
 
         if pending and wiring.model is not None and wiring.spec is not None:
@@ -352,10 +350,12 @@ def _summarize() -> Mapping[str, int]:
                         event_repository.store_summary(
                             event_id=event.event_id,
                             headline=result.verdict.headline,
-                            summary=result.verdict.summary,
-                            status=result.verdict.status.value,
-                            latest_development=result.verdict.latest_development,
-                            uncertainties=list(result.verdict.uncertainties),
+                            summary=render_event_flash_brief(result.verdict),
+                            trajectory=result.verdict.trajectory.value,
+                            snapshot=result.verdict.snapshot.model_dump(mode="json"),
+                            key_driver=result.verdict.key_driver,
+                            response=result.verdict.response,
+                            risk=result.verdict.risk,
                             model_id=spec.model_id,
                             source_signal_ids=[source.signal_id for source in sources],
                             counts=event.latest_observation,
@@ -384,9 +384,9 @@ def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunn
     return {
         StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector()),
         StageName.DISCOVER: lambda: _discover(window),
+        StageName.DEDUPE: _dedupe,
         StageName.CLASSIFY: _classify,
         StageName.RETRIEVE: _retrieve,
-        StageName.DEDUPE: _dedupe,
         StageName.EXTRACT: _extract,
         StageName.MATCH: _match,
         StageName.SUMMARIZE: _summarize,

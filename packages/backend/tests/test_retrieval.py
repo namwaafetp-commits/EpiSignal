@@ -181,6 +181,17 @@ def test_a_relevant_model_decision_overrides_the_legacy_keyword_fallback() -> No
     assert connector.retrieved == 1
 
 
+def test_an_explicitly_irrelevant_model_decision_always_stops_before_fetch() -> None:
+    classified = MEASLES_STORY.model_copy(update={"public_health_relevant": False})
+    repository = FakeRetrievalRepository(waiting=(classified,), rules=(OUTBREAK,))
+    connector = CountingConnector()
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.filtered == 1
+    assert connector.retrieved == 0
+
+
 def test_an_unfetchable_page_records_a_failed_attempt() -> None:
     repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,))
     connector = CountingConnector(failing=True)

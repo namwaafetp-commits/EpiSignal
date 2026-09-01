@@ -16,6 +16,7 @@ export default async function EventPage({
 
   const headline = detail.headline ?? detail.public_id;
   const latest = detail.observations[detail.observations.length - 1];
+  const brief = detail.summaries[0];
 
   return (
     <div className="app-shell event-page-shell">
@@ -55,31 +56,17 @@ export default async function EventPage({
           aria-labelledby="overview-heading"
         >
           {/* What happened */}
-          {detail.summary && (
+          {brief ? (
             <article className="event-page__section">
-              <h2 id="overview-heading">Overview</h2>
-              <p>{detail.summary}</p>
-              {detail.summaries[0]?.latest_development && (
-                <section
-                  className="event-page__latest"
-                  aria-labelledby="latest-development-heading"
-                >
-                  <h3 id="latest-development-heading">Latest development</h3>
-                  <p>{detail.summaries[0].latest_development}</p>
-                </section>
-              )}
-              {detail.summaries[0]?.uncertainties?.length ? (
-                <div className="event-page__uncertainties">
-                  <h3>Uncertainties / conflicts</h3>
-                  <ul>
-                    {detail.summaries[0].uncertainties.map((u: string) => (
-                      <li key={u}>{u}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+              <h2 id="overview-heading">Event brief</h2>
+              <p>{brief.summary}</p>
             </article>
-          )}
+          ) : detail.summary ? (
+            <article className="event-page__section">
+              <h2 id="overview-heading">Event brief</h2>
+              <p>{detail.summary}</p>
+            </article>
+          ) : null}
 
           {/* How many cases / deaths — latest known counts */}
           <article className="event-page__section">

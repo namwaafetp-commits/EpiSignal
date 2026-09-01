@@ -223,6 +223,7 @@ def test_only_relevant_classified_signals_are_extractable() -> None:
         "WHERE"
     )[1]
     assert ProcessingStatus.NORMALIZED.value in where_part
+    assert ProcessingStatus.FETCHED.value in where_part
     assert "public_health_relevant IS true" in where_part
 
 

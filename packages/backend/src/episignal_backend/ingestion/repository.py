@@ -90,9 +90,9 @@ def build_comparable(signal: Signal) -> ComparableSignal:
         id=signal.id,
         canonical_url=signal.canonical_url or signal.url,
         title=signal.title,
-        # Callers only ever select rows where this is not null; the assertion
-        # documents that rather than silently substituting an empty string.
-        raw_text=signal.raw_text or "",
+        # Pre-fetch dedupe carries an empty body; body-aware passes select only
+        # rows with content before asking for body similarity.
+        raw_text=signal.raw_text or signal.title,
         content_hash=signal.content_hash,
         first_seen_at=signal.first_seen_at,
         published_at=signal.published_at,
@@ -218,7 +218,11 @@ class SqlAlchemyDiscoveryRepository:
         page already failed. These have never been asked for.
         """
         return self._retrievals(
-            (ProcessingStatus.FETCHED, ProcessingStatus.CLASSIFIED),
+            (
+                ProcessingStatus.FETCHED,
+                ProcessingStatus.NORMALIZED,
+                ProcessingStatus.CLASSIFIED,
+            ),
             max_attempts=max_attempts,
             limit=limit,
         )
@@ -429,10 +433,12 @@ class SqlAlchemyDiscoveryRepository:
 
 
 class SqlAlchemyDedupeRepository:
-    """Storage for Stage 0's second gate.
+    """Storage for the pre-fetch duplicate gate.
 
     Deliberately unable to discover or fetch: this pass reads stored signals and
-    writes their status, and nothing else.
+    writes their status. Bodyless discovery rows are represented with a title
+    placeholder at the pure dedupe seam; the scheduled pass uses metadata-only
+    matching.
     """
 
     def __init__(self, session: Session) -> None:
@@ -443,10 +449,6 @@ class SqlAlchemyDedupeRepository:
             select(Signal)
             .where(
                 Signal.processing_status == ProcessingStatus.FETCHED,
-                # Stubs stay in the retry path: a document with no body cannot
-                # be compared on one, and comparing on the title alone is the
-                # merge this design refuses.
-                Signal.raw_text.is_not(None),
             )
             .order_by(Signal.first_seen_at)
             .limit(limit)
@@ -461,7 +463,9 @@ class SqlAlchemyDedupeRepository:
             select(Signal)
             .where(
                 Signal.id != signal.id,
-                Signal.raw_text.is_not(None),
+                Signal.processing_status.in_(
+                    (ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED)
+                ),
                 or_(
                     # An identical hash is compared regardless of age, so a late
                     # republication of unchanged text is still caught.

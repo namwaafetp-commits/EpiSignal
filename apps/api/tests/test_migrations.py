@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260830_0019"]
+    assert scripts.get_heads() == ["20260901_0020"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -309,6 +309,17 @@ def test_the_summary_revision_adds_event_summary_fields_and_history() -> None:
     assert "last_summarized_at" in sql
     assert "article_count" in sql
     assert "'event_match_judge'" in sql
+
+
+def test_the_flash_brief_revision_adds_structured_summary_fields() -> None:
+    sql = render_offline("upgrade", "20260830_0019:20260901_0020")
+
+    assert "trajectory" in sql
+    assert "snapshot" in sql
+    assert "key_driver" in sql
+    assert "response" in sql
+    assert "risk" in sql
+    assert "event_summary_trajectory_values" in sql
 
 
 def test_the_summary_downgrade_refuses_to_erase_judge_cost_rows() -> None:

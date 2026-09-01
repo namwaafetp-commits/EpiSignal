@@ -7,9 +7,9 @@ def test_daily_chain_contains_only_the_lean_mvp_runtime_stages() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
         StageName.DISCOVER,
+        StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
-        StageName.DEDUPE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,
@@ -20,10 +20,9 @@ def test_summarization_runs_after_matching() -> None:
     assert DAILY_CHAIN.index(StageName.SUMMARIZE) > DAILY_CHAIN.index(StageName.MATCH)
 
 
-def test_retrieval_precedes_dedupe() -> None:
-    # Dedupe compares bodies and is the only writer of `normalized`. A chain
-    # that dedupes before retrieval strands every signal at `fetched`.
-    assert DAILY_CHAIN.index(StageName.RETRIEVE) < DAILY_CHAIN.index(StageName.DEDUPE)
+def test_dedup_precedes_classification_and_retrieval() -> None:
+    assert DAILY_CHAIN.index(StageName.DEDUPE) < DAILY_CHAIN.index(StageName.CLASSIFY)
+    assert DAILY_CHAIN.index(StageName.CLASSIFY) < DAILY_CHAIN.index(StageName.RETRIEVE)
 
 
 def test_the_runtime_does_not_schedule_retired_stages() -> None:
@@ -40,9 +39,9 @@ def test_every_stage_appears_exactly_once() -> None:
     assert set(DAILY_CHAIN) == {
         StageName.INGEST_WHO,
         StageName.DISCOVER,
+        StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
-        StageName.DEDUPE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,

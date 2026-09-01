@@ -61,7 +61,9 @@ def run_retrieval(
 
     for item in waiting:
         decision = classify_title(item.article.title, rules)
-        if item.public_health_relevant is not True and not decision.passed:
+        if item.public_health_relevant is False or (
+            item.public_health_relevant is not True and not decision.passed
+        ):
             try:
                 repository.record_filtered(item.signal_id)
                 repository.commit()

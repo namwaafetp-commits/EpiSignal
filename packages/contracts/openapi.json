@@ -924,7 +924,7 @@
             "title": "Headline",
             "type": "string"
           },
-          "latest_development": {
+          "key_driver": {
             "anyOf": [
               {
                 "type": "string"
@@ -933,32 +933,53 @@
                 "type": "null"
               }
             ],
-            "title": "Latest Development"
+            "title": "Key Driver"
           },
           "model_id": {
             "title": "Model Id",
             "type": "string"
           },
-          "status": {
-            "$ref": "#/components/schemas/EventStatus"
-          },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          },
-          "uncertainties": {
+          "response": {
             "anyOf": [
               {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Uncertainties"
+            "title": "Response"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trajectory": {
+            "title": "Trajectory",
+            "type": "string"
           },
           "version": {
             "title": "Version",
@@ -969,9 +990,11 @@
           "version",
           "headline",
           "summary",
-          "status",
-          "latest_development",
-          "uncertainties",
+          "trajectory",
+          "snapshot",
+          "key_driver",
+          "response",
+          "risk",
           "model_id",
           "created_at"
         ],

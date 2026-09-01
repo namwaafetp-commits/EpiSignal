@@ -262,6 +262,10 @@ class EventForSummary(BaseModel):
     # observation today. Material-change detection compares the two.
     previous_counts: dict[str, object] | None = None
     latest_observation: dict[str, object] | None = None
+    # Every linked observation is supplied to the event-level summarizer so it
+    # can preserve history, source disagreement, and confirmed/probable/
+    # suspected distinctions instead of treating one article as the event.
+    observations: tuple[dict[str, object], ...] = ()
     unsummarized_articles: int = 0
     last_summarized_at: datetime | None = None
     sources: tuple[SummarySource, ...] = ()

@@ -41,15 +41,20 @@ class FakeSummaryModel:
 
     def complete(self, request) -> ChatResponse:
         self.calls += 1
-        status = "monitoring" if self.calls == 1 else "ongoing"
         return ChatResponse(
             content=json.dumps(
                 {
-                    "headline": "Dengue reports in Chiang Mai",
-                    "summary": f"The event is {status}.",
-                    "status": status,
-                    "latest_development": "The reported case count changed.",
-                    "uncertainties": [],
+                    "headline": "Dengue Outbreak: Chiang Mai — Increasing",
+                    "trajectory": "Increasing",
+                    "snapshot": {
+                        "cases": "The reported case count changed.",
+                        "deaths": None,
+                        "cfr": None,
+                        "geographic_extent": "Chiang Mai",
+                    },
+                    "key_driver": "Not yet established.",
+                    "response": "No specific response reported.",
+                    "risk": "Insufficient evidence for a broader risk assessment.",
                 }
             ),
             latency_ms=5,

@@ -115,9 +115,11 @@ class EventSummaryItem:
     version: int
     headline: str
     summary: str
-    status: str
-    latest_development: str | None
-    uncertainties: list[str] | None
+    trajectory: str
+    snapshot: dict[str, object] | None
+    key_driver: str | None
+    response: str | None
+    risk: str | None
     model_id: str
     created_at: datetime
 
@@ -443,9 +445,11 @@ def query_event_detail(
             version=summary.version,
             headline=summary.headline,
             summary=summary.summary,
-            status=summary.status.value,
-            latest_development=summary.latest_development,
-            uncertainties=summary.uncertainties,
+            trajectory=summary.trajectory or "Unclear",
+            snapshot=summary.snapshot,
+            key_driver=summary.key_driver,
+            response=summary.response,
+            risk=summary.risk,
             model_id=summary.model_id,
             created_at=summary.created_at,
         )

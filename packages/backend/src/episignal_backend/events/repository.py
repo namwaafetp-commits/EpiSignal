@@ -509,9 +509,6 @@ class SqlAlchemyEventRepository:
         summary is older than the max age. Material-change detection then makes
         the final per-event decision.
         """
-        now = datetime.now(UTC)
-        age_cutoff = now - timedelta(hours=max_age_hours)
-
         event_ids = (
             self._session.execute(
                 select(Event.id)
@@ -520,7 +517,6 @@ class SqlAlchemyEventRepository:
                     or_(
                         Event.last_summarized_at.is_(None),
                         Event.last_summarized_at < Event.last_updated_at,
-                        Event.last_summarized_at < age_cutoff,
                     )
                 )
                 # EventSignal is a one-to-many join. Group before limiting so
@@ -566,7 +562,36 @@ class SqlAlchemyEventRepository:
             )
             .limit(1)
         ).scalar_one_or_none()
-        latest_observation = self._observation_counts(observation)
+        latest_observation = self._observation_counts(observation, event=event)
+
+        observation_rows = self._session.execute(
+            select(
+                EventObservation,
+                Signal.published_at,
+                Source.name,
+                Source.is_official,
+            )
+            .join(Signal, Signal.id == EventObservation.signal_id)
+            .join(Source, Source.id == Signal.source_id)
+            .where(EventObservation.event_id == event_id)
+            .order_by(
+                func.coalesce(EventObservation.reported_at, EventObservation.created_at),
+                EventObservation.created_at,
+            )
+        ).all()
+        observations = tuple(
+            self._observation_counts(
+                row,
+                event=event,
+                signal_id=signal_id,
+                published_at=published_at,
+                source_name=source_name,
+                source_is_official=is_official,
+            )
+            or {}
+            for row, published_at, source_name, is_official in observation_rows
+            for signal_id in (row.signal_id,)
+        )
 
         # Attached signals, newest first. Signals seen after the last summary
         # are unsummarized; a never-summarized event counts every member.
@@ -623,6 +648,7 @@ class SqlAlchemyEventRepository:
             summary=summary,
             previous_counts=previous_counts,
             latest_observation=latest_observation,
+            observations=observations,
             unsummarized_articles=unsummarized,
             last_summarized_at=event.last_summarized_at,
             sources=tuple(sources),
@@ -634,9 +660,11 @@ class SqlAlchemyEventRepository:
         event_id: UUID,
         headline: str,
         summary: str,
-        status: str,
-        latest_development: str,
-        uncertainties: list[str],
+        trajectory: str,
+        snapshot: dict[str, object],
+        key_driver: str,
+        response: str,
+        risk: str,
         model_id: str,
         source_signal_ids: list[UUID],
         counts: dict[str, object] | None,
@@ -648,16 +676,20 @@ class SqlAlchemyEventRepository:
         ).scalar_one_or_none()
         version = (version_row or 0) + 1
 
-        summary_status = EventStatus(status)
         row = EventSummary(
             id=uuid4(),
             event_id=event_id,
             version=version,
             headline=headline,
             summary=summary,
-            status=summary_status,
-            latest_development=latest_development,
-            uncertainties=uncertainties,
+            # Legacy status fields remain populated for the old table shape;
+            # trajectory is the authoritative summary status contract.
+            status=EventStatus.MONITORING,
+            trajectory=trajectory,
+            snapshot=snapshot,
+            key_driver=key_driver,
+            response=response,
+            risk=risk,
             model_id=model_id,
             # JSONB cannot encode Python UUID objects; keep provenance IDs as
             # strings in the versioned summary payload.
@@ -675,7 +707,6 @@ class SqlAlchemyEventRepository:
             .values(
                 headline=headline,
                 summary=summary,
-                status=summary_status,
                 article_count=article_count,
                 last_summarized_at=moment,
             )
@@ -683,19 +714,42 @@ class SqlAlchemyEventRepository:
         return version
 
     @staticmethod
-    def _observation_counts(observation: EventObservation | None) -> dict[str, object] | None:
+    def _observation_counts(
+        observation: EventObservation | None,
+        *,
+        event: Event | None = None,
+        signal_id: UUID | None = None,
+        published_at: datetime | None = None,
+        source_name: str | None = None,
+        source_is_official: bool | None = None,
+    ) -> dict[str, object] | None:
         if observation is None:
             return None
-        return {
+        payload: dict[str, object] = {
+            "signal_id": str(signal_id) if signal_id is not None else None,
+            "source_name": source_name,
+            "source_is_official": source_is_official,
+            "published_at": published_at.isoformat() if published_at is not None else None,
             "data_as_of": observation.observation_date.isoformat()
             if observation.observation_date is not None
             else None,
+            "suspected_cases": observation.suspected_cases,
+            "probable_cases": observation.probable_cases,
             "confirmed_cases": observation.confirmed_cases,
             "total_cases": observation.total_cases,
             "deaths": observation.deaths,
             "new_cases": observation.new_cases,
             "new_deaths": observation.new_deaths,
+            "cfr": observation.cfr,
+            "affected_admin_areas": observation.affected_admin_areas,
+            "notes": observation.notes,
+            "delta": observation.delta,
         }
+        if event is not None:
+            payload["geographic_extent"] = (
+                ", ".join(value for value in (event.admin1, event.country_code) if value) or None
+            )
+        return payload
 
     def commit(self) -> None:
         self._session.commit()

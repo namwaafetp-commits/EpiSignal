@@ -1,18 +1,15 @@
-"""The event summarizer: material-change detection, source picking, and the pass.
+"""The event summarizer: the EpiSignal flash brief and its change gate."""
 
-A summary is regenerated only when the counts the last summary was written
-against no longer match the latest observation, when enough new articles
-arrived, or when the summary is simply too old. A duplicate report that adds no
-new numbers must not trigger a re-summary.
-"""
-
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.summarize import (
     SummaryOutcome,
+    SummaryTrajectory,
     pick_representative_sources,
+    render_event_flash_brief,
     run_summary,
     should_resummarize,
     unique_summary_candidates,
@@ -24,12 +21,14 @@ class FakeSummaryModel:
         self._content = content
         self._refuse = refuse
         self.calls = 0
+        self.requests = []
 
     def complete(self, request) -> object:
         from episignal_backend.ai.documents import ChatResponse
         from episignal_backend.ai.protocol import ModelUnavailable
 
         self.calls += 1
+        self.requests.append(request)
         if self._refuse:
             raise ModelUnavailable("refused")
         return ChatResponse(content=self._content or "{}", latency_ms=5)
@@ -82,33 +81,33 @@ def test_a_duplicate_report_with_no_new_counts_is_not_due() -> None:
     )
 
 
-def test_enough_new_articles_trigger_a_resummary() -> None:
-    assert should_resummarize(
-        last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
-        latest_observation=_counts(68, 3),
-        previous_counts=_counts(68, 3),
-        unsummarized_articles=3,
-        new_article_count=3,
-    )
-
-
-def test_few_new_articles_with_no_count_change_do_not_trigger() -> None:
+def test_a_new_source_with_no_material_change_does_not_trigger_a_resummary() -> None:
     assert not should_resummarize(
         last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
         latest_observation=_counts(68, 3),
         previous_counts=_counts(68, 3),
-        unsummarized_articles=2,
-        new_article_count=3,
+        unsummarized_articles=99,
+        new_article_count=1,
     )
 
 
-def test_a_summary_older_than_the_max_age_is_refreshed() -> None:
-    assert should_resummarize(
+def test_an_old_summary_with_no_material_change_does_not_trigger_a_resummary() -> None:
+    assert not should_resummarize(
         last_summarized_at=datetime.now(UTC) - timedelta(hours=25),
         latest_observation=_counts(68, 3),
         previous_counts=_counts(68, 3),
         unsummarized_articles=0,
         max_age_hours=24,
+    )
+
+
+def test_a_new_geographic_extent_is_a_material_change() -> None:
+    previous = _counts(68, 3)
+    latest = previous | {"geographic_extent": "Chiang Mai and Phuket"}
+    assert should_resummarize(
+        last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
+        latest_observation=latest,
+        previous_counts=previous,
     )
 
 
@@ -191,11 +190,17 @@ def test_picking_preserves_the_newest_useful_report_after_official_sources() -> 
 
 
 _SUMMARY_JSON = """{
-  "headline": "Dengue outbreak reported in Chiang Mai",
-  "summary": "Health authorities reported an ongoing dengue outbreak in Chiang Mai.",
-  "status": "ongoing",
-  "latest_development": "Case count rose to 68.",
-  "uncertainties": ["Reporting may lag behind the latest case count."]
+  "headline": "Dengue Outbreak: Chiang Mai — Increasing",
+  "trajectory": "Increasing",
+  "snapshot": {
+    "cases": "68 total cases",
+    "deaths": "3 deaths",
+    "cfr": null,
+    "geographic_extent": "Chiang Mai"
+  },
+  "key_driver": "Ongoing local transmission reported by health authorities.",
+  "response": "Case investigation and vaccination activities are underway.",
+  "risk": "Risk remains regional because transmission is reported only in Chiang Mai."
 }"""
 
 
@@ -208,6 +213,10 @@ def _summary_input():
         disease="dengue",
         location="Chiang Mai",
         latest_observation=_counts(68, 3),
+        observations=(
+            {"source_name": "official", "confirmed_cases": 42},
+            {"source_name": "local", "confirmed_cases": 68},
+        ),
         sources=(
             SummarySource(
                 signal_id=uuid4(),
@@ -225,9 +234,40 @@ def test_the_summarizer_accepts_a_valid_verdict() -> None:
 
     assert result.outcome is SummaryOutcome.ACCEPTED
     assert result.verdict is not None
-    assert result.verdict.headline == "Dengue outbreak reported in Chiang Mai"
-    assert result.verdict.status.value == "ongoing"
+    assert result.verdict.headline == "Dengue Outbreak: Chiang Mai — Increasing"
+    assert result.verdict.trajectory is SummaryTrajectory.INCREASING
+    assert result.verdict.snapshot.cases == "68 total cases"
+    assert result.verdict.risk.startswith("Risk remains regional")
+    assert render_event_flash_brief(result.verdict) == (
+        "Dengue Outbreak: Chiang Mai — Increasing\n\n"
+        "The Snapshot:\n"
+        "68 total cases | 3 deaths | Chiang Mai\n\n"
+        "Key Driver:\n"
+        "Ongoing local transmission reported by health authorities.\n\n"
+        "Response:\n"
+        "Case investigation and vaccination activities are underway.\n\n"
+        "Public/Global Risk:\n"
+        "Risk remains regional because transmission is reported only in Chiang Mai."
+    )
     assert model.calls == 1
+
+
+def test_the_summary_prompt_requires_the_epi_signal_flash_brief() -> None:
+    model = FakeSummaryModel(_SUMMARY_JSON)
+    run_summary(model, _summary_spec(), event=_summary_input(), sources=(_source("x"),))
+
+    request = model.requests[0]
+    assert "The Snapshot:" in request.system
+    assert "Public/Global Risk:" in request.system
+    assert '"trajectory"' in request.system
+    assert '"snapshot"' in request.system
+    assert "latest_development" not in request.system
+    assert "uncertainties" not in request.system
+    payload = json.loads(request.user)
+    assert payload["observations"] == [
+        {"source_name": "official", "confirmed_cases": 42},
+        {"source_name": "local", "confirmed_cases": 68},
+    ]
 
 
 def test_the_summarizer_rejects_malformed_output() -> None:
