@@ -48,7 +48,7 @@ def test_direct_country_location_needs_no_coordinates() -> None:
     assert location.longitude is None
 
 
-def test_match_repository_reads_triage_country_without_signal_locations() -> None:
+def test_match_repository_does_not_read_triage_country_without_extraction() -> None:
     signal_id = uuid4()
     disease_id = uuid4()
     signal = SimpleNamespace(
@@ -70,9 +70,8 @@ def test_match_repository_reads_triage_country_without_signal_locations() -> Non
 
     result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
 
-    assert result[0].locations[0].country_code == "TH"
-    assert result[0].locations[0].precision is Precision.COUNTRY
-    assert result[0].locations[0].latitude is None
+    assert result[0].locations == ()
+    assert result[0].disease_id is None
 
 
 @pytest.mark.parametrize(
