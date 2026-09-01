@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from episignal_backend.db.types import Precision
+from episignal_backend.db.types import EventType, Precision
 from episignal_backend.geocode.normalize import ascii_form, normalized_form
 from episignal_backend.ingestion.gdelt.locale import COUNTRY_CODES
 
@@ -60,6 +60,7 @@ class MetadataRepairEvent:
     admin1: str | None
     disease_id: UUID | None
     signals: tuple[MetadataEvidence, ...]
+    event_type: EventType | None = None
 
 
 @dataclass(frozen=True)
@@ -67,10 +68,14 @@ class EventMetadataPatch:
     country_code: str | None = None
     admin1: str | None = None
     disease_id: UUID | None = None
+    event_type: EventType | None = None
 
     @property
     def changed(self) -> bool:
-        return any(value is not None for value in (self.country_code, self.admin1, self.disease_id))
+        return any(
+            value is not None
+            for value in (self.country_code, self.admin1, self.disease_id, self.event_type)
+        )
 
 
 def metadata_fields_from_extraction(extraction: Any) -> MetadataFields | None:
@@ -122,7 +127,19 @@ def repair_event_metadata(
             for value in resolved
             if value.admin1 is not None and value.country_code == wanted_country
         )
-    return EventMetadataPatch(country_code=country_code, admin1=admin1, disease_id=disease_id)
+    event_type = (
+        EventType.OUTBREAK
+        if disease_id is not None
+        and event.disease_id is None
+        and event.event_type == EventType.UNKNOWN_DISEASE_EVENT
+        else None
+    )
+    return EventMetadataPatch(
+        country_code=country_code,
+        admin1=admin1,
+        disease_id=disease_id,
+        event_type=event_type,
+    )
 
 
 @dataclass(frozen=True)
@@ -174,7 +191,9 @@ class LocalMetadataResolver:
         diseases: Sequence[DiseaseVocabularyEntry] = (),
         admin1s: Sequence[Admin1VocabularyEntry] = (),
     ) -> None:
-        aliases = {name: code for name, code in COUNTRY_CODES.items() if name != "congo"}
+        aliases = {
+            normalized_form(name): code for name, code in COUNTRY_CODES.items() if name != "congo"
+        }
         aliases.update(
             {normalized_form(name): code.upper() for name, code in country_aliases.items()}
         )
@@ -211,7 +230,7 @@ class LocalMetadataResolver:
             if disease_id is not None:
                 disease_text = fallback_text
 
-        country_code = next(
+        structured_country = next(
             (
                 code
                 for source in sources
@@ -221,9 +240,6 @@ class LocalMetadataResolver:
             None,
         )
         all_text = f"{evidence.title}\n{evidence.text}"
-        if country_code is None:
-            country_code = self._resolve_country_in_text(all_text)
-
         location_text = next(
             (
                 value
@@ -233,7 +249,7 @@ class LocalMetadataResolver:
             ),
             None,
         )
-        if location_text is None and country_code is None:
+        if location_text is None and structured_country is None:
             location_text = next(
                 (source.country for source in sources if source.country),
                 None,
@@ -247,8 +263,57 @@ class LocalMetadataResolver:
             ),
             None,
         )
-        admin1_match = self._resolve_admin1_value(admin1_name, country_code)
-        if admin1_match is None:
+        structured_admin1 = self._resolve_admin1_value(admin1_name, None)
+        text_admin1s = self._admin1_matches_in_text(all_text)
+        admin1_match = structured_admin1
+        if admin1_match is None and len(text_admin1s) == 1:
+            admin1_match = next(iter(text_admin1s.values()))
+        elif admin1_match is not None and text_admin1s:
+            text_admin1_ids = set(text_admin1s)
+            if text_admin1_ids != {(admin1_match.entry.country_code, admin1_match.entry.code)}:
+                admin1_match = None
+
+        text_admin1_countries = {country for country, _ in text_admin1s}
+        country_codes = self._resolve_country_in_text(
+            all_text,
+            ignored_phrases=(
+                tuple(
+                    name
+                    for match in text_admin1s.values()
+                    for name in self._admin1_names(match.entry)
+                )
+                if text_admin1s
+                else ()
+            ),
+        )
+        if structured_country is not None:
+            if (
+                admin1_match is not None
+                and structured_country != admin1_match.entry.country_code
+                or text_admin1s
+                and structured_country not in text_admin1_countries
+            ):
+                country_code = None
+                admin1_match = None
+            else:
+                country_code = structured_country
+        elif admin1_match is not None:
+            if country_codes is not None and country_codes != admin1_match.entry.country_code:
+                country_code = None
+                admin1_match = None
+            else:
+                country_code = admin1_match.entry.country_code
+        elif text_admin1s:
+            if country_codes is not None:
+                country_code = country_codes if country_codes in text_admin1_countries else None
+            elif len(text_admin1_countries) == 1:
+                country_code = next(iter(text_admin1_countries))
+            else:
+                country_code = None
+        else:
+            country_code = country_codes
+
+        if admin1_match is None and country_code is not None:
             admin1_match = self._resolve_admin1_in_text(all_text, country_code)
         if admin1_match is not None:
             if country_code is None:
@@ -275,17 +340,23 @@ class LocalMetadataResolver:
             return code
         return self._country_aliases.get(normalized_form(value))
 
-    def _resolve_country_in_text(self, text: str) -> str | None:
+    def _resolve_country_in_text(
+        self, text: str, *, ignored_phrases: Sequence[str] = ()
+    ) -> str | None:
         normalized = normalized_form(text)
+        ignored_spans = tuple(
+            span
+            for phrase in ignored_phrases
+            for span in _phrase_spans(normalized, normalized_form(phrase))
+        )
         found = {
             code
             for alias, code in self._country_aliases.items()
-            if _contains_phrase(normalized, alias)
+            if any(
+                not _span_is_inside(candidate, ignored_spans)
+                for candidate in _phrase_spans(normalized, alias)
+            )
         }
-        for match in re.finditer(r"(?<![A-Za-z])([A-Z]{2})(?![A-Za-z])", text):
-            code = match.group(1)
-            if code in self._country_codes:
-                found.add(code)
         return next(iter(found)) if len(found) == 1 else None
 
     def _resolve_disease_value(self, value: str | None) -> UUID | None:
@@ -296,17 +367,13 @@ class LocalMetadataResolver:
 
     def _resolve_disease_in_text(self, text: str) -> tuple[UUID | None, str | None]:
         normalized = normalized_form(text)
-        matches: list[tuple[int, UUID]] = []
+        matches: set[UUID] = set()
         for alias, ids in self._disease_aliases.items():
             if len(ids) == 1 and _contains_phrase(normalized, alias):
-                matches.append((len(alias), next(iter(ids))))
-        if not matches:
+                matches.add(next(iter(ids)))
+        if len(matches) != 1:
             return None, None
-        best_length = max(length for length, _ in matches)
-        best_ids = {disease_id for length, disease_id in matches if length == best_length}
-        if len(best_ids) != 1:
-            return None, None
-        disease = self._diseases_by_id[next(iter(best_ids))]
+        disease = self._diseases_by_id[next(iter(matches))]
         return disease.id, disease.canonical_name
 
     def _resolve_admin1_value(
@@ -335,28 +402,49 @@ class LocalMetadataResolver:
         return None
 
     def _resolve_admin1_in_text(self, text: str, country_code: str | None) -> _Admin1Match | None:
+        matches = self._admin1_matches_in_text(text, country_code=country_code)
+        if len(matches) != 1:
+            return None
+        return next(iter(matches.values()))
+
+    def _admin1_matches_in_text(
+        self, text: str, *, country_code: str | None = None
+    ) -> dict[tuple[str, str], _Admin1Match]:
         normalized = normalized_form(text)
-        matches: list[tuple[int, _Admin1Match]] = []
+        matches: dict[tuple[str, str], _Admin1Match] = {}
         for entry in self._admin1s:
             if country_code is not None and entry.country_code != country_code:
                 continue
-            for name in (entry.name, *entry.alternate_names):
-                phrase = normalized_form(name)
-                if phrase and _contains_phrase(normalized, phrase):
-                    matches.append((len(phrase), _Admin1Match(entry, name)))
-        if not matches:
-            return None
-        best_length = max(length for length, _ in matches)
-        unique = {
-            (match.entry.country_code, match.entry.code): match
-            for length, match in matches
-            if length == best_length
-        }
-        return next(iter(unique.values())) if len(unique) == 1 else None
+            names = (entry.name, *entry.alternate_names)
+            matching_names = [
+                name
+                for name in names
+                if normalized_form(name) and _contains_phrase(normalized, normalized_form(name))
+            ]
+            if matching_names:
+                key = (entry.country_code, entry.code)
+                name = max(matching_names, key=lambda value: len(normalized_form(value)))
+                matches[key] = _Admin1Match(entry, name)
+        return matches
+
+    @staticmethod
+    def _admin1_names(entry: Admin1VocabularyEntry) -> tuple[str, ...]:
+        return (entry.name, *entry.alternate_names)
 
 
 def _contains_phrase(text: str, phrase: str) -> bool:
-    return f" {phrase} " in f" {text} "
+    return bool(_phrase_spans(text, phrase))
+
+
+def _phrase_spans(text: str, phrase: str) -> tuple[tuple[int, int], ...]:
+    if not phrase:
+        return ()
+    pattern = rf"(?<![\w]){re.escape(phrase)}(?![\w])"
+    return tuple((match.start(), match.end()) for match in re.finditer(pattern, text))
+
+
+def _span_is_inside(span: tuple[int, int], containers: Sequence[tuple[int, int]]) -> bool:
+    return any(start <= span[0] and span[1] <= end for start, end in containers)
 
 
 def _unique[T](values: Iterable[T]) -> T | None:

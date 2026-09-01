@@ -31,6 +31,7 @@ class RepairResult:
     country_resolved: int = 0
     admin1_resolved: int = 0
     disease_resolved: int = 0
+    event_type_resolved: int = 0
     still_unresolved: int = 0
 
 
@@ -62,6 +63,7 @@ def run_repair(session: Session, *, apply: bool, limit: int | None = None) -> Re
     country_resolved = 0
     admin1_resolved = 0
     disease_resolved = 0
+    event_type_resolved = 0
     still_unresolved = 0
 
     for event in events:
@@ -81,12 +83,14 @@ def run_repair(session: Session, *, apply: bool, limit: int | None = None) -> Re
             admin1=event.admin1,
             disease_id=event.disease_id,
             signals=evidence,
+            event_type=event.event_type,
         )
         patch = repair_event_metadata(repair_event, resolver)
 
         country_resolved += int(patch.country_code is not None)
         admin1_resolved += int(patch.admin1 is not None)
         disease_resolved += int(patch.disease_id is not None)
+        event_type_resolved += int(patch.event_type is not None)
 
         final_country = event.country_code or patch.country_code
         final_disease = event.disease_id or patch.disease_id
@@ -99,6 +103,7 @@ def run_repair(session: Session, *, apply: bool, limit: int | None = None) -> Re
                     "country_code": patch.country_code,
                     "admin1": patch.admin1,
                     "disease_id": patch.disease_id,
+                    "event_type": patch.event_type,
                 }.items()
                 if value is not None
             }
@@ -112,6 +117,7 @@ def run_repair(session: Session, *, apply: bool, limit: int | None = None) -> Re
         country_resolved=country_resolved,
         admin1_resolved=admin1_resolved,
         disease_resolved=disease_resolved,
+        event_type_resolved=event_type_resolved,
         still_unresolved=still_unresolved,
     )
 
@@ -136,6 +142,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"examined={result.examined} country_resolved={result.country_resolved} "
         f"admin1_resolved={result.admin1_resolved} disease_resolved={result.disease_resolved} "
+        f"event_type_resolved={result.event_type_resolved} "
         f"still_unresolved={result.still_unresolved}"
     )
     return 0

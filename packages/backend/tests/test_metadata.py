@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from episignal_backend.db.types import EventType
 from episignal_backend.metadata import (
     Admin1VocabularyEntry,
     DiseaseVocabularyEntry,
@@ -47,6 +48,8 @@ def resolver() -> LocalMetadataResolver:
         admin1s=(
             Admin1VocabularyEntry("Wisconsin", "US", "WI"),
             Admin1VocabularyEntry("Arizona", "US", "AZ"),
+            Admin1VocabularyEntry("New Mexico", "US", "NM"),
+            Admin1VocabularyEntry("Niger State", "NG", "NI"),
             Admin1VocabularyEntry("Springfield", "US", "IL"),
             Admin1VocabularyEntry("Springfield", "AU", "NSW"),
         ),
@@ -79,6 +82,61 @@ def test_unique_admin1_in_headline_supplies_country_and_admin1_code() -> None:
     assert resolved.disease_id == MEASLES
     assert resolved.country_code == "US"
     assert resolved.admin1 == "WI"
+
+
+@pytest.mark.parametrize(
+    ("title", "country_code", "admin1"),
+    [
+        ("New Mexico measles outbreak", "US", "NM"),
+        ("Diphtheria outbreak in Niger State", "NG", "NI"),
+    ],
+)
+def test_specific_admin1_wins_over_contained_country_alias(
+    title: str, country_code: str, admin1: str
+) -> None:
+    resolved = resolver().resolve(MetadataEvidence(title=title, text=""))
+
+    assert resolved.country_code == country_code
+    assert resolved.admin1 == admin1
+
+
+def test_conflicting_country_and_admin1_evidence_stays_unresolved() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(title="New Mexico, Mexico measles outbreak", text="")
+    )
+
+    assert resolved.country_code is None
+    assert resolved.admin1 is None
+
+
+def test_multiple_admin1_mentions_do_not_fall_back_to_contained_country() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(title="New Mexico and Arizona measles outbreak", text="")
+    )
+
+    assert resolved.country_code == "US"
+    assert resolved.admin1 is None
+
+
+def test_structured_country_conflicting_with_admin1_stays_unresolved() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title="New Mexico measles outbreak",
+            text="",
+            extraction=MetadataFields(country="MX"),
+        )
+    )
+
+    assert resolved.country_code is None
+    assert resolved.admin1 is None
+
+
+def test_arbitrary_uppercase_two_letter_prose_is_not_a_country() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(title="The US lab reported a measles outbreak", text="")
+    )
+
+    assert resolved.country_code is None
 
 
 def test_ambiguous_admin1_stays_unresolved() -> None:
@@ -172,6 +230,31 @@ def test_fallback_reads_title_and_body_but_does_not_guess() -> None:
     assert ambiguous.admin1 is None
 
 
+def test_distinct_disease_names_of_different_lengths_stay_unresolved() -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(title="Measles and Ebola virus disease outbreak report", text="")
+    )
+
+    assert resolved.disease_id is None
+
+
+def test_repair_adds_outbreak_type_when_filling_unknown_disease() -> None:
+    patch = repair_event_metadata(
+        MetadataRepairEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000013"),
+            country_code=None,
+            admin1=None,
+            disease_id=None,
+            event_type=EventType.UNKNOWN_DISEASE_EVENT,
+            signals=(MetadataEvidence(title="South Africa measles outbreak", text=""),),
+        ),
+        resolver(),
+    )
+
+    assert patch.disease_id == MEASLES
+    assert patch.event_type == EventType.OUTBREAK
+
+
 def test_repair_patch_only_fills_missing_event_fields() -> None:
     patch = repair_event_metadata(
         MetadataRepairEvent(
@@ -179,6 +262,7 @@ def test_repair_patch_only_fills_missing_event_fields() -> None:
             country_code=None,
             admin1=None,
             disease_id=None,
+            event_type=EventType.OTHER,
             signals=(
                 MetadataEvidence(
                     title="South Africa measles outbreak exceeds 3,400 confirmed cases",
@@ -235,6 +319,7 @@ def test_repair_runner_updates_existing_event_only_when_apply_is_explicit(
         country_code=None,
         admin1=None,
         disease_id=None,
+        event_type=EventType.UNKNOWN_DISEASE_EVENT,
     )
     signal = SimpleNamespace(
         id=UUID("00000000-0000-0000-0000-000000000012"),
@@ -253,10 +338,34 @@ def test_repair_runner_updates_existing_event_only_when_apply_is_explicit(
     result = run_repair(dry_run, apply=False)
     assert result.country_resolved == 1
     assert result.disease_resolved == 1
+    assert result.event_type_resolved == 1
     assert dry_run.commits == 0
     assert len(dry_run.executed) == 2
 
     apply_run = RepairSession(event, signal)
-    run_repair(apply_run, apply=True)
+    apply_result = run_repair(apply_run, apply=True)
     assert apply_run.commits == 1
     assert len(apply_run.executed) == 3
+    assert apply_result.event_type_resolved == 1
+    assert "event_type" in str(apply_run.executed[-1])
+
+    repaired_event = SimpleNamespace(
+        **{
+            **vars(event),
+            "country_code": "ZA",
+            "disease_id": MEASLES,
+            "event_type": EventType.OUTBREAK,
+        }
+    )
+    idempotent = repair_event_metadata(
+        MetadataRepairEvent(
+            event_id=repaired_event.id,
+            country_code=repaired_event.country_code,
+            admin1=repaired_event.admin1,
+            disease_id=repaired_event.disease_id,
+            event_type=repaired_event.event_type,
+            signals=(MetadataEvidence(title=signal.title, text=signal.raw_text),),
+        ),
+        resolver(),
+    )
+    assert idempotent.changed is False
