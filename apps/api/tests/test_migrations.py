@@ -319,6 +319,7 @@ def test_the_flash_brief_revision_adds_structured_summary_fields() -> None:
     assert "key_driver" in sql
     assert "response" in sql
     assert "risk" in sql
+    assert "material_facts" in sql
     assert "event_summary_trajectory_values" in sql
 
 

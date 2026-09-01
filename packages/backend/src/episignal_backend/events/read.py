@@ -108,6 +108,7 @@ class EventObservationItem:
     hospitalizations: int | None
     notes: str | None
     extraction_confidence: float | None
+    material_facts: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -427,6 +428,7 @@ def query_event_detail(
             hospitalizations=obs.hospitalizations,
             notes=obs.notes,
             extraction_confidence=obs.extraction_confidence,
+            material_facts=obs.material_facts,
         )
         for obs in observation_rows
     )

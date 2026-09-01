@@ -402,7 +402,8 @@ def deferred_signal_row() -> Any:
         content_hash="f" * 64,
         discovered_via=DiscoveryMethod.GDELT,
         retrieval_attempts=0,
-        processing_status=ProcessingStatus.FETCHED,
+        processing_status=ProcessingStatus.CLASSIFIED,
+        public_health_relevant=True,
     )
 
 
@@ -446,6 +447,17 @@ def test_gated_signals_awaiting_retrieval_are_bodyless_and_fetched() -> None:
     waiting = repository.gated_awaiting_retrieval(max_attempts=3, limit=10)
 
     assert {item.signal_id for item in waiting} == {DEFERRED_SIGNAL_ID}
+
+
+def test_gated_retrieval_query_requires_completed_relevant_classification() -> None:
+    session = FakeSession([[]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    repository.gated_awaiting_retrieval(max_attempts=3, limit=10)
+
+    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "processing_status = 'classified'" in rendered
+    assert "public_health_relevant IS true" in rendered
 
 
 def test_a_filtered_signal_is_never_selected_for_retrieval() -> None:

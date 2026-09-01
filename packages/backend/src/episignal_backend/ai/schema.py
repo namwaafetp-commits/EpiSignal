@@ -19,7 +19,7 @@ from episignal_backend.db.types import LocationRole, SignalType
 
 # Bumped when the shape of a stored extraction changes. Version 1 is every row
 # written before the brief existed: it has a `summary` and no `brief`.
-EXTRACTION_SCHEMA_VERSION = 3
+EXTRACTION_SCHEMA_VERSION = 4
 BACKFILL_MIN_SCHEMA_VERSION = 2
 EXTRACTION_VERSION_KEY = "extraction_schema_version"
 
@@ -343,6 +343,21 @@ class GroundedFlag(BaseModel):
         return _require_span(value)
 
 
+class GroundedEvidence(BaseModel):
+    """One evidence primitive, with the exact source that supports it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str = Field(min_length=1, max_length=SPAN_MAX_CHARACTERS)
+    source_span: str = Field(max_length=SPAN_MAX_CHARACTERS)
+    source_index: int = Field(default=0, ge=0)
+
+    @field_validator("text", "source_span")
+    @classmethod
+    def text_is_not_blank(cls, value: str) -> str:
+        return _require_span(value)
+
+
 class NamedEntity(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -409,6 +424,8 @@ class Extraction(BaseModel):
     epidemiology: Epidemiology = Epidemiology()
     dates: ExtractedDates = ExtractedDates()
     transmission: Transmission | None = None
+    response_actions: tuple[GroundedEvidence, ...] = ()
+    driver_or_barrier_evidence: tuple[GroundedEvidence, ...] = ()
     confidence: float = Field(ge=0.0, le=1.0)
 
     @field_validator("source_language")

@@ -197,6 +197,8 @@ def test_the_prompt_schema_names_every_field_the_model_must_return() -> None:
     assert schema["additionalProperties"] is False
     assert "epidemiology" in schema["properties"]
     assert "confidence" in schema["properties"]
+    assert "response_actions" in schema["properties"]
+    assert "driver_or_barrier_evidence" in schema["properties"]
 
 
 def test_a_classification_response_carries_one_verdict_per_signal() -> None:
@@ -330,8 +332,8 @@ def test_a_negative_source_index_is_refused() -> None:
         GroundedCount(value=12, source_span="12 confirmed cases", source_index=-1)
 
 
-def test_the_stored_version_is_three() -> None:
-    assert EXTRACTION_SCHEMA_VERSION == 3
+def test_the_stored_version_is_four() -> None:
+    assert EXTRACTION_SCHEMA_VERSION == 4
 
 
 def test_the_backfill_floor_stays_at_two() -> None:

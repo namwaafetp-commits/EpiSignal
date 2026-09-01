@@ -40,6 +40,7 @@ def make_stub(title: str, url: str) -> StubRetrieval:
         article=make_article(title, url),
         first_seen_at=FIRST,
         attempts=0,
+        public_health_relevant=True,
     )
 
 
@@ -146,8 +147,9 @@ class CountingConnector:
         )
 
 
-def test_a_gated_title_is_filtered_and_never_fetched() -> None:
-    repository = FakeRetrievalRepository(waiting=(STADIUM,), rules=(OUTBREAK,))
+def test_an_explicitly_irrelevant_signal_is_filtered_and_never_fetched() -> None:
+    irrelevant = STADIUM.model_copy(update={"public_health_relevant": False})
+    repository = FakeRetrievalRepository(waiting=(irrelevant,), rules=(OUTBREAK,))
     connector = CountingConnector()
 
     result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
@@ -262,12 +264,26 @@ def test_a_title_match_outside_the_window_is_still_fetched() -> None:
     assert connector.retrieved == 1
 
 
-def test_the_gate_runs_before_the_title_check() -> None:
+def test_an_unclassified_signal_is_left_untouched_and_never_fetched() -> None:
+    unclassified = MEASLES_STORY.model_copy(update={"public_health_relevant": None})
+    repository = FakeRetrievalRepository(waiting=(unclassified,), rules=(OUTBREAK,))
+    connector = CountingConnector()
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.filtered == 0
+    assert result.retrieved == 0
+    assert connector.retrieved == 0
+    assert repository.filtered == []
+
+
+def test_classified_retrieval_does_not_use_keyword_rules() -> None:
     repository = FakeRetrievalRepository(waiting=(STADIUM,), rules=(OUTBREAK,), titles={})
 
     result = run_retrieval(  # type: ignore[arg-type]
         repository, CountingConnector(), max_attempts=3, batch_size=10
     )
 
-    assert result.filtered == 1
-    assert repository.title_lookups == 0
+    assert result.retrieved == 1
+    assert result.filtered == 0
+    assert repository.title_lookups == 1

@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.summarize import (
     SummaryOutcome,
@@ -42,6 +43,13 @@ def _counts(total: int | None, deaths: int | None) -> dict[str, object]:
         "deaths": deaths,
         "new_cases": None,
         "new_deaths": None,
+        "material_facts": {
+            "pathogen": None,
+            "transmission": None,
+            "response_actions": [],
+            "driver_evidence": [],
+            "geographic_extent": [],
+        },
     }
 
 
@@ -108,6 +116,51 @@ def test_a_new_geographic_extent_is_a_material_change() -> None:
         last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
         latest_observation=latest,
         previous_counts=previous,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("pathogen", "Influenza A"),
+        ("transmission", {"local_transmission": {"value": True}}),
+        ("response_actions", [{"text": "Vaccination campaign"}]),
+        ("driver_evidence", [{"text": "Low vaccination coverage"}]),
+        ("geographic_extent", ["Chiang Mai", "Phuket"]),
+    ],
+)
+def test_new_material_fact_is_a_material_change(field: str, value: object) -> None:
+    previous = _counts(68, 3)
+    latest = _counts(68, 3)
+    latest["material_facts"] = dict(latest["material_facts"])  # type: ignore[arg-type]
+    latest["material_facts"][field] = value  # type: ignore[index]
+
+    assert should_resummarize(
+        last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
+        latest_observation=latest,
+        previous_counts=previous,
+    )
+
+
+def test_a_new_article_with_same_material_facts_but_new_spans_is_not_due() -> None:
+    previous = _counts(68, 3)
+    latest = _counts(68, 3)
+    previous["material_facts"] = {
+        "response_actions": [
+            {"text": "Vaccination campaign", "source_span": "campaign began", "source_index": 0}
+        ]
+    }
+    latest["material_facts"] = {
+        "response_actions": [
+            {"text": "Vaccination campaign", "source_span": "a campaign began", "source_index": 0}
+        ]
+    }
+
+    assert not should_resummarize(
+        last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
+        latest_observation=latest,
+        previous_counts=previous,
+        unsummarized_articles=1,
     )
 
 
@@ -198,9 +251,9 @@ _SUMMARY_JSON = """{
     "cfr": null,
     "geographic_extent": "Chiang Mai"
   },
-  "key_driver": "Ongoing local transmission reported by health authorities.",
-  "response": "Case investigation and vaccination activities are underway.",
-  "risk": "Risk remains regional because transmission is reported only in Chiang Mai."
+  "key_driver": "Ongoing local transmission.",
+  "response": "Case investigation is underway.",
+  "risk": "Insufficient evidence for a broader risk assessment."
 }"""
 
 
@@ -214,8 +267,15 @@ def _summary_input():
         location="Chiang Mai",
         latest_observation=_counts(68, 3),
         observations=(
-            {"source_name": "official", "confirmed_cases": 42},
-            {"source_name": "local", "confirmed_cases": 68},
+            {
+                "source_name": "official",
+                "confirmed_cases": 42,
+                "material_facts": {
+                    "driver_evidence": [{"text": "Ongoing local transmission"}],
+                    "response_actions": [{"text": "Case investigation is underway"}],
+                },
+            },
+            {"source_name": "local", "confirmed_cases": 68, "material_facts": {}},
         ),
         sources=(
             SummarySource(
@@ -237,19 +297,44 @@ def test_the_summarizer_accepts_a_valid_verdict() -> None:
     assert result.verdict.headline == "Dengue Outbreak: Chiang Mai — Increasing"
     assert result.verdict.trajectory is SummaryTrajectory.INCREASING
     assert result.verdict.snapshot.cases == "68 total cases"
-    assert result.verdict.risk.startswith("Risk remains regional")
+    assert result.verdict.risk == "Insufficient evidence for a broader risk assessment."
     assert render_event_flash_brief(result.verdict) == (
         "Dengue Outbreak: Chiang Mai — Increasing\n\n"
         "The Snapshot:\n"
         "68 total cases | 3 deaths | Chiang Mai\n\n"
         "Key Driver:\n"
-        "Ongoing local transmission reported by health authorities.\n\n"
+        "Ongoing local transmission.\n\n"
         "Response:\n"
-        "Case investigation and vaccination activities are underway.\n\n"
+        "Case investigation is underway.\n\n"
         "Public/Global Risk:\n"
-        "Risk remains regional because transmission is reported only in Chiang Mai."
+        "Insufficient evidence for a broader risk assessment."
     )
     assert model.calls == 1
+
+
+def test_absent_response_and_driver_use_contract_fallbacks() -> None:
+    payload = json.loads(_SUMMARY_JSON)
+    payload["key_driver"] = "Not yet established."
+    payload["response"] = "No specific response reported."
+    model = FakeSummaryModel(json.dumps(payload))
+
+    event = _summary_input().model_copy(update={"observations": ({"confirmed_cases": 68},)})
+    result = run_summary(model, _summary_spec(), event=event, sources=(_source("x"),))
+
+    assert result.verdict is not None
+    assert result.verdict.key_driver == "Not yet established."
+    assert result.verdict.response == "No specific response reported."
+
+
+def test_unsupported_broader_risk_uses_contract_fallback() -> None:
+    payload = json.loads(_SUMMARY_JSON)
+    payload["risk"] = "Insufficient evidence for a broader risk assessment."
+    model = FakeSummaryModel(json.dumps(payload))
+
+    result = run_summary(model, _summary_spec(), event=_summary_input(), sources=(_source("x"),))
+
+    assert result.verdict is not None
+    assert result.verdict.risk == "Insufficient evidence for a broader risk assessment."
 
 
 def test_the_summary_prompt_requires_the_epi_signal_flash_brief() -> None:
@@ -264,10 +349,9 @@ def test_the_summary_prompt_requires_the_epi_signal_flash_brief() -> None:
     assert "latest_development" not in request.system
     assert "uncertainties" not in request.system
     payload = json.loads(request.user)
-    assert payload["observations"] == [
-        {"source_name": "official", "confirmed_cases": 42},
-        {"source_name": "local", "confirmed_cases": 68},
-    ]
+    assert payload["observations"][0]["source_name"] == "official"
+    assert payload["observations"][0]["material_facts"]["response_actions"]
+    assert payload["observations"][1]["confirmed_cases"] == 68
 
 
 def test_the_summarizer_rejects_malformed_output() -> None:

@@ -47,6 +47,7 @@ def test_observations_preserve_event_and_signal_provenance() -> None:
     targets = {foreign_key.target_fullname for foreign_key in table.foreign_keys}
     assert "events.id" in targets
     assert "signals.id" in targets
+    assert table.c.material_facts.nullable
 
 
 def test_signal_versions_are_unique_by_url_and_content_hash() -> None:

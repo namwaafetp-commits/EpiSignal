@@ -28,6 +28,9 @@ Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
 - Every count and every transmission flag must include source_span: a short
   phrase copied word for word from the article that states it.
+- Extract concrete response_actions and driver_or_barrier_evidence when the
+  article reports them. Each item must contain concise English text, a verbatim
+  source_span, and source_index. Return an empty list when absent.
 - TITLE and ARTICLE are both supplied evidence. An entity explicitly written in
   TITLE counts as reported evidence; do not return null for a disease, country,
   or province explicitly named in TITLE or ARTICLE.
@@ -173,6 +176,9 @@ Rules:
 - Every count and every transmission flag must include source_index: the number
   of the single article you read it from, and source_span: a short phrase
   copied word for word from THAT article.
+- Extract concrete response_actions and driver_or_barrier_evidence from any
+  member that reports them. Each item must contain concise English text, a
+  verbatim source_span, and source_index. Return an empty list when absent.
 - Never combine two articles into one number. If they disagree, report the
   figure from the article you judge most authoritative and cite that article.
 - Copy every source_span in its own article's language. Do not translate a span.

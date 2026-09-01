@@ -456,6 +456,10 @@ export interface components {
             extraction_confidence: number | null;
             /** Hospitalizations */
             hospitalizations: number | null;
+            /** Material Facts */
+            material_facts: {
+                [key: string]: unknown;
+            } | null;
             /** New Cases */
             new_cases: number | null;
             /** New Deaths */

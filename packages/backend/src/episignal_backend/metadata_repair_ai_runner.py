@@ -67,6 +67,7 @@ class RepairResult:
     existing_extraction_reused: int = 0
     reextracted: int = 0
     ai_requests: int = 0
+    ai_cost_usd: Decimal = Decimal("0")
     country_resolved: int = 0
     admin1_resolved: int = 0
     disease_resolved: int = 0
@@ -195,6 +196,7 @@ def run_repair_ai(
     moment = now or datetime.now(UTC)
     proposals: list[RepairProposal] = []
     existing_extraction_reused = reextracted = requests = conflicts = 0
+    ai_cost_usd = Decimal("0")
     country_resolved = admin1_resolved = disease_resolved = event_type_resolved = 0
     still_unresolved = 0
     examined = 0
@@ -233,6 +235,7 @@ def run_repair_ai(
                     min_confidence=min_confidence,
                 )
                 requests += len(result.attempts)
+                ai_cost_usd += sum((attempt.cost for attempt in result.attempts), Decimal("0"))
                 evidence = _apply_extraction(evidence, result)
                 if apply:
                     for attempt in result.attempts:
@@ -312,6 +315,7 @@ def run_repair_ai(
         existing_extraction_reused=existing_extraction_reused,
         reextracted=reextracted,
         ai_requests=requests,
+        ai_cost_usd=ai_cost_usd,
         country_resolved=country_resolved,
         admin1_resolved=admin1_resolved,
         disease_resolved=disease_resolved,
@@ -381,6 +385,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"examined={result.examined} "
         f"existing_extraction_reused={result.existing_extraction_reused} "
         f"reextracted={result.reextracted} ai_requests={result.ai_requests} "
+        f"ai_cost_usd={result.ai_cost_usd} "
         f"country_resolved={result.country_resolved} "
         f"admin1_resolved={result.admin1_resolved} "
         f"disease_resolved={result.disease_resolved} "

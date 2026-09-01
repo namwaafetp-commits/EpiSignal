@@ -163,6 +163,13 @@ def check_grounding(extraction: Extraction, bodies: Sequence[str]) -> None:
         if str(count.value) not in count.source_span:
             raise Rejected(RejectionReason.UNGROUNDED, f"{label} not stated by its span")
 
+    for label, items in (
+        ("response_actions", extraction.response_actions),
+        ("driver_or_barrier_evidence", extraction.driver_or_barrier_evidence),
+    ):
+        for item in items:
+            _check_span(item.source_span, flat_bodies, item.source_index, label)
+
     if extraction.transmission is not None:
         for label, flag in (
             ("local_transmission", extraction.transmission.local_transmission),

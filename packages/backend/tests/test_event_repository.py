@@ -598,6 +598,10 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
         Epidemiology,
         Extraction,
         GroundedCount,
+        GroundedEvidence,
+        GroundedFlag,
+        NamedEntity,
+        Transmission,
     )
     from episignal_backend.models import EventObservation
 
@@ -618,6 +622,16 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
         epidemiology=Epidemiology(
             total_cases=GroundedCount(value=35, source_span="35 cases"),
             # deaths is None, confirmed_cases is None!
+        ),
+        pathogen=NamedEntity(name="Vibrio cholerae", confidence=0.9),
+        transmission=Transmission(
+            local_transmission=GroundedFlag(value=True, source_span="local transmission")
+        ),
+        response_actions=(
+            GroundedEvidence(text="Vaccination campaign", source_span="vaccination campaign"),
+        ),
+        driver_or_barrier_evidence=(
+            GroundedEvidence(text="Contaminated water", source_span="contaminated water"),
         ),
         confidence=0.88,
     )
@@ -647,6 +661,10 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
     assert obs.confirmed_cases is None
     assert obs.suspected_cases is None
     assert obs.extraction_confidence == 0.88
+    assert obs.material_facts["pathogen"] == "Vibrio cholerae"
+    assert obs.material_facts["response_actions"][0]["text"] == "Vaccination campaign"
+    assert obs.material_facts["driver_evidence"][0]["text"] == "Contaminated water"
+    assert obs.material_facts["transmission"]["local_transmission"]["value"] is True
 
 
 def test_record_observation_is_idempotent_for_a_stale_rerun() -> None:

@@ -30,13 +30,14 @@ from episignal_backend.ai.ladder import (
 )
 from episignal_backend.ai.prompts import classification_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
-from episignal_backend.ai.schema import ClassificationResponse
+from episignal_backend.ai.schema import ClassificationResponse, classification_json_schema
 from episignal_backend.ai.validate import validate_classification
 from episignal_backend.db.types import AiPurpose, SignalType
 
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_LIMIT = 100
 DEFAULT_MAX_TIER = 3
+CLASSIFICATION_SCHEMA_NAME = "classification_response"
 
 logger = logging.getLogger("episignal_backend.ai.classify")
 
@@ -61,8 +62,17 @@ def _batches(
 
 
 def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
+    schema = classification_json_schema()
+
     def _request(spec: ModelSpec) -> ChatRequest:
-        return ChatRequest(model_id=spec.model_id, system=system, user=user)
+        return ChatRequest(
+            model_id=spec.model_id,
+            system=system,
+            user=user,
+            response_schema=schema,
+            schema_name=CLASSIFICATION_SCHEMA_NAME,
+            temperature=0.0,
+        )
 
     return _request
 
@@ -130,8 +140,9 @@ def run_classification(
                 relevant += decided
                 irrelevant += len(batch) - decided
             elif result.outcome is ClimbOutcome.REJECTED:
-                for signal in batch:
-                    repository.record_extraction_failure(signal.id)
+                # A malformed classification answer teaches us nothing about
+                # the signals. Keep them unmodified so the next run can retry;
+                # extraction failure is a different pass and status.
                 reviewed += len(batch)
             else:
                 # GUARD or UNAVAILABLE: nothing was learned about these signals,

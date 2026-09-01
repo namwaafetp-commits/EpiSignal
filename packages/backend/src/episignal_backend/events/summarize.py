@@ -328,26 +328,35 @@ def pick_representative_sources(
 
 _MATERIAL_OBSERVATION_FIELDS = (
     "confirmed_cases",
-    "probable_cases",
     "suspected_cases",
     "total_cases",
     "deaths",
     "new_cases",
     "new_deaths",
-    "cfr",
-    "affected_admin_areas",
     "geographic_extent",
-    "pathogen",
-    "transmission",
-    "response",
-    "trajectory",
+    "material_facts",
 )
 
 
 def _counts_equals(left: dict[str, object] | None, right: dict[str, object] | None) -> bool:
     if left is None or right is None:
         return left is right
-    return all(left.get(key) == right.get(key) for key in _MATERIAL_OBSERVATION_FIELDS)
+
+    def comparable(value: object) -> object:
+        if isinstance(value, dict):
+            return {
+                key: comparable(item)
+                for key, item in value.items()
+                if key not in {"source_span", "source_index"}
+            }
+        if isinstance(value, list):
+            return [comparable(item) for item in value]
+        return value
+
+    return all(
+        comparable(left.get(key)) == comparable(right.get(key))
+        for key in _MATERIAL_OBSERVATION_FIELDS
+    )
 
 
 def should_resummarize(

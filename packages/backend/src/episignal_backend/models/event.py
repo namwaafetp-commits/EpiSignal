@@ -171,6 +171,9 @@ class EventObservation(IdentityMixin, Base):
     # an already-observed event: the updated five-slot brief plus what changed.
     # Absent on every observation that was not the product of a follow-up.
     delta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Validated extraction facts used by event summary evidence and material
+    # change detection. This is additive history, never an overwritten total.
+    material_facts: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     extraction_confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

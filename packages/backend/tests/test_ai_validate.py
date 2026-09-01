@@ -155,6 +155,40 @@ def test_an_extraction_whose_spans_are_in_the_article_is_accepted() -> None:
     assert extraction.epidemiology.deaths.value == 14
 
 
+def test_response_and_driver_evidence_require_grounded_source_spans() -> None:
+    payload = grounded_payload()
+    payload["response_actions"] = [
+        {
+            "text": "Vaccination campaign",
+            "source_span": "a vaccination campaign began",
+        }
+    ]
+    payload["driver_or_barrier_evidence"] = [
+        {
+            "text": "Local transmission",
+            "source_span": "all cases were acquired locally",
+        }
+    ]
+
+    extraction = validate_extraction(
+        json.dumps(payload),
+        BODY + " A vaccination campaign began.",
+    )
+
+    assert extraction.response_actions[0].text == "Vaccination campaign"
+    assert extraction.driver_or_barrier_evidence[0].text == "Local transmission"
+
+
+def test_ungrounded_response_evidence_is_rejected() -> None:
+    payload = grounded_payload()
+    payload["response_actions"] = [{"text": "School closure", "source_span": "schools closed"}]
+
+    with pytest.raises(Rejected) as error:
+        validate_extraction(json.dumps(payload), BODY)
+
+    assert error.value.reason is RejectionReason.UNGROUNDED
+
+
 def test_an_extraction_may_ground_a_count_in_the_supplied_title() -> None:
     payload = grounded_payload()
     payload["epidemiology"] = {"confirmed_cases": {"value": 98, "source_span": "98 cases"}}

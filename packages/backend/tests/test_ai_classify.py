@@ -141,8 +141,40 @@ def test_rejection_at_every_tier_marks_the_whole_batch_failed() -> None:
         repository, model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW
     )
 
-    assert sorted(repository.rejected) == sorted([FIRST, SECOND])
+    assert repository.rejected == []
     assert result.reviewed == 2
+
+
+def test_schema_rejection_leaves_signal_eligible_for_a_later_classification() -> None:
+    repository = FakeRepository((signal(FIRST, "Cholera cases rise"),))
+    failed_model = ScriptedModel(["nonsense", "nonsense", "nonsense"])
+
+    run_classification(
+        repository, failed_model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW
+    )
+
+    retry_model = ScriptedModel([answer(verdict(FIRST, True))])
+    run_classification(
+        repository, retry_model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW
+    )
+
+    assert repository.verdicts[FIRST].is_public_health_relevant is True
+
+
+def test_classification_requests_use_strict_structured_output() -> None:
+    repository = FakeRepository((signal(FIRST, "Cholera cases rise"),))
+    model = ScriptedModel([answer(verdict(FIRST, True))])
+
+    run_classification(
+        repository, model, guards=guards(), batch_size=20, limit=100, now=lambda: NOW
+    )
+
+    request = model.requests[0]
+    from episignal_backend.ai.schema import classification_json_schema
+
+    assert request.response_schema == classification_json_schema()
+    assert request.schema_name == "classification_response"
+    assert request.temperature == 0.0
 
 
 def test_an_unreachable_provider_leaves_the_signals_untouched() -> None:

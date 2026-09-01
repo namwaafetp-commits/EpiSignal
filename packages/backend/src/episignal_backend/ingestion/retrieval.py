@@ -1,8 +1,8 @@
-"""The gate-and-fetch pass: the only place a GDELT body is downloaded.
+"""The classification-gated fetch pass: the only place a GDELT body is downloaded.
 
-Discovery now stores a sighting with no body, so this pass is where a page is
-paid for. It asks the keyword gate first, which is the whole point: a title
-that shows no sign of a public health event never costs a page fetch.
+Discovery stores a sighting with no body, so this pass is where a page is paid
+for. Classification is the sole production retrieval gate: only an accepted
+``public_health_relevant=True`` decision may pay for a page.
 
 Promotion, failure counting, and the retrieval_failed review path are the
 existing ones, reached through the same repository the retry pass uses. This
@@ -12,7 +12,6 @@ module imports neither SQLAlchemy nor httpx.
 import logging
 from dataclasses import dataclass
 
-from episignal_backend.ingestion.keyword_gate import classify_title
 from episignal_backend.ingestion.protocol import (
     DiscoveryConnector,
     DiscoveryRepository,
@@ -46,12 +45,6 @@ def run_retrieval(
     window_hours: int = DEFAULT_WINDOW_HOURS,
 ) -> RetrievalResult:
     waiting = repository.gated_awaiting_retrieval(max_attempts=max_attempts, limit=batch_size)
-    rules = repository.keyword_rules()
-    if not rules:
-        # Said out loud because an unseeded database and a deliberately empty
-        # rule set look identical from the counts alone.
-        logger.info("No active keyword rules; the gate is passing every title")
-
     filtered = 0
     retrieved = 0
     duplicates = 0
@@ -60,10 +53,11 @@ def run_retrieval(
     failed = 0
 
     for item in waiting:
-        decision = classify_title(item.article.title, rules)
-        if item.public_health_relevant is False or (
-            item.public_health_relevant is not True and not decision.passed
-        ):
+        if item.public_health_relevant is None:
+            # Classification has not completed, or its provider was unavailable
+            # or guarded. Leave it untouched for the next scheduled run.
+            continue
+        if item.public_health_relevant is False:
             try:
                 repository.record_filtered(item.signal_id)
                 repository.commit()

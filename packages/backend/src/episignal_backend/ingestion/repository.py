@@ -212,17 +212,13 @@ class SqlAlchemyDiscoveryRepository:
         return tuple(rules)
 
     def gated_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
-        """Discoveries stored without a body, waiting for the gate.
+        """Classified relevant discoveries stored without a body.
 
         Distinct from `stubs_awaiting_retrieval`, which serves articles whose
         page already failed. These have never been asked for.
         """
         return self._retrievals(
-            (
-                ProcessingStatus.FETCHED,
-                ProcessingStatus.NORMALIZED,
-                ProcessingStatus.CLASSIFIED,
-            ),
+            ProcessingStatus.CLASSIFIED,
             max_attempts=max_attempts,
             limit=limit,
         )
@@ -357,7 +353,9 @@ class SqlAlchemyDiscoveryRepository:
                 status_filter,
                 Signal.discovered_via == DiscoveryMethod.GDELT,
                 Signal.raw_text.is_(None),
-                Signal.public_health_relevant.is_not(False),
+                # Retrieval is downstream of classification. NULL means the
+                # classifier has not completed; false is already filtered.
+                Signal.public_health_relevant.is_(True),
                 Signal.retrieval_attempts < max_attempts,
                 Source.domain.is_not(None),
             )

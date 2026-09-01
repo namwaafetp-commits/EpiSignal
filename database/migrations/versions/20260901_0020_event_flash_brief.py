@@ -22,6 +22,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.add_column(
+        "event_observations", sa.Column("material_facts", postgresql.JSONB(), nullable=True)
+    )
     op.add_column("event_summaries", sa.Column("trajectory", sa.Text(), nullable=True))
     op.add_column("event_summaries", sa.Column("snapshot", postgresql.JSONB(), nullable=True))
     op.add_column("event_summaries", sa.Column("key_driver", sa.Text(), nullable=True))
@@ -43,3 +46,4 @@ def downgrade() -> None:
     op.drop_column("event_summaries", "key_driver")
     op.drop_column("event_summaries", "snapshot")
     op.drop_column("event_summaries", "trajectory")
+    op.drop_column("event_observations", "material_facts")

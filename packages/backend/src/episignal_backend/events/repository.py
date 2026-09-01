@@ -70,6 +70,45 @@ def read_stored_extraction(payload: Any) -> Extraction | None:
         return None
 
 
+def _material_facts(signal: SignalForMatching) -> dict[str, Any]:
+    extraction = signal.extraction
+    transmission = (
+        extraction.transmission.model_dump(mode="json")
+        if extraction is not None and extraction.transmission is not None
+        else None
+    )
+    geographic_extent = [
+        ", ".join(
+            value
+            for value in (
+                location.place_name,
+                location.admin2,
+                location.admin1,
+                location.country_code,
+            )
+            if value
+        )
+        for location in signal.locations
+    ]
+    return {
+        "pathogen": extraction.pathogen.name
+        if extraction is not None and extraction.pathogen
+        else None,
+        "transmission": transmission,
+        "response_actions": (
+            [item.model_dump(mode="json") for item in extraction.response_actions]
+            if extraction is not None
+            else []
+        ),
+        "driver_evidence": (
+            [item.model_dump(mode="json") for item in extraction.driver_or_barrier_evidence]
+            if extraction is not None
+            else []
+        ),
+        "geographic_extent": list(dict.fromkeys(value for value in geographic_extent if value)),
+    }
+
+
 def _country_code(value: str | None) -> str | None:
     if value is None:
         return None
@@ -396,6 +435,7 @@ class SqlAlchemyEventRepository:
             cfr=cfr,
             affected_admin_areas=affected_admin_areas,
             notes=notes,
+            material_facts=_material_facts(signal),
             extraction_confidence=conf,
         )
         self._session.add(obs)
@@ -744,6 +784,7 @@ class SqlAlchemyEventRepository:
             "affected_admin_areas": observation.affected_admin_areas,
             "notes": observation.notes,
             "delta": observation.delta,
+            "material_facts": observation.material_facts,
         }
         if event is not None:
             payload["geographic_extent"] = (

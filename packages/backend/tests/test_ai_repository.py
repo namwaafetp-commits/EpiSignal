@@ -605,7 +605,7 @@ def test_storing_a_cluster_marks_members_duplicate_of_the_representative() -> No
     assert isinstance(stmt1, Update)
     params1 = stmt1.compile().params
     assert params1["processing_status"] == ProcessingStatus.EXTRACTED
-    assert params1["ai_extraction"]["extraction_schema_version"] == 3
+    assert params1["ai_extraction"]["extraction_schema_version"] == EXTRACTION_SCHEMA_VERSION
 
     stmt2 = session.executed[1]
     assert isinstance(stmt2, Update)

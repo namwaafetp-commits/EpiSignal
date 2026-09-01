@@ -103,6 +103,7 @@ class EventObservationResponse(BaseModel):
     hospitalizations: int | None
     notes: str | None
     extraction_confidence: float | None
+    material_facts: dict[str, object] | None
 
 
 class EventSummaryResponse(BaseModel):
