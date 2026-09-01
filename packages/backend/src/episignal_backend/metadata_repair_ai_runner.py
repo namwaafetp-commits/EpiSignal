@@ -21,7 +21,7 @@ from episignal_backend.ai.extract import (
 )
 from episignal_backend.ai.ladder import Guards, RunBudget, cost_row
 from episignal_backend.ai.protocol import AiRepository, ChatModel
-from episignal_backend.db.session import session_scope
+from episignal_backend.db.session import enforce_read_only_transaction, session_scope
 from episignal_backend.db.types import AiPurpose, EventType
 from episignal_backend.events.repository import read_stored_extraction
 from episignal_backend.metadata import (
@@ -41,6 +41,7 @@ from episignal_backend.models import Event, EventSignal, Signal, Source
 @dataclass(frozen=True)
 class Arguments:
     apply: bool
+    enforce_read_only: bool
     limit: int | None
     max_ai_requests: int | None
 
@@ -86,12 +87,20 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Preview changes without writing.")
     mode.add_argument("--apply", action="store_true", help="Write approved metadata in place.")
+    parser.add_argument(
+        "--enforce-read-only",
+        action="store_true",
+        help="Set and verify PostgreSQL transaction read-only mode.",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Events to examine.")
     parser.add_argument("--max-ai-requests", type=int, default=None)
     clean_argv = [argument for argument in argv if argument != "--"]
     parsed = parser.parse_args(clean_argv)
+    if parsed.apply and parsed.enforce_read_only:
+        parser.error("--apply cannot be combined with --enforce-read-only")
     return Arguments(
         apply=parsed.apply,
+        enforce_read_only=parsed.enforce_read_only,
         limit=parsed.limit,
         max_ai_requests=parsed.max_ai_requests,
     )
@@ -337,6 +346,8 @@ def _run(arguments: Arguments) -> RepairResult:
 
     settings = get_settings()
     with session_scope() as session:
+        if arguments.enforce_read_only:
+            enforce_read_only_transaction(session)
         repository = SqlAlchemyAiRepository(session)
         try:
             model = routed_from_settings(settings, list(repository.models()))
