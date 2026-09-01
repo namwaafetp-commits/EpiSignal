@@ -34,6 +34,7 @@ from episignal_backend.ai.prompts import (
     CLUSTER_MEMBER_CHARACTERS,
     cluster_extraction_prompt,
     extraction_prompt,
+    truncate,
 )
 from episignal_backend.ai.protocol import AiRepository, ChatModel
 from episignal_backend.ai.schema import Extraction, extraction_json_schema
@@ -97,13 +98,14 @@ def extract_signal(
 
     def extract_once(limit: int) -> ExtractionSignalResult:
         system, user = extraction_prompt(signal, max_characters=limit)
+        context = truncate(signal.raw_text, limit)
         attempts: list[Attempt] = []
         result = climb(
             ladder=ladder,
             budget=budget,
             model=model,
             request_for=_request_builder(system, user),
-            accept=_accept_builder((signal.title,), (signal.raw_text,), min_confidence),
+            accept=_accept_builder((signal.title,), (context,), min_confidence),
             on_attempt=attempts.append,
         )
         return ExtractionSignalResult(
@@ -152,7 +154,7 @@ def _has_event_identity(extraction: Extraction) -> bool:
         (location for location in extraction.locations if location.role.value == "primary"),
         None,
     )
-    return primary is not None and primary.country is not None
+    return primary is not None and bool(primary.country and primary.country.strip())
 
 
 def _top_rung(ladder: Ladder) -> ModelSpec:
