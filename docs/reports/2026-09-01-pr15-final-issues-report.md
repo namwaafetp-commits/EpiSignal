@@ -28,7 +28,7 @@ Verification implementation head before this report: `8255e465e24fd2d3c12b65aabf
 
 12. **Lint/typecheck/contracts/build.** `corepack pnpm verify` passed formatting, lint, mypy (`134` source files), TypeScript, web tests, backend tests, contract generation with no diff, and the production Next build.
 
-13. **PR mergeability.** Current `origin/main` was merged into this branch with no conflicts. Final GitHub confirmation was requested after the final push; the PR base remains `main` and the worktree is clean.
+13. **PR mergeability.** Current `origin/main` was merged into this branch with no conflicts. Final GitHub confirmation reports PR #15 as `MERGEABLE` and `OPEN`, with base `main` and head `codex/next-iteration`; the local worktree and pushed branch are clean and synchronized.
 
 14. **Final PR head SHA.** The final SHA is reported in the completion handoff after the report commit and push.
 
