@@ -95,7 +95,9 @@ describe("EventPage", () => {
     expect(
       screen.getByRole("heading", { name: "Public/Global Risk" }),
     ).toBeVisible();
-    expect(screen.getByText(/68 confirmed cases \| Not reported \| Cacuaco/)).toBeVisible();
+    expect(
+      screen.getByText(/68 confirmed cases \| Not reported \| Cacuaco/),
+    ).toBeVisible();
     expect(screen.getByText("Ongoing local transmission.")).toBeVisible();
     expect(screen.getByText("Case investigation is underway.")).toBeVisible();
   });
