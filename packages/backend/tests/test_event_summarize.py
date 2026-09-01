@@ -39,10 +39,14 @@ def _counts(total: int | None, deaths: int | None) -> dict[str, object]:
     return {
         "data_as_of": "2026-08-25",
         "confirmed_cases": None,
+        "probable_cases": None,
+        "suspected_cases": None,
         "total_cases": total,
         "deaths": deaths,
         "new_cases": None,
         "new_deaths": None,
+        "cfr": None,
+        "affected_admin_areas": None,
         "material_facts": {
             "pathogen": None,
             "transmission": None,
@@ -134,6 +138,25 @@ def test_new_material_fact_is_a_material_change(field: str, value: object) -> No
     latest = _counts(68, 3)
     latest["material_facts"] = dict(latest["material_facts"])  # type: ignore[arg-type]
     latest["material_facts"][field] = value  # type: ignore[index]
+
+    assert should_resummarize(
+        last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
+        latest_observation=latest,
+        previous_counts=previous,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("probable_cases", 12),
+        ("cfr", 4.5),
+        ("affected_admin_areas", 3),
+    ],
+)
+def test_new_epidemiological_snapshot_field_is_a_material_change(field: str, value: object) -> None:
+    previous = _counts(68, 3)
+    latest = _counts(68, 3) | {field: value}
 
     assert should_resummarize(
         last_summarized_at=datetime.now(UTC) - timedelta(hours=1),
@@ -339,7 +362,12 @@ def test_unsupported_broader_risk_uses_contract_fallback() -> None:
 
 def test_the_summary_prompt_requires_the_epi_signal_flash_brief() -> None:
     model = FakeSummaryModel(_SUMMARY_JSON)
-    run_summary(model, _summary_spec(), event=_summary_input(), sources=(_source("x"),))
+    run_summary(
+        model,
+        _summary_spec(),
+        event=_summary_input(),
+        sources=(_source("official"), _source("local")),
+    )
 
     request = model.requests[0]
     assert "The Snapshot:" in request.system
@@ -352,6 +380,18 @@ def test_the_summary_prompt_requires_the_epi_signal_flash_brief() -> None:
     assert payload["observations"][0]["source_name"] == "official"
     assert payload["observations"][0]["material_facts"]["response_actions"]
     assert payload["observations"][1]["confirmed_cases"] == 68
+    assert [source["source_name"] for source in payload["sources"]] == ["official", "local"]
+
+
+def test_the_snapshot_contract_requires_all_four_nullable_fields() -> None:
+    payload = json.loads(_SUMMARY_JSON)
+    del payload["snapshot"]["cfr"]
+    model = FakeSummaryModel(json.dumps(payload))
+
+    result = run_summary(model, _summary_spec(), event=_summary_input(), sources=(_source("x"),))
+
+    assert result.outcome is SummaryOutcome.REJECTED
+    assert result.verdict is None
 
 
 def test_the_summarizer_rejects_malformed_output() -> None:

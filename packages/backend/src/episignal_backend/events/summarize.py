@@ -70,10 +70,13 @@ class SummarySnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    cases: str | None = None
-    deaths: str | None = None
-    cfr: str | None = None
-    geographic_extent: str | None = None
+    # Keep every contract key present even when evidence is absent. A missing
+    # key would make old and new payloads indistinguishable at the boundary;
+    # explicit null preserves the evidence distinction required by the brief.
+    cases: str | None
+    deaths: str | None
+    cfr: str | None
+    geographic_extent: str | None
 
     @field_validator("cases", "deaths", "cfr", "geographic_extent")
     @classmethod
@@ -328,11 +331,14 @@ def pick_representative_sources(
 
 _MATERIAL_OBSERVATION_FIELDS = (
     "confirmed_cases",
+    "probable_cases",
     "suspected_cases",
     "total_cases",
     "deaths",
     "new_cases",
     "new_deaths",
+    "cfr",
+    "affected_admin_areas",
     "geographic_extent",
     "material_facts",
 )
