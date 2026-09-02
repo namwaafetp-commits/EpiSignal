@@ -18,6 +18,7 @@ from episignal_backend.geocode.normalize import ascii_form, normalized_form
 from episignal_backend.models import (
     Disease,
     Event,
+    EventLocation,
     EventObservation,
     EventSignal,
     EventSummary,
@@ -27,6 +28,20 @@ from episignal_backend.models import (
 )
 
 DashboardMapLevel = Literal["admin1", "country"]
+
+
+def _stored_disease_text(session: Session, event_id: UUID) -> str | None:
+    from episignal_backend.events.repository import read_stored_extraction
+
+    payload = session.execute(
+        select(Signal.ai_extraction)
+        .join(EventSignal, EventSignal.signal_id == Signal.id)
+        .where(EventSignal.event_id == event_id)
+        .order_by(EventSignal.is_primary.desc(), Signal.first_seen_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    extraction = read_stored_extraction(payload)
+    return str(extraction.disease) if extraction is not None and extraction.disease else None
 
 
 @dataclass(frozen=True)
@@ -95,19 +110,23 @@ class EventSourceItem:
 
 
 @dataclass(frozen=True)
+class EventLocationItem:
+    location_role: str
+    precision: str
+    country_code: str | None
+    admin1: str | None
+    admin2: str | None
+    place_name: str | None
+    latitude: float | None
+    longitude: float | None
+
+
+@dataclass(frozen=True)
 class EventObservationItem:
+    signal_id: UUID
     observation_date: date | None
     reported_at: datetime | None
-    suspected_cases: int | None
-    probable_cases: int | None
-    confirmed_cases: int | None
-    total_cases: int | None
-    new_cases: int | None
-    deaths: int | None
-    new_deaths: int | None
-    hospitalizations: int | None
     notes: str | None
-    extraction_confidence: float | None
     material_facts: dict[str, object] | None = None
 
 
@@ -143,6 +162,7 @@ class EventDetail:
     last_summarized_at: datetime | None
     early_signal_score: float | None
     evidence_score: float | None
+    locations: tuple[EventLocationItem, ...]
     sources: tuple[EventSourceItem, ...]
     observations: tuple[EventObservationItem, ...]
     summaries: tuple[EventSummaryItem, ...]
@@ -271,7 +291,7 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
             public_id=event.public_id,
             headline=event.headline,
             summary=event.summary,
-            disease=disease_name,
+            disease=disease_name or _stored_disease_text(session, event.id),
             event_type=event.event_type.value,
             status=event.status.value,
             country_code=event.country_code,
@@ -348,7 +368,7 @@ def query_event_list(
             public_id=event.public_id,
             headline=event.headline,
             summary=event.summary,
-            disease=disease_name,
+            disease=disease_name or _stored_disease_text(session, event.id),
             event_type=event.event_type.value,
             status=event.status.value,
             verification_status=event.verification_status.value,
@@ -380,6 +400,39 @@ def query_event_detail(
     if row is None:
         return None
     event, disease_name = row
+    if disease_name is None:
+        disease_name = _stored_disease_text(session, event.id)
+
+    location_rows = (
+        session.execute(
+            select(EventLocation)
+            .where(EventLocation.event_id == event.id)
+            .order_by(EventLocation.location_role, EventLocation.id)
+        )
+        .scalars()
+        .all()
+    )
+    locations = tuple(
+        EventLocationItem(
+            location_role=location.location_role.value,
+            precision=(
+                "place"
+                if location.place_name
+                else "admin1"
+                if location.admin1
+                else "country"
+                if location.country_code
+                else "unresolved"
+            ),
+            country_code=location.country_code,
+            admin1=location.admin1,
+            admin2=location.admin2,
+            place_name=location.place_name,
+            latitude=location.latitude,
+            longitude=location.longitude,
+        )
+        for location in location_rows
+    )
 
     source_rows = session.execute(
         select(
@@ -445,18 +498,10 @@ def query_event_detail(
     )
     observations = tuple(
         EventObservationItem(
+            signal_id=obs.signal_id,
             observation_date=obs.observation_date,
             reported_at=obs.reported_at,
-            suspected_cases=obs.suspected_cases,
-            probable_cases=obs.probable_cases,
-            confirmed_cases=obs.confirmed_cases,
-            total_cases=obs.total_cases,
-            new_cases=obs.new_cases,
-            deaths=obs.deaths,
-            new_deaths=obs.new_deaths,
-            hospitalizations=obs.hospitalizations,
             notes=obs.notes,
-            extraction_confidence=obs.extraction_confidence,
             material_facts=obs.material_facts,
         )
         for obs in observation_rows
@@ -504,6 +549,7 @@ def query_event_detail(
         last_summarized_at=event.last_summarized_at,
         early_signal_score=event.early_signal_score,
         evidence_score=event.evidence_score,
+        locations=locations,
         sources=sources,
         observations=observations,
         summaries=summaries,

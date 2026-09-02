@@ -12,11 +12,9 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from episignal_backend.ai.repository import SqlAlchemyAiRepository
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.events.assemble import AssemblySummary, run_event_assembly
-from episignal_backend.events.delta import configure_delta
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 
 
@@ -52,8 +50,6 @@ def _run(arguments: Arguments) -> AssemblySummary:
     limit = arguments.limit or settings.event_match_batch_size
     stale = arguments.stale or settings.event_match_stale
     with session_scope() as session:
-        specs = list(SqlAlchemyAiRepository(session).models())
-        wiring = configure_delta(settings, specs)
         return run_event_assembly(
             SqlAlchemyEventRepository(session),
             limit=limit,
@@ -66,9 +62,6 @@ def _run(arguments: Arguments) -> AssemblySummary:
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
             candidate_limit=settings.event_candidate_limit,
-            delta_model=wiring.model,
-            delta_spec=wiring.spec,
-            followup_window_days=wiring.window_days,
         )
 
 

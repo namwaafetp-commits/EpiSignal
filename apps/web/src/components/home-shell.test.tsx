@@ -104,6 +104,7 @@ const detail = {
   last_summarized_at: EVENTS[0].last_summarized_at,
   early_signal_score: 0.8,
   evidence_score: 0.7,
+  locations: [],
   sources: [
     {
       signal_id: "11111111-1111-1111-1111-111111111111",

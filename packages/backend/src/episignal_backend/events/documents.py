@@ -244,6 +244,9 @@ class SummarySource(BaseModel):
     source_name: str = Field(min_length=1)
     is_official: bool = False
     published_at: datetime | None = None
+    article_text: str = ""
+    # Historical callers may still provide a brief; active summarization never
+    # reads it and uses article_text as authoritative evidence.
     brief: tuple[BriefPoint, ...] = ()
 
 

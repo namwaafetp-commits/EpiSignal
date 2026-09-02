@@ -4,15 +4,15 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-02
 
 ## Position
 
 | Field | Value |
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
-| Item | Real-data end-to-end surveillance validation |
-| Status | `verified` |
+| Item | Final simplified three-model surveillance pipeline |
+| Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [Lean MVP real-data validation design](docs/superpowers/specs/2026-08-31-real-data-mvp-validation-design.md) |
 | Plan | [Lean MVP real-data validation plan](docs/superpowers/plans/2026-08-31-real-data-mvp-validation.md) |
@@ -173,11 +173,21 @@ reopened.
 
 ## Next action
 
-Validation complete on branch `codex/real-data-mvp-validation`. The MVP is
-ready with minor fixes; residual provider availability and summary attribution
-risks are recorded in the validation report.
+Migrate or retire the legacy tests that still encode the superseded contracts,
+then rerun `corepack pnpm verify` before treating this item as verified.
 
 ## Blockers
 
-Residual risks are recorded in
-[the real-data validation report](docs/reports/2026-08-31-real-data-mvp-validation.md).
+The full verification gate currently reports 155 legacy Python test failures;
+see [the final pipeline report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
+
+## Task ledger — final simplified three-model pipeline
+
+- [x] DeepSeek V4 Flash relevance classification over discovery metadata only.
+- [x] Gemini 3.1 Flash-Lite identity extraction with one same-model repair.
+- [x] Deterministic disease/location normalization and exact multi-location grouping.
+- [x] Mistral Small 3.2 summary wiring over linked clean article sources.
+- [x] API/dashboard observation and multi-location surface updated; legacy rows retained.
+- [x] Focused acceptance, lint, type, contract generation, and web build checks passed.
+- [ ] Full `corepack pnpm verify` gate: blocked by 155 legacy tests asserting retired
+  extraction, batch-classification, delta/judge, count-observation, and radar contracts.

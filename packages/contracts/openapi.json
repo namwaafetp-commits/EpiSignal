@@ -445,6 +445,13 @@
             "title": "Latest Report At",
             "type": "string"
           },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/EventLocationResponse"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
           "observations": {
             "items": {
               "$ref": "#/components/schemas/EventObservationResponse"
@@ -505,6 +512,7 @@
           "last_summarized_at",
           "early_signal_score",
           "evidence_score",
+          "locations",
           "sources",
           "observations",
           "summaries"
@@ -678,31 +686,42 @@
         "title": "EventListResponse",
         "type": "object"
       },
-      "EventObservationResponse": {
+      "EventLocationResponse": {
         "properties": {
-          "confirmed_cases": {
+          "admin1": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Confirmed Cases"
+            "title": "Admin1"
           },
-          "deaths": {
+          "admin2": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Deaths"
+            "title": "Admin2"
           },
-          "extraction_confidence": {
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "latitude": {
             "anyOf": [
               {
                 "type": "number"
@@ -711,19 +730,54 @@
                 "type": "null"
               }
             ],
-            "title": "Extraction Confidence"
+            "title": "Latitude"
           },
-          "hospitalizations": {
+          "location_role": {
+            "title": "Location Role",
+            "type": "string"
+          },
+          "longitude": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Hospitalizations"
+            "title": "Longitude"
           },
+          "place_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Name"
+          },
+          "precision": {
+            "title": "Precision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location_role",
+          "precision",
+          "country_code",
+          "admin1",
+          "admin2",
+          "place_name",
+          "latitude",
+          "longitude"
+        ],
+        "title": "EventLocationResponse",
+        "type": "object"
+      },
+      "EventObservationResponse": {
+        "properties": {
           "material_facts": {
             "anyOf": [
               {
@@ -735,28 +789,6 @@
               }
             ],
             "title": "Material Facts"
-          },
-          "new_cases": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Cases"
-          },
-          "new_deaths": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Deaths"
           },
           "notes": {
             "anyOf": [
@@ -781,17 +813,6 @@
             ],
             "title": "Observation Date"
           },
-          "probable_cases": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Probable Cases"
-          },
           "reported_at": {
             "anyOf": [
               {
@@ -804,42 +825,17 @@
             ],
             "title": "Reported At"
           },
-          "suspected_cases": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Suspected Cases"
-          },
-          "total_cases": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Cases"
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
           }
         },
         "required": [
+          "signal_id",
           "observation_date",
           "reported_at",
-          "suspected_cases",
-          "probable_cases",
-          "confirmed_cases",
-          "total_cases",
-          "new_cases",
-          "deaths",
-          "new_deaths",
-          "hospitalizations",
           "notes",
-          "extraction_confidence",
           "material_facts"
         ],
         "title": "EventObservationResponse",

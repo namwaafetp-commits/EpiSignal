@@ -85,14 +85,37 @@ def metadata_fields_from_extraction(extraction: Any) -> MetadataFields | None:
         return None
     locations = tuple(getattr(extraction, "locations", ()) or ())
     source = next(
-        (item for item in locations if getattr(item.role, "value", item.role) == "primary"),
+        (
+            item
+            for item in locations
+            if getattr(getattr(item, "role", None), "value", getattr(item, "role", None))
+            == "primary"
+        ),
         next(iter(locations), None),
     )
+    disease = getattr(extraction, "disease", None)
     return MetadataFields(
-        disease=extraction.disease.name if extraction.disease is not None else None,
+        disease=disease if isinstance(disease, str) else getattr(disease, "name", None),
         country=getattr(source, "country", None),
         admin1=getattr(source, "admin1", None),
-        place_name=getattr(source, "place_name", None),
+        place_name=getattr(source, "town", None) or getattr(source, "place_name", None),
+    )
+
+
+def metadata_fields_for_extraction_locations(extraction: Any) -> tuple[MetadataFields, ...]:
+    """Return one identity record per extracted location, preserving multiplicity."""
+    if extraction is None:
+        return ()
+    disease = getattr(extraction, "disease", None)
+    disease_text = disease if isinstance(disease, str) else getattr(disease, "name", None)
+    locations = tuple(getattr(extraction, "locations", ()) or ())
+    return tuple(
+        MetadataFields(
+            disease=disease_text,
+            country=getattr(location, "country", None),
+            place_name=getattr(location, "town", None) or getattr(location, "place_name", None),
+        )
+        for location in locations
     )
 
 

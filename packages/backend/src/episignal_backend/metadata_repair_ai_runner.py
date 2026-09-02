@@ -374,8 +374,7 @@ def run_repair_ai(
                 existing_extraction_reused += 1
                 reused = True
                 model_id = signal.ai_model
-                existing = read_stored_extraction(signal.ai_extraction)
-                confidence = existing.confidence if existing is not None else None
+                confidence = None
             else:
                 extractable = _extractable_signal(signal)
                 if extractable is None:
@@ -399,7 +398,7 @@ def run_repair_ai(
                 extraction_outcomes.append(extraction_outcome)
                 request_guard_hit = request_guard_hit or result.outcome is ClimbOutcome.GUARD
                 model_id = result.attempts[-1].spec.model_id if result.attempts else None
-                confidence = result.extraction.confidence if result.extraction is not None else None
+                confidence = None
                 expanded = expanded or result.expanded_retries > 0
                 ai_cost_usd += sum((attempt.cost for attempt in result.attempts), Decimal("0"))
                 evidence = _apply_extraction(evidence, result)
@@ -416,7 +415,7 @@ def run_repair_ai(
                         )
                     if result.extraction is not None:
                         disease_id = (
-                            repository.resolve_disease(result.extraction.disease.name)
+                            repository.resolve_disease(result.extraction.disease)
                             if result.extraction.disease is not None
                             else None
                         )

@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from episignal_backend.ai.documents import ChatRequest, ModelSpec, TokenUsage
 from episignal_backend.ai.ladder import Attempt, cost_usd
-from episignal_backend.ai.protocol import ChatModel, ModelUnavailable
+from episignal_backend.ai.protocol import ChatModel, ModelUnavailable, NoModelsConfigured
+from episignal_backend.ai.registry import model_for_purpose
 from episignal_backend.ai.validate import Rejected, RejectionReason
 from episignal_backend.config import Settings
 from episignal_backend.db.types import AiOutcome, AiPurpose
@@ -32,13 +33,16 @@ SUMMARY_TEMPERATURE = 0.0
 
 SUMMARY_SYSTEM = (
     "You write one EpiSignal epidemiological event flash brief from all linked "
-    "event observations and sources.\n"
+    "clean article sources.\n"
     "Rules:\n"
-    "- Summarize the EVENT, never an individual article. Use all observations and "
-    "prefer the newest credible figures.\n"
+    "- Summarize the EVENT, never an individual article. Use the supplied article "
+    "title, publication time, source, and clean article text as the evidence.\n"
+    "- The linked article sources are authoritative for narrative facts. Do not "
+    "expect or invent deprecated extraction fields such as cases, deaths, CFR, "
+    "pathogen, transmission, dates, or response actions.\n"
     "- Preserve confirmed, suspected, and probable distinctions.\n"
-    "- Every number, disease, location, transmission claim, response, and risk "
-    "claim must be supported by the supplied evidence. Never invent or silently "
+    "- Every number, disease, location, response, and risk claim must be supported "
+    "by the supplied article evidence. Never invent or silently "
     "resolve conflicting evidence.\n"
     "- Use trajectory exactly as one of: Emerging, Increasing, Stable, Declining, "
     "Contained, Resolved, Unclear. Use Unclear when unsupported.\n"
@@ -209,7 +213,7 @@ def run_summary(
                         "published_at": source.published_at.isoformat()
                         if source.published_at is not None
                         else None,
-                        "brief": [point.model_dump(mode="json") for point in source.brief],
+                        "article_text": source.article_text,
                     }
                     for source in sources
                 ],
@@ -269,17 +273,17 @@ def run_summary(
 
 
 def configure_summary(settings: Settings, specs: list[ModelSpec]) -> SummaryWiring:
-    """Resolve the summarizer model: the DeepSeek ``event_summary`` rung."""
+    """Resolve Mistral Small 3.2 through the purpose registry."""
     from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 
     try:
         model = routed_from_settings(settings, specs)
     except NoProviderKey:
         return SummaryWiring(model=None, spec=None)
-    spec = next(
-        (candidate for candidate in specs if candidate.purpose is AiPurpose.EVENT_SUMMARY),
-        None,
-    )
+    try:
+        spec = model_for_purpose(specs, AiPurpose.EVENT_SUMMARY)
+    except NoModelsConfigured:
+        return SummaryWiring(model=None, spec=None)
     return SummaryWiring(model=model, spec=spec)
 
 
@@ -300,12 +304,12 @@ def pick_representative_sources(
         key=lambda source: (
             0 if source.is_official else 1,
             datetime.max.replace(tzinfo=UTC) - publication_timestamp(source),
-            -len(source.brief),
+            -len(source.article_text),
             source.title,
         ),
     )
     selected = list(ordered[:max_sources])
-    useful = [source for source in sources if source.brief]
+    useful = [source for source in sources if source.article_text.strip()]
     if selected and useful:
         newest_useful = max(useful, key=publication_timestamp)
         if newest_useful not in selected:
@@ -361,11 +365,8 @@ def should_resummarize(
     max_age_hours: int = 24,
     new_article_count: int = 3,
 ) -> bool:
-    """Decide whether a new event observation materially changes its brief.
-
-    The legacy article-count and age arguments remain accepted for callers that
-    have not migrated, but neither can trigger a new event summary.
-    """
+    """Regenerate once for a new linked source or a never-summarized event."""
     if last_summarized_at is None:
         return True
-    return not _counts_equals(latest_observation, previous_counts)
+    del latest_observation, previous_counts, now, max_age_hours, new_article_count
+    return unsummarized_articles > 0

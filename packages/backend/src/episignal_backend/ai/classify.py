@@ -1,24 +1,12 @@
-"""The batched relevance pass.
-
-Batched because relevance is decided from a title and an opening, and one
-request can carry many of those. The batch is also the unit of trust: an answer
-that does not address exactly the batch it was given is discarded whole.
-
-This module imports neither SQLAlchemy nor httpx.
-"""
+"""DeepSeek relevance pass over discovery metadata."""
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from episignal_backend.ai.documents import (
-    ChatRequest,
-    ClassifiableSignal,
-    ModelSpec,
-    Verdict,
-)
+from episignal_backend.ai.documents import ChatRequest, ModelSpec, Verdict
 from episignal_backend.ai.ladder import (
     Attempt,
     ClimbOutcome,
@@ -30,16 +18,13 @@ from episignal_backend.ai.ladder import (
 )
 from episignal_backend.ai.prompts import classification_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
-from episignal_backend.ai.schema import ClassificationResponse, classification_json_schema
+from episignal_backend.ai.registry import model_for_purpose
+from episignal_backend.ai.schema import ClassificationVerdict, classification_json_schema
 from episignal_backend.ai.validate import validate_classification
 from episignal_backend.db.types import AiPurpose, SignalType
 
-DEFAULT_BATCH_SIZE = 20
-DEFAULT_LIMIT = 100
-DEFAULT_MAX_TIER = 3
-CLASSIFICATION_SCHEMA_NAME = "classification_response"
-
-logger = logging.getLogger("episignal_backend.ai.classify")
+CLASSIFICATION_SCHEMA_NAME = "relevance_response"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -48,40 +33,9 @@ class ClassificationResult:
     relevant: int = 0
     irrelevant: int = 0
     reviewed: int = 0
-    # Signals no tier could be asked about. Not failures and not decisions:
-    # they are simply still waiting.
     unavailable: int = 0
     requests: int = 0
     stopped_early: bool = False
-
-
-def _batches(
-    pending: Sequence[ClassifiableSignal], size: int
-) -> list[Sequence[ClassifiableSignal]]:
-    return [pending[start : start + size] for start in range(0, len(pending), size)]
-
-
-def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
-    schema = classification_json_schema()
-
-    def _request(spec: ModelSpec) -> ChatRequest:
-        return ChatRequest(
-            model_id=spec.model_id,
-            system=system,
-            user=user,
-            response_schema=schema,
-            schema_name=CLASSIFICATION_SCHEMA_NAME,
-            temperature=0.0,
-        )
-
-    return _request
-
-
-def _accept_builder(identifiers: Sequence[UUID]) -> Callable[[str], ClassificationResponse]:
-    def _accept(content: str) -> ClassificationResponse:
-        return validate_classification(content, identifiers)
-
-    return _accept
 
 
 def run_classification(
@@ -89,73 +43,87 @@ def run_classification(
     model: ChatModel,
     *,
     guards: Guards,
-    batch_size: int = DEFAULT_BATCH_SIZE,
-    limit: int = DEFAULT_LIMIT,
-    max_tier: int = DEFAULT_MAX_TIER,
+    limit: int = 100,
+    batch_size: int = 1,
+    max_tier: int = 3,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ClassificationResult:
-    ladder = Ladder.build(repository.models(), max_tier=max_tier)
+    """Ask DeepSeek once per sighting; no disease/location extraction here."""
+    del batch_size, max_tier
+    specs = repository.models()
+    spec = model_for_purpose(specs, AiPurpose.CLASSIFICATION)
+    ladder = Ladder(rungs=(spec,))
     budget = RunBudget(guards)
     pending = repository.awaiting_classification(limit=limit)
-
-    relevant = 0
-    irrelevant = 0
-    reviewed = 0
-    unavailable = 0
-    requests = 0
+    relevant = irrelevant = reviewed = unavailable = requests = 0
     stopped_early = False
 
-    for batch in _batches(pending, batch_size):
-        identifiers = [signal.id for signal in batch]
-        system, user = classification_prompt(batch)
+    for signal in pending:
+        system, user = classification_prompt(signal)
         attempts: list[Attempt] = []
+
+        def request_for(_: ModelSpec, *, system: str = system, user: str = user) -> ChatRequest:
+            return ChatRequest(
+                model_id=spec.model_id,
+                system=system,
+                user=user,
+                response_schema=classification_json_schema(),
+                schema_name=CLASSIFICATION_SCHEMA_NAME,
+                temperature=0.0,
+            )
 
         result = climb(
             ladder=ladder,
             budget=budget,
             model=model,
-            request_for=_request_builder(system, user),
-            accept=_accept_builder(identifiers),
+            request_for=request_for,
+            accept=validate_classification,
             on_attempt=attempts.append,
         )
         requests += len(attempts)
-
+        at = now()
         try:
-            at = now()
             for attempt in attempts:
                 repository.record_request(
                     cost_row(
                         attempt,
                         purpose=AiPurpose.CLASSIFICATION,
-                        signal_id=None,
-                        batch_size=len(batch),
+                        signal_id=signal.id,
+                        batch_size=1,
                         at=at,
                     )
                 )
-
-            if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
-                # The accepted answer is always the last attempt, which is the
-                # rung whose name belongs on every signal it decided.
-                decided = _write(repository, result.value, attempts[-1].spec.model_id, at)
-                relevant += decided
-                irrelevant += len(batch) - decided
+            if result.outcome is ClimbOutcome.ACCEPTED and isinstance(
+                result.value, ClassificationVerdict
+            ):
+                repository.record_classification(
+                    signal.id,
+                    Verdict(
+                        is_public_health_relevant=result.value.relevant,
+                        signal_type=SignalType.UNKNOWN,
+                        relevance=result.value.confidence,
+                        model_id=spec.model_id,
+                        decided_at=at,
+                    ),
+                )
             elif result.outcome is ClimbOutcome.REJECTED:
-                # A malformed classification answer teaches us nothing about
-                # the signals. Keep them unmodified so the next run can retry;
-                # extraction failure is a different pass and status.
-                reviewed += len(batch)
+                pass
             else:
-                # GUARD or UNAVAILABLE: nothing was learned about these signals,
-                # so nothing is written about them and the next run sees them
-                # unchanged. The cost rows above are still committed, because
-                # the attempt itself is a fact.
-                unavailable += len(batch)
-
+                pass
             repository.commit()
-        except Exception as error:
+            if result.outcome is ClimbOutcome.ACCEPTED and isinstance(
+                result.value, ClassificationVerdict
+            ):
+                relevant += int(result.value.relevant)
+                irrelevant += int(not result.value.relevant)
+            elif result.outcome is ClimbOutcome.REJECTED:
+                reviewed += 1
+            else:
+                unavailable += 1
+        except Exception:
             repository.rollback()
-            logger.error("Could not store a classification batch (%s)", type(error).__name__)
-
+            reviewed += 1
+            logger.error("classification storage failed for signal %s", signal.id, exc_info=True)
         if result.outcome is ClimbOutcome.GUARD:
             stopped_early = True
             break
@@ -172,19 +140,20 @@ def run_classification(
 
 
 def _write(
-    repository: AiRepository, response: ClassificationResponse, model_id: str, at: datetime
+    repository: AiRepository,
+    response: ClassificationVerdict,
+    model_id: str,
+    at: datetime,
+    signal_id: UUID,
 ) -> int:
-    relevant = 0
-    for entry in response.results:
-        repository.record_classification(
-            entry.id,
-            Verdict(
-                is_public_health_relevant=entry.relevant,
-                signal_type=SignalType.UNKNOWN,
-                relevance=entry.confidence,
-                model_id=model_id,
-                decided_at=at,
-            ),
-        )
-        relevant += 1 if entry.relevant else 0
-    return relevant
+    repository.record_classification(
+        signal_id,
+        Verdict(
+            is_public_health_relevant=response.relevant,
+            signal_type=SignalType.UNKNOWN,
+            relevance=response.confidence,
+            model_id=model_id,
+            decided_at=at,
+        ),
+    )
+    return int(response.relevant)

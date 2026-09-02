@@ -157,30 +157,21 @@ def score_extraction(
         grounded = True
     except Exception:
         grounded = False
-    expected_counts = expected_model.epidemiology.model_dump(mode="json")
-    actual_counts = actual_model.epidemiology.model_dump(mode="json")
-    count_names = tuple(expected_counts)
-    populated = tuple(name for name in count_names if expected_counts[name] is not None)
-    numeric_correct = sum(expected_counts[name] == actual_counts.get(name) for name in populated)
-    unsupported = sum(
-        expected_counts[name] is None and actual_counts.get(name) is not None
-        for name in count_names
-    )
-    null_correct = sum(
-        (expected_counts[name] is None) == (actual_counts.get(name) is None) for name in count_names
-    )
+    expected_locations = {(item.town, item.country) for item in expected_model.locations}
+    actual_locations = {(item.town, item.country) for item in actual_model.locations}
+    numeric_correct = int(expected_model.disease == actual_model.disease)
+    unsupported = int(not actual_locations.issubset(expected_locations))
+    null_correct = int((expected_model.disease is None) == (actual_model.disease is None))
     return {
         "schema_valid": True,
         "schema_failures": 0,
         "grounded": grounded,
         "numeric_correct": numeric_correct,
-        "numeric_expected": len(populated),
+        "numeric_expected": 1,
         "unsupported_numeric_claims": unsupported,
         "null_correct": null_correct,
-        "null_slots": len(count_names),
-        "brief_correct": int(
-            expected_model.brief == actual_model.brief and len(actual_model.brief) == 5
-        ),
+        "null_slots": 1,
+        "brief_correct": int(actual_locations == expected_locations),
         "grounding_failures": int(not grounded),
     }
 

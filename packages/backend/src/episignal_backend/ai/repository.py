@@ -9,6 +9,7 @@ behalf of the passes above it.
 import logging
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
@@ -376,7 +377,12 @@ class SqlAlchemyAiRepository:
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         # The version is stamped here and never by the model: a version a model
         # can choose is a version that lies the moment the model is confused.
-        payload = stored.extraction.model_dump(mode="json")
+        payload: dict[str, Any] = {
+            "disease_text": stored.extraction.disease,
+            "locations": [
+                location.model_dump(mode="json") for location in stored.extraction.locations
+            ],
+        }
         payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
 
         self._session.execute(
@@ -388,8 +394,8 @@ class SqlAlchemyAiRepository:
                 ai_model=stored.model_id,
                 ai_processed_at=stored.processed_at,
                 disease_id=stored.disease_id,
-                signal_type=stored.extraction.signal_type,
-                summary="\n".join(point.text for point in stored.extraction.brief),
+                signal_type=SignalType.UNKNOWN,
+                summary=None,
             )
         )
 
@@ -470,7 +476,12 @@ class SqlAlchemyAiRepository:
     def record_cluster_extraction(
         self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
     ) -> None:
-        payload = stored.extraction.model_dump(mode="json")
+        payload: dict[str, Any] = {
+            "disease_text": stored.extraction.disease,
+            "locations": [
+                location.model_dump(mode="json") for location in stored.extraction.locations
+            ],
+        }
         payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
 
         # Update the representative signal
@@ -483,8 +494,8 @@ class SqlAlchemyAiRepository:
                 ai_model=stored.model_id,
                 ai_processed_at=stored.processed_at,
                 disease_id=stored.disease_id,
-                signal_type=stored.extraction.signal_type,
-                summary="\n".join(point.text for point in stored.extraction.brief),
+                signal_type=SignalType.UNKNOWN,
+                summary=None,
             )
         )
 

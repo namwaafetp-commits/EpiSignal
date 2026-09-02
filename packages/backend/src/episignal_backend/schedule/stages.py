@@ -23,7 +23,6 @@ from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import AiPurpose
 from episignal_backend.events.assemble import run_event_assembly
-from episignal_backend.events.delta import configure_delta
 from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
@@ -248,10 +247,6 @@ def _match() -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
         event_repository = SqlAlchemyEventRepository(session)
-        specs = list(SqlAlchemyAiRepository(session).models())
-        # The delta pass is enrichment: without a provider key the assembly
-        # still runs, it simply never records what changed.
-        wiring = configure_delta(settings, specs)
         summary = run_event_assembly(
             event_repository,
             limit=settings.event_match_batch_size,
@@ -264,9 +259,6 @@ def _match() -> Mapping[str, int]:
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
             candidate_limit=settings.event_candidate_limit,
-            delta_model=wiring.model,
-            delta_spec=wiring.spec,
-            followup_window_days=wiring.window_days,
         )
     return {
         "seen": summary.signals_seen,

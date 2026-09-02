@@ -9,18 +9,16 @@ This module imports neither SQLAlchemy nor httpx.
 
 import logging
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from episignal_backend.ai.documents import ModelSpec
-from episignal_backend.ai.ladder import cost_row
 from episignal_backend.ai.protocol import ChatModel
 from episignal_backend.ai.schema import BriefPoint
-from episignal_backend.db.types import AiPurpose, RelationshipType
+from episignal_backend.db.types import RelationshipType
 from episignal_backend.events.cluster import build_clusters
-from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
 from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
 from episignal_backend.events.finalize import (
     finalize_event_creation,
@@ -67,44 +65,9 @@ def _maybe_run_delta(
     cluster: StoryCluster,
     now: datetime | None,
 ) -> int:
-    """Run the delta pass when this attach followed a recent report.
-
-    Returns 1 when a delta landed, 0 otherwise. Every early return is a
-    no-op: the attach has already happened and must stand whether or not the
-    pass runs, succeeds, or fails.
-    """
-    if delta_model is None or delta_spec is None or followup_window_days is None:
-        return 0
-    if chosen is None or previous_brief is None:
-        return 0
-    reference = now or datetime.now(UTC)
-    if reference - chosen.last_updated_at > timedelta(days=followup_window_days):
-        return 0
-    briefed = [
-        sig for sig in cluster.signals if sig.extraction is not None and sig.extraction.brief
-    ]
-    if not briefed:
-        return 0
-
-    # The delta lands on this attach's newest report, so a reader comparing
-    # the row with its neighbours sees the change where the change was
-    # reported, not on an arbitrary member of the cluster.
-    target = max(briefed, key=lambda sig: sig.published_at or sig.first_seen_at)
-    target_brief = target.extraction.brief if target.extraction is not None else ()
-    result = run_delta(delta_model, delta_spec, previous=previous_brief, new=target_brief)
-    if result.attempt is not None:
-        repo.record_ai_request(
-            cost_row(
-                result.attempt,
-                purpose=AiPurpose.FOLLOW_UP,
-                signal_id=target.signal_id,
-                batch_size=1,
-                at=reference,
-            )
-        )
-    if result.outcome is DeltaOutcome.ACCEPTED and result.delta is not None:
-        repo.apply_delta(event_id, target.signal_id, delta_payload(result.delta))
-        return 1
+    """Legacy delta seam retained for historical callers; never active."""
+    del repo, delta_model, delta_spec, followup_window_days, event_id, chosen
+    del previous_brief, cluster, now
     return 0
 
 

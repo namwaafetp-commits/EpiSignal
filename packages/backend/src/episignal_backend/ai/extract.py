@@ -1,63 +1,39 @@
-"""The epidemiological extraction pass.
-
-Extracts structured epidemiological facts from relevant news articles. Every
-extracted number and transmission flag is grounded in the source text. The
-network climbs run concurrently; every read or write that touches the
-repository stays on the calling thread, in selection order.
-
-This module imports neither SQLAlchemy nor httpx.
-"""
+"""Gemini identity extraction after relevance-gated retrieval."""
 
 import logging
-from collections.abc import Callable, Iterator, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from episignal_backend.ai.documents import (
     ChatRequest,
-    ExtractableCluster,
     ExtractableSignal,
     ModelSpec,
     StoredExtraction,
 )
-from episignal_backend.ai.ladder import (
-    Attempt,
-    ClimbOutcome,
-    Guards,
-    Ladder,
-    RunBudget,
-    climb,
-    cost_row,
-)
-from episignal_backend.ai.prompts import (
-    CLUSTER_MEMBER_CHARACTERS,
-    cluster_extraction_prompt,
-    extraction_prompt,
-    identity_repair_prompt,
-    truncate,
-)
+from episignal_backend.ai.ladder import Attempt, ClimbOutcome, Guards, Ladder, RunBudget, cost_row
+from episignal_backend.ai.prompts import extraction_prompt, identity_repair_prompt
 from episignal_backend.ai.protocol import AiRepository, ChatModel
+from episignal_backend.ai.registry import model_for_purpose
 from episignal_backend.ai.schema import Extraction, extraction_json_schema
 from episignal_backend.ai.validate import validate_extraction
 from episignal_backend.db.types import AiPurpose
 
-DEFAULT_LIMIT = 100
-DEFAULT_MAX_TIER = 3
+EXTRACTION_SCHEMA_NAME = "extraction_identity"
 DEFAULT_MAX_INPUT_CHARACTERS = 12000
-DEFAULT_INITIAL_INPUT_CHARACTERS = 7000
-DEFAULT_MIN_CONFIDENCE = 0.5
-# Sequential by default so a pass stays deterministic unless the caller asks
-# for concurrency; production wires EPISIGNAL_AI_EXTRACTION_WORKERS here.
+DEFAULT_MIN_CONFIDENCE = 0.0
 DEFAULT_WORKERS = 1
-# The floor under the extraction ladder. Live climbs recorded T1 Gemini
-# accepting 0 of 7 extraction attempts (6 shape rejections, 1 ungrounded)
-# while T2 and T3 carried the accepted answers, so starting below T2 spends
-# tokens on a rung that, on this evidence, never answers first.
-EXTRACTION_MIN_TIER = 2
+EXTRACTION_MIN_TIER = 1
 EXTRACTION_TEMPERATURE = 0.0
-EXTRACTION_SCHEMA_NAME = "extraction_response"
-logger = logging.getLogger("episignal_backend.ai.extract")
+logger = logging.getLogger(__name__)
+
+
+def build_extraction_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
+    """Compatibility seam returning a one-rung Gemini ladder."""
+    spec = model_for_purpose(repository.models(), AiPurpose.EXTRACTION)
+    if spec.tier > max_tier:
+        raise ValueError("configured extraction model exceeds max tier")
+    return Ladder(rungs=(spec,))
 
 
 @dataclass(frozen=True)
@@ -82,36 +58,54 @@ class ExtractionSignalResult:
     stopped_early: bool = False
 
 
-def build_extraction_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
-    return Ladder.build(repository.models(), max_tier=max_tier, min_tier=EXTRACTION_MIN_TIER)
+def _has_event_identity(extraction: Extraction) -> bool:
+    return extraction.disease is not None and any(
+        location.country is not None for location in extraction.locations
+    )
+
+
+def _identity_rank(extraction: Extraction) -> tuple[int, int, int, int]:
+    """Rank accepted partial identity deterministically for retry selection."""
+    countries = sum(location.country is not None for location in extraction.locations)
+    towns = sum(location.town is not None for location in extraction.locations)
+    return (int(extraction.disease is not None), int(countries > 0), countries, towns)
 
 
 def extract_signal(
     signal: ExtractableSignal,
     model: ChatModel,
     *,
-    ladder: Ladder,
+    spec: ModelSpec | None = None,
+    ladder: Ladder | None = None,
     budget: RunBudget,
-    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    max_input_characters: int = 12000,
+    min_confidence: float = 0.0,
 ) -> ExtractionSignalResult:
-    """Run extraction with at most one bounded identity retry."""
+    """One Gemini request plus exactly one same-model identity repair."""
+    del min_confidence
+    if spec is None:
+        if ladder is None or not ladder.rungs:
+            raise ValueError("extraction requires a configured model")
+        spec = ladder.rungs[-1]
 
-    def extract_once(
-        limit: int,
-        *,
-        active_ladder: Ladder = ladder,
-        prompt_builder: Callable[..., tuple[str, str]] = extraction_prompt,
-    ) -> ExtractionSignalResult:
-        system, user = prompt_builder(signal, max_characters=limit)
-        context = truncate(signal.raw_text, limit)
+    def ask(builder: Callable[..., tuple[str, str]]) -> ExtractionSignalResult:
+        system, user = builder(signal, max_characters=max_input_characters)
         attempts: list[Attempt] = []
+        from episignal_backend.ai.ladder import Ladder, climb
+
         result = climb(
-            ladder=active_ladder,
+            ladder=Ladder(rungs=(spec,)),
             budget=budget,
             model=model,
-            request_for=_request_builder(system, user),
-            accept=_accept_builder((signal.title,), (context,), min_confidence),
+            request_for=lambda _: ChatRequest(
+                model_id=spec.model_id,
+                system=system,
+                user=user,
+                response_schema=extraction_json_schema(),
+                schema_name=EXTRACTION_SCHEMA_NAME,
+                temperature=0.0,
+            ),
+            accept=lambda content: validate_extraction(content),
             on_attempt=attempts.append,
         )
         return ExtractionSignalResult(
@@ -122,88 +116,26 @@ def extract_signal(
             stopped_early=result.outcome is ClimbOutcome.GUARD,
         )
 
-    initial_limit = min(DEFAULT_INITIAL_INPUT_CHARACTERS, max_input_characters)
-    initial = extract_once(initial_limit)
-    extraction = initial.extraction
-    if (
-        initial.outcome is not ClimbOutcome.ACCEPTED
-        or extraction is None
-        or _has_event_identity(extraction)
-    ):
+    initial = ask(extraction_prompt)
+    if initial.outcome is not ClimbOutcome.ACCEPTED or initial.extraction is None:
+        return initial
+    if _has_event_identity(initial.extraction):
         return initial
 
-    identity_retry = extract_once(
-        max_input_characters,
-        active_ladder=Ladder(rungs=(_top_rung(ladder),)),
-        prompt_builder=identity_repair_prompt,
-    )
-    if (
-        identity_retry.outcome is ClimbOutcome.ACCEPTED
-        and identity_retry.extraction is not None
-        and _has_event_identity(identity_retry.extraction)
+    retry = ask(identity_repair_prompt)
+    chosen = initial
+    if retry.extraction is not None and _identity_rank(retry.extraction) > _identity_rank(
+        initial.extraction
     ):
-        chosen = identity_retry
-    else:
-        # A guarded, unavailable, rejected, or still-incomplete retry must not
-        # discard the valid initial extraction.
-        chosen = initial
-
+        chosen = retry
     return ExtractionSignalResult(
         outcome=chosen.outcome,
         extraction=chosen.extraction,
         error=chosen.error,
-        attempts=initial.attempts + identity_retry.attempts,
+        attempts=initial.attempts + retry.attempts,
         expanded_retries=1,
-        stopped_early=identity_retry.stopped_early,
+        stopped_early=retry.stopped_early,
     )
-
-
-def _has_event_identity(extraction: Extraction) -> bool:
-    """Whether extraction has the identity needed to group an event."""
-    if extraction.disease is None:
-        return False
-    primary = next(
-        (location for location in extraction.locations if location.role.value == "primary"),
-        None,
-    )
-    return primary is not None and bool(primary.country and primary.country.strip())
-
-
-def _top_rung(ladder: Ladder) -> ModelSpec:
-    """Return the highest configured extraction rung."""
-    return ladder.rungs[-1]
-
-
-def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatRequest]:
-    schema = extraction_json_schema()
-
-    def _request(spec: ModelSpec) -> ChatRequest:
-        return ChatRequest(
-            model_id=spec.model_id,
-            system=system,
-            user=user,
-            response_schema=schema,
-            schema_name=EXTRACTION_SCHEMA_NAME,
-            temperature=EXTRACTION_TEMPERATURE,
-        )
-
-    return _request
-
-
-def _accept_builder(
-    titles: Sequence[str], bodies: Sequence[str], min_confidence: float
-) -> Callable[[str], Extraction]:
-    def _accept(content: str) -> Extraction:
-        return validate_extraction(content, bodies, title=titles, min_confidence=min_confidence)
-
-    return _accept
-
-
-def _chunks(
-    pending: Sequence[ExtractableSignal], size: int
-) -> Iterator[Sequence[ExtractableSignal]]:
-    for start in range(0, len(pending), size):
-        yield pending[start : start + size]
 
 
 def _run_pass(
@@ -211,105 +143,63 @@ def _run_pass(
     model: ChatModel,
     pending: Sequence[ExtractableSignal],
     *,
+    spec: ModelSpec,
     guards: Guards,
     demote_on_rejection: bool,
-    max_tier: int = DEFAULT_MAX_TIER,
-    min_tier: int = EXTRACTION_MIN_TIER,
-    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-    workers: int = DEFAULT_WORKERS,
+    max_input_characters: int = 12000,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
-    ladder = Ladder.build(repository.models(), max_tier=max_tier, min_tier=min_tier)
     budget = RunBudget(guards)
-
-    def climb_one(signal: ExtractableSignal) -> ExtractionSignalResult:
-        """The network work for one signal. Touches no repository, so it is
-        safe to run on a worker thread; the budget lock keeps the guard's
-        arithmetic honest across concurrent climbs."""
-        return extract_signal(
-            signal,
-            model,
-            ladder=ladder,
-            budget=budget,
-            max_input_characters=max_input_characters,
-            min_confidence=min_confidence,
+    extracted = reviewed = unavailable = storage_failed = requests = retries = 0
+    for signal in pending:
+        result = extract_signal(
+            signal, model, spec=spec, budget=budget, max_input_characters=max_input_characters
         )
-
-    extracted = 0
-    reviewed = 0
-    unavailable = 0
-    storage_failed = 0
-    requests = 0
-    expanded_retries = 0
-    stopped_early = False
-
-    # Chunks bound the work in flight and let the writes stream: finished
-    # signals land in the database while later chunks are still climbing.
-    # Submission order is preserved end to end, so the writes a run makes do
-    # not depend on how many workers happened to be used.
-    chunk_size = max(workers, 1) * 2
-    for chunk in _chunks(pending, chunk_size):
-        with ThreadPoolExecutor(max_workers=max(workers, 1)) as pool:
-            outcomes = list(pool.map(climb_one, chunk))
-        for signal, result in zip(chunk, outcomes, strict=True):
-            attempts = result.attempts
-            requests += len(attempts)
-            expanded_retries += result.expanded_retries
-
-            try:
-                at = now()
-                for attempt in attempts:
-                    repository.record_request(
-                        cost_row(
-                            attempt,
-                            purpose=AiPurpose.EXTRACTION,
-                            signal_id=signal.id,
-                            batch_size=1,
-                            at=at,
-                        )
+        requests += len(result.attempts)
+        retries += result.expanded_retries
+        at = now()
+        try:
+            for attempt in result.attempts:
+                repository.record_request(
+                    cost_row(
+                        attempt,
+                        purpose=AiPurpose.EXTRACTION,
+                        signal_id=signal.id,
+                        batch_size=1,
+                        at=at,
                     )
-
-                if result.outcome is ClimbOutcome.ACCEPTED and result.extraction is not None:
-                    disease_id = (
-                        repository.resolve_disease(result.extraction.disease.name)
-                        if result.extraction.disease is not None
-                        else None
-                    )
-                    repository.record_extraction(
-                        signal.id,
-                        StoredExtraction(
-                            extraction=result.extraction,
-                            disease_id=disease_id,
-                            model_id=attempts[-1].spec.model_id,
-                            processed_at=at,
-                        ),
-                    )
-                elif result.outcome is ClimbOutcome.REJECTED and demote_on_rejection:
-                    repository.record_extraction_failure(signal.id)
-
-                repository.commit()
-            except Exception as error:
-                repository.rollback()
-                storage_failed += 1
-                logger.error(
-                    "Could not store extraction for signal %s (%s)",
-                    signal.id,
-                    type(error).__name__,
                 )
+            if result.outcome is ClimbOutcome.ACCEPTED and result.extraction is not None:
+                disease_id = (
+                    repository.resolve_disease(result.extraction.disease)
+                    if result.extraction.disease
+                    else None
+                )
+                repository.record_extraction(
+                    signal.id,
+                    StoredExtraction(
+                        extraction=result.extraction,
+                        disease_id=disease_id,
+                        model_id=spec.model_id,
+                        processed_at=at,
+                    ),
+                )
+            elif result.outcome is ClimbOutcome.REJECTED:
+                if demote_on_rejection:
+                    repository.record_extraction_failure(signal.id)
             else:
-                if result.outcome is ClimbOutcome.ACCEPTED and result.extraction is not None:
-                    extracted += 1
-                elif result.outcome is ClimbOutcome.REJECTED:
-                    reviewed += 1
-                else:
-                    unavailable += 1
-
-            if result.stopped_early:
-                stopped_early = True
-        if stopped_early:
-            break
-
+                pass
+            repository.commit()
+            if result.outcome is ClimbOutcome.ACCEPTED and result.extraction is not None:
+                extracted += 1
+            elif result.outcome is ClimbOutcome.REJECTED:
+                reviewed += 1
+            else:
+                unavailable += 1
+        except Exception:
+            repository.rollback()
+            storage_failed += 1
+            logger.error("extraction storage failed for signal %s", signal.id, exc_info=True)
     return ExtractionResult(
         examined=len(pending),
         extracted=extracted,
@@ -317,131 +207,8 @@ def _run_pass(
         unavailable=unavailable,
         storage_failed=storage_failed,
         requests=requests,
-        expanded_retries=expanded_retries,
-        stopped_early=stopped_early,
-    )
-
-
-def _run_cluster_pass(
-    repository: AiRepository,
-    model: ChatModel,
-    groups: Sequence[ExtractableCluster],
-    *,
-    guards: Guards,
-    max_tier: int = DEFAULT_MAX_TIER,
-    min_tier: int = EXTRACTION_MIN_TIER,
-    max_input_characters: int = CLUSTER_MEMBER_CHARACTERS,
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-    now: Callable[[], datetime] = lambda: datetime.now(UTC),
-) -> tuple[ExtractionResult, list[ExtractableSignal]]:
-    ladder = Ladder.build(repository.models(), max_tier=max_tier, min_tier=min_tier)
-    budget = RunBudget(guards)
-    top_spec = _top_rung(ladder)
-
-    extracted = 0
-    reviewed = 0
-    unavailable = 0
-    storage_failed = 0
-    requests = 0
-    stopped_early = False
-    fallbacks: list[ExtractableSignal] = []
-
-    single_rung_ladder = Ladder(rungs=(top_spec,))
-
-    for group in groups:
-        if budget.exhausted:
-            stopped_early = True
-            break
-
-        system, user = cluster_extraction_prompt(group.members, max_characters=max_input_characters)
-        attempts: list[Attempt] = []
-
-        result = climb(
-            ladder=single_rung_ladder,
-            budget=budget,
-            model=model,
-            request_for=_request_builder(system, user),
-            accept=_accept_builder(
-                tuple(member.title for member in group.members),
-                group.bodies,
-                min_confidence,
-            ),
-            on_attempt=attempts.append,
-        )
-
-        requests += len(attempts)
-
-        try:
-            at = now()
-            for attempt in attempts:
-                repository.record_request(
-                    cost_row(
-                        attempt,
-                        purpose=AiPurpose.EXTRACTION,
-                        signal_id=group.representative_id,
-                        batch_size=len(group.members),
-                        at=at,
-                    )
-                )
-
-            if result.outcome is ClimbOutcome.ACCEPTED and result.value is not None:
-                disease_id = (
-                    repository.resolve_disease(result.value.disease.name)
-                    if result.value.disease is not None
-                    else None
-                )
-                member_ids = [m.id for m in group.members]
-                repository.record_cluster_extraction(
-                    representative_id=group.representative_id,
-                    member_ids=member_ids,
-                    stored=StoredExtraction(
-                        extraction=result.value,
-                        disease_id=disease_id,
-                        model_id=attempts[-1].spec.model_id,
-                        processed_at=at,
-                    ),
-                )
-                repository.commit()
-                extracted += 1
-            else:
-                repository.commit()
-                rep_member = group.members[0]
-                fallback_signal = ExtractableSignal(
-                    id=rep_member.id,
-                    title=rep_member.title,
-                    raw_text=rep_member.raw_text,
-                )
-                fallbacks.append(fallback_signal)
-
-                if result.outcome is ClimbOutcome.REJECTED:
-                    reviewed += 1
-                else:
-                    unavailable += 1
-
-        except Exception as error:
-            repository.rollback()
-            storage_failed += 1
-            logger.error(
-                "Could not store cluster extraction for group %s (%s)",
-                group.group_id,
-                type(error).__name__,
-            )
-
-        if result.outcome is ClimbOutcome.GUARD:
-            stopped_early = True
-            break
-
-    return (
-        ExtractionResult(
-            examined=len(groups),
-            extracted=extracted,
-            reviewed=reviewed,
-            unavailable=unavailable,
-            storage_failed=storage_failed,
-            requests=requests,
-            stopped_early=stopped_early,
-        ),
-        fallbacks,
+        expanded_retries=retries,
+        stopped_early=budget.exhausted,
     )
 
 
@@ -450,59 +217,24 @@ def run_extraction(
     model: ChatModel,
     *,
     guards: Guards,
-    limit: int = DEFAULT_LIMIT,
-    max_tier: int = DEFAULT_MAX_TIER,
-    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-    workers: int = DEFAULT_WORKERS,
+    limit: int = 100,
+    max_tier: int = 3,
+    max_input_characters: int = 12000,
+    min_confidence: float = 0.0,
+    workers: int = 1,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
-    """Extract from signals, starting with cluster groups and falling back to single signals."""
-    # 1. Cluster Pass
-    groups = repository.awaiting_cluster_extraction(limit=limit)
-    cluster_result, fallbacks = _run_cluster_pass(
+    del max_tier, min_confidence, workers
+    spec = model_for_purpose(repository.models(), AiPurpose.EXTRACTION)
+    return _run_pass(
         repository,
         model,
-        groups,
-        guards=guards,
-        max_tier=max_tier,
-        min_confidence=min_confidence,
-        now=now,
-    )
-
-    # 2. Single Pass (for Fallbacks and Ordinary Signals)
-    single_limit = max(0, limit - cluster_result.extracted)
-    fallback_ids = {sig.id for sig in fallbacks}
-    ordinary = [
-        sig
-        for sig in repository.awaiting_extraction(limit=single_limit)
-        if sig.id not in fallback_ids
-    ]
-    pending = list(fallbacks) + ordinary
-
-    single_result = _run_pass(
-        repository,
-        model,
-        pending[:single_limit],
+        repository.awaiting_extraction(limit=limit),
+        spec=spec,
         guards=guards,
         demote_on_rejection=True,
-        max_tier=max_tier,
         max_input_characters=max_input_characters,
-        min_confidence=min_confidence,
-        workers=workers,
         now=now,
-    )
-
-    # Combine Results
-    return ExtractionResult(
-        examined=cluster_result.examined + single_result.examined,
-        extracted=cluster_result.extracted + single_result.extracted,
-        reviewed=cluster_result.reviewed + single_result.reviewed,
-        unavailable=cluster_result.unavailable + single_result.unavailable,
-        storage_failed=cluster_result.storage_failed + single_result.storage_failed,
-        requests=cluster_result.requests + single_result.requests,
-        expanded_retries=cluster_result.expanded_retries + single_result.expanded_retries,
-        stopped_early=cluster_result.stopped_early or single_result.stopped_early,
     )
 
 
@@ -511,29 +243,22 @@ def run_backfill(
     model: ChatModel,
     *,
     guards: Guards,
-    limit: int = DEFAULT_LIMIT,
-    max_tier: int = DEFAULT_MAX_TIER,
-    max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
-    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-    workers: int = DEFAULT_WORKERS,
+    limit: int = 100,
+    max_tier: int = 3,
+    max_input_characters: int = 12000,
+    min_confidence: float = 0.0,
+    workers: int = 1,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> ExtractionResult:
-    """Re-extract signals whose stored extraction predates the current schema.
-
-    Identical to the extraction pass in every respect but its selection, which
-    is why it shares that pass rather than copying it. A rejected answer leaves
-    the existing extraction untouched: a backfill never destroys a good old
-    answer in order to store a bad new one.
-    """
+    del max_tier, min_confidence, workers
+    spec = model_for_purpose(repository.models(), AiPurpose.EXTRACTION)
     return _run_pass(
         repository,
         model,
         repository.awaiting_backfill(limit=limit),
+        spec=spec,
         guards=guards,
         demote_on_rejection=False,
-        max_tier=max_tier,
         max_input_characters=max_input_characters,
-        min_confidence=min_confidence,
-        workers=workers,
         now=now,
     )
