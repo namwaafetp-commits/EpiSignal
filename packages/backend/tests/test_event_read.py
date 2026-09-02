@@ -66,6 +66,7 @@ def test_event_detail_loads_sources_through_event_signal_join() -> None:
     session = FakeSession(
         [
             FakeResult((event, "Dengue")),
+            FakeResult([]),
             FakeResult(
                 [
                     (
@@ -138,6 +139,7 @@ def test_event_detail_normalizes_legacy_snapshot_objects_to_fact_lists() -> None
             FakeResult((event, "Dengue")),
             FakeResult([]),
             FakeResult([]),
+            FakeResult([]),
             FakeResult([legacy]),
         ]
     )
@@ -150,6 +152,55 @@ def test_event_detail_normalizes_legacy_snapshot_objects_to_fact_lists() -> None
         "4.2% CFR",
         "Chiang Mai",
     )
+
+
+def test_event_detail_reads_legacy_observation_columns_without_migration() -> None:
+    event_id = uuid4()
+    signal_id = uuid4()
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    event = SimpleNamespace(
+        id=event_id,
+        public_id="EVT-2026-LEGACY-OBS",
+        headline="Dengue outbreak",
+        summary="Legacy summary",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        verification_status=VerificationStatus.SIGNAL,
+        country_code="TH",
+        admin1=None,
+        admin2=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+        early_signal_score=None,
+        evidence_score=None,
+    )
+    old_observation = SimpleNamespace(
+        signal_id=signal_id,
+        observation_date=now.date(),
+        reported_at=now,
+        notes="legacy row",
+        confirmed_cases=42,
+        deaths=2,
+        material_facts=None,
+    )
+    session = FakeSession(
+        [
+            FakeResult((event, "Dengue")),
+            FakeResult([]),
+            FakeResult([]),
+            FakeResult([old_observation]),
+            FakeResult([]),
+        ]
+    )
+
+    detail = query_event_detail(session, public_id=event.public_id)
+
+    assert detail is not None
+    assert detail.observations[0].signal_id == signal_id
+    assert detail.observations[0].notes == "legacy row"
+    assert detail.observations[0].material_facts is None
 
 
 def test_legacy_snapshot_combines_deaths_and_cfr_without_exceeding_three_facts() -> None:

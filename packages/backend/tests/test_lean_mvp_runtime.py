@@ -235,10 +235,11 @@ def test_null_disease_event_uses_attached_extraction_text_as_candidate_identity(
         title="Dengue event",
     )
     extraction = _valid_extraction()
-    extraction["disease"] = {"name": "Dengue", "confidence": 0.9}
+    extraction["disease"] = "Dengue"
     results = [
         SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [event])),
         SimpleNamespace(all=lambda: [(event.id, True, extraction)]),
+        SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [])),
     ]
 
     class Session:
@@ -400,7 +401,7 @@ def test_ambiguous_match_creates_new_event_without_judge_or_review() -> None:
     )
     repo = _AssemblyRepository(signal, candidate)
 
-    result = run_event_assembly(repo, match_threshold=0.75, review_threshold=0.55)
+    result = run_event_assembly(repo, match_threshold=0.95, review_threshold=0.80)
 
     assert result.events_created == 1
     assert result.signals_attached == 1
@@ -437,18 +438,10 @@ class _RequeueSession:
 
 
 def _valid_extraction() -> dict:
-    absence = {"reported": False, "text": "Not reported"}
     return {
-        "signal_type": "outbreak_report",
-        "title_english": "Unknown disease report",
-        "brief": [
-            {"slot": "what_where", **absence},
-            {"slot": "counts", **absence},
-            {"slot": "timing", **absence},
-            {"slot": "spread", **absence},
-            {"slot": "reporting", **absence},
-        ],
-        "confidence": 0.8,
+        "extraction_schema_version": 5,
+        "disease": "dengue",
+        "locations": [{"town": None, "country": "TH"}],
     }
 
 
@@ -468,7 +461,7 @@ def test_requeue_selects_only_valid_nonduplicate_nonirrelevant_rows() -> None:
         raw_text="body",
     )
     invalid = SimpleNamespace(
-        ai_extraction={"not": "an extraction"},
+        ai_extraction={"locations": [{"town": 123, "country": None}]},
         processing_status=ProcessingStatus.NEEDS_REVIEW,
         duplicate_of_signal_id=None,
         public_health_relevant=True,

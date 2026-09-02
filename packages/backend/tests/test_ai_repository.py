@@ -86,23 +86,7 @@ class FakeSession:
 
 def extraction() -> Extraction:
     return Extraction.model_validate(
-        {
-            "signal_type": "outbreak_report",
-            "source_language": "en",
-            "title_english": "Cholera outbreak reported in Luanda",
-            "brief": [
-                {"slot": "what_where", "text": "Cholera in Luanda, Angola.", "reported": True},
-                {"slot": "counts", "text": "No case count reported.", "reported": False},
-                {"slot": "timing", "text": "No date reported.", "reported": False},
-                {"slot": "spread", "text": "No transmission detail reported.", "reported": False},
-                {
-                    "slot": "reporting",
-                    "text": "Reported by Angola's health ministry.",
-                    "reported": True,
-                },
-            ],
-            "confidence": 0.9,
-        }
+        {"disease": "Cholera", "locations": [{"town": "Luanda", "country": "Angola"}]}
     )
 
 
@@ -325,7 +309,7 @@ def test_a_disease_is_resolved_case_insensitively_or_not_at_all() -> None:
     assert repository.resolve_disease("a disease nobody seeded") is None
 
 
-def test_an_accepted_extraction_stores_the_brief_as_the_signal_summary() -> None:
+def test_an_accepted_extraction_does_not_write_a_legacy_signal_summary() -> None:
     session = FakeSession()
 
     SqlAlchemyAiRepository(session).record_extraction(
@@ -339,14 +323,7 @@ def test_an_accepted_extraction_stores_the_brief_as_the_signal_summary() -> None
     )
 
     params = session.executed[0].compile().params
-    summary = next(value for value in params.values() if isinstance(value, str) and "\n" in value)
-    assert summary.splitlines() == [
-        "Cholera in Luanda, Angola.",
-        "No case count reported.",
-        "No date reported.",
-        "No transmission detail reported.",
-        "Reported by Angola's health ministry.",
-    ]
+    assert not any(isinstance(value, str) and "No case count" in value for value in params.values())
 
 
 def test_an_accepted_extraction_stamps_the_schema_version() -> None:
@@ -365,7 +342,8 @@ def test_an_accepted_extraction_stamps_the_schema_version() -> None:
     params = session.executed[0].compile().params
     stored = next(value for value in params.values() if isinstance(value, dict))
     assert stored[EXTRACTION_VERSION_KEY] == EXTRACTION_SCHEMA_VERSION
-    assert stored["brief"][0]["slot"] == "what_where"
+    assert stored["disease_text"] == "Cholera"
+    assert stored["locations"] == [{"town": "Luanda", "country": "Angola"}]
 
 
 def test_the_backfill_selects_only_extractions_below_the_current_version() -> None:

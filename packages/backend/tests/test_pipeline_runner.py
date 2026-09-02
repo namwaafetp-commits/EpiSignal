@@ -31,6 +31,7 @@ def test_failed_stage_outcomes_cross_the_repository_seam() -> None:
     from unittest.mock import MagicMock, patch
     from uuid import uuid4
 
+    from episignal_backend.config import Settings
     from episignal_backend.db.types import PipelineRunStatus
     from episignal_backend.schedule.documents import ChainOutcome, StageName, StageOutcome
 
@@ -50,6 +51,12 @@ def test_failed_stage_outcomes_cross_the_repository_seam() -> None:
 
     with (
         patch("episignal_backend.pipeline_runner.session_scope"),
+        patch(
+            "episignal_backend.pipeline_runner.get_settings",
+            return_value=Settings(
+                database_url="postgresql://test:test@localhost/test", _env_file=None
+            ),
+        ),
         patch(
             "episignal_backend.pipeline_runner.SqlAlchemyPipelineRunRepository",
             return_value=fake_repo,

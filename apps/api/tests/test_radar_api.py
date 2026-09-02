@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 import pytest
@@ -23,6 +24,7 @@ from episignal_backend.radar import (
     RadarPage,
     RadarSource,
 )
+from fastapi import Query
 from fastapi.testclient import TestClient
 
 TEST_SETTINGS = Settings(
@@ -354,9 +356,15 @@ def test_radar_endpoint_query_bounds(query_string: str, expected_status: int) ->
         limit=50,
     )
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_radar_page] = (
-        get_radar_page  # test real dependency signature with mocked query_radar
-    )
+
+    def override_radar(
+        hours: Annotated[int, Query(ge=1, le=168)] = 48,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    ) -> RadarPage:
+        del hours, limit
+        return radar_page
+
+    app.dependency_overrides[get_radar_page] = override_radar
 
     client = TestClient(app)
     # Monkeypatch query_radar in episignal_api.dependencies

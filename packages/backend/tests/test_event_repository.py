@@ -10,7 +10,6 @@ from episignal_backend.db.types import (
     CredibilityTier,
     LocationRole,
     Precision,
-    SignalType,
 )
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 from episignal_backend.events.protocol import EventRepository
@@ -195,16 +194,9 @@ def test_signals_to_match_does_not_use_legacy_disease_metadata_without_extractio
         credibility_tier=CredibilityTier.OFFICIAL,
         embedding=[1.0, 0.0],
         extraction={
-            "signal_type": "outbreak_report",
-            "title_english": "Outbreak in Beni",
-            "brief": [
-                {"slot": "what_where", "text": "Outbreak in Beni", "reported": True},
-                {"slot": "counts", "text": "No count", "reported": False},
-                {"slot": "timing", "text": "No date", "reported": False},
-                {"slot": "spread", "text": "No spread", "reported": False},
-                {"slot": "reporting", "text": "No reporting", "reported": False},
-            ],
-            "confidence": 0.95,
+            "extraction_schema_version": 5,
+            "disease": "cholera",
+            "locations": [{"town": "Beni", "country": "CD"}],
         },
     )
     session = FakeSession([FakeResult([(fake_sig, True, CredibilityTier.OFFICIAL)])])
@@ -218,9 +210,9 @@ def test_signals_to_match_does_not_use_legacy_disease_metadata_without_extractio
     assert sig.disease_id is None
     assert sig.source_is_official is True
     assert sig.credibility_tier == CredibilityTier.OFFICIAL
-    assert sig.locations == ()
+    assert sig.locations[0].place_name == "Beni"
     assert sig.extraction is not None
-    assert sig.extraction.signal_type == SignalType.OUTBREAK_REPORT
+    assert sig.extraction.disease == "cholera"
     assert sig.embedding is None
 
     # Assert executed statement checked processing_status
@@ -617,53 +609,18 @@ def test_attach_signal_inserts_event_signal_row() -> None:
     assert added_rel.is_primary is True
 
 
-def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> None:
-    from episignal_backend.ai.schema import (
-        BriefPoint,
-        BriefSlot,
-        Epidemiology,
-        Extraction,
-        GroundedCount,
-        GroundedEvidence,
-        GroundedFlag,
-        NamedEntity,
-        Transmission,
-    )
+def test_record_observation_writes_only_simplified_material_facts() -> None:
+    from episignal_backend.ai.schema import Extraction
     from episignal_backend.models import EventObservation
 
-    ev_id = uuid4()
-    sig_id = uuid4()
+    event_id = uuid4()
+    signal_id = uuid4()
     now = datetime.now(UTC)
-
-    extraction = Extraction(
-        signal_type=SignalType.OUTBREAK_REPORT,
-        title_english="35 cases reported",
-        brief=(
-            BriefPoint(slot=BriefSlot.WHAT_WHERE, text="35 cases reported", reported=True),
-            BriefPoint(slot=BriefSlot.COUNTS, text="35 cases", reported=True),
-            BriefPoint(slot=BriefSlot.TIMING, text="No date", reported=False),
-            BriefPoint(slot=BriefSlot.SPREAD, text="No spread", reported=False),
-            BriefPoint(slot=BriefSlot.REPORTING, text="No reporting", reported=False),
-        ),
-        epidemiology=Epidemiology(
-            total_cases=GroundedCount(value=35, source_span="35 cases"),
-            # deaths is None, confirmed_cases is None!
-        ),
-        pathogen=NamedEntity(name="Vibrio cholerae", confidence=0.9),
-        transmission=Transmission(
-            local_transmission=GroundedFlag(value=True, source_span="local transmission")
-        ),
-        response_actions=(
-            GroundedEvidence(text="Vaccination campaign", source_span="vaccination campaign"),
-        ),
-        driver_or_barrier_evidence=(
-            GroundedEvidence(text="Contaminated water", source_span="contaminated water"),
-        ),
-        confidence=0.88,
-    )
-    sig = SignalForMatching(
-        signal_id=sig_id,
-        disease_id=uuid4(),
+    extraction = Extraction(disease="cholera", locations=())
+    signal = SignalForMatching(
+        signal_id=signal_id,
+        disease_id=None,
+        disease_text="cholera",
         source_id=uuid4(),
         source_is_official=False,
         credibility_tier=CredibilityTier.HIGH,
@@ -671,26 +628,11 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
         first_seen_at=now,
         extraction=extraction,
     )
-
     session = FakeSession()
-    repo = SqlAlchemyEventRepository(session)
-    repo.record_observation(event_id=ev_id, signal=sig)
-
-    assert len(session.added) == 1
-    obs = session.added[0]
-    assert isinstance(obs, EventObservation)
-    assert obs.event_id == ev_id
-    assert obs.signal_id == sig_id
-    assert obs.total_cases == 35
-    # Crucial invariant: null counts must be None, NEVER 0
-    assert obs.deaths is None
-    assert obs.confirmed_cases is None
-    assert obs.suspected_cases is None
-    assert obs.extraction_confidence == 0.88
-    assert obs.material_facts["pathogen"] == "Vibrio cholerae"
-    assert obs.material_facts["response_actions"][0]["text"] == "Vaccination campaign"
-    assert obs.material_facts["driver_evidence"][0]["text"] == "Contaminated water"
-    assert obs.material_facts["transmission"]["local_transmission"]["value"] is True
+    SqlAlchemyEventRepository(session).record_observation(event_id=event_id, signal=signal)
+    observation = session.added[0]
+    assert isinstance(observation, EventObservation)
+    assert observation.material_facts == {"disease_text": "cholera", "geographic_extent": []}
 
 
 def test_record_observation_is_idempotent_for_a_stale_rerun() -> None:
@@ -835,30 +777,20 @@ def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
 
 def test_a_stored_extraction_survives_its_version_key() -> None:
     payload = {
-        "signal_type": "outbreak_report",
-        "source_language": "en",
-        "title_english": "Cholera outbreak reported in Luanda",
-        "brief": [
-            {"slot": "what_where", "text": "Cholera in Luanda, Angola.", "reported": True},
-            {"slot": "counts", "text": "327 confirmed cases.", "reported": True},
-            {"slot": "timing", "text": "As of 25 August 2026.", "reported": True},
-            {"slot": "spread", "text": "Acquired locally.", "reported": True},
-            {"slot": "reporting", "text": "Reported by the health ministry.", "reported": True},
-        ],
-        "epidemiology": {"confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"}},
-        "confidence": 0.9,
+        "disease": "Cholera",
+        "locations": [{"town": "Luanda", "country": "Angola"}],
         EXTRACTION_VERSION_KEY: EXTRACTION_SCHEMA_VERSION,
     }
 
     extraction = read_stored_extraction(payload)
 
     assert extraction is not None
-    assert extraction.epidemiology.confirmed_cases is not None
-    assert extraction.epidemiology.confirmed_cases.value == 327
+    assert extraction.disease == "Cholera"
+    assert extraction.locations[0].town == "Luanda"
 
 
 def test_an_unreadable_extraction_is_absence_rather_than_an_exception() -> None:
-    assert read_stored_extraction({"signal_type": "not_a_type"}) is None
+    assert read_stored_extraction({"locations": [{"town": 123, "country": None}]}) is None
 
 
 def test_event_repository_has_no_human_review_write_path() -> None:

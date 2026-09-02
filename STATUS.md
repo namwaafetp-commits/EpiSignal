@@ -173,13 +173,15 @@ reopened.
 
 ## Next action
 
-Migrate or retire the legacy tests that still encode the superseded contracts,
-then rerun `corepack pnpm verify` before treating this item as verified.
+Review and push the focused test-migration commit on
+`codex/final-three-model-pipeline`; production model-roster updates remain a
+separate authorized operation.
 
 ## Blockers
 
-The full verification gate currently reports 155 legacy Python test failures;
-see [the final pipeline report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
+The implementation still needs planner handoff before the roadmap item is
+marked `verified`; the full gate is now green. See [the final pipeline
+report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
 
 ## Task ledger — final simplified three-model pipeline
 
@@ -189,5 +191,5 @@ see [the final pipeline report](docs/reports/2026-09-02-final-three-model-pipeli
 - [x] Mistral Small 3.2 summary wiring over linked clean article sources.
 - [x] API/dashboard observation and multi-location surface updated; legacy rows retained.
 - [x] Focused acceptance, lint, type, contract generation, and web build checks passed.
-- [ ] Full `corepack pnpm verify` gate: blocked by 155 legacy tests asserting retired
-  extraction, batch-classification, delta/judge, count-observation, and radar contracts.
+- [x] Full `corepack pnpm verify` gate: 1,188 Python tests passed, 1 skipped,
+  107 web tests passed, and 2 existing deprecation warnings.
