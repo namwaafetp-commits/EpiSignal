@@ -34,6 +34,7 @@ from episignal_backend.ai.prompts import (
     CLUSTER_MEMBER_CHARACTERS,
     cluster_extraction_prompt,
     extraction_prompt,
+    identity_repair_prompt,
     truncate,
 )
 from episignal_backend.ai.protocol import AiRepository, ChatModel
@@ -94,14 +95,19 @@ def extract_signal(
     max_input_characters: int = DEFAULT_MAX_INPUT_CHARACTERS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> ExtractionSignalResult:
-    """Run extraction with one bounded content-expansion retry at most."""
+    """Run extraction with at most one bounded identity retry."""
 
-    def extract_once(limit: int) -> ExtractionSignalResult:
-        system, user = extraction_prompt(signal, max_characters=limit)
+    def extract_once(
+        limit: int,
+        *,
+        active_ladder: Ladder = ladder,
+        prompt_builder: Callable[..., tuple[str, str]] = extraction_prompt,
+    ) -> ExtractionSignalResult:
+        system, user = prompt_builder(signal, max_characters=limit)
         context = truncate(signal.raw_text, limit)
         attempts: list[Attempt] = []
         result = climb(
-            ladder=ladder,
+            ladder=active_ladder,
             budget=budget,
             model=model,
             request_for=_request_builder(system, user),
@@ -123,26 +129,32 @@ def extract_signal(
         initial.outcome is not ClimbOutcome.ACCEPTED
         or extraction is None
         or _has_event_identity(extraction)
-        or len(signal.raw_text) <= initial_limit
-        or max_input_characters <= initial_limit
     ):
         return initial
 
-    expanded = extract_once(max_input_characters)
-    if expanded.outcome is ClimbOutcome.ACCEPTED and expanded.extraction is not None:
-        chosen = expanded
+    identity_retry = extract_once(
+        max_input_characters,
+        active_ladder=Ladder(rungs=(_top_rung(ladder),)),
+        prompt_builder=identity_repair_prompt,
+    )
+    if (
+        identity_retry.outcome is ClimbOutcome.ACCEPTED
+        and identity_retry.extraction is not None
+        and _has_event_identity(identity_retry.extraction)
+    ):
+        chosen = identity_retry
     else:
-        # Expansion enriches an accepted answer. A guarded, unavailable, or
-        # rejected retry must not discard the valid initial extraction.
+        # A guarded, unavailable, rejected, or still-incomplete retry must not
+        # discard the valid initial extraction.
         chosen = initial
 
     return ExtractionSignalResult(
         outcome=chosen.outcome,
         extraction=chosen.extraction,
         error=chosen.error,
-        attempts=initial.attempts + expanded.attempts,
+        attempts=initial.attempts + identity_retry.attempts,
         expanded_retries=1,
-        stopped_early=expanded.stopped_early,
+        stopped_early=identity_retry.stopped_early,
     )
 
 

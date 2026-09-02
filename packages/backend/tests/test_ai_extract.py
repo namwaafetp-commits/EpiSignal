@@ -4,6 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
+import pytest
 from episignal_backend.ai.classify_disease import DiseaseCandidate
 from episignal_backend.ai.documents import (
     ChatResponse,
@@ -201,7 +202,14 @@ def _answer_without_location() -> str:
     return json.dumps(payload)
 
 
-def test_missing_identity_in_initial_context_gets_one_expanded_retry() -> None:
+def _answer_with_identity(disease: str, country: str, place: str) -> str:
+    payload = json.loads(GOOD)
+    payload["disease"]["name"] = disease
+    payload["locations"] = [{"role": "primary", "country": country, "place_name": place}]
+    return json.dumps(payload)
+
+
+def test_missing_identity_gets_one_top_rung_identity_retry() -> None:
     long_body = BODY + "\n" + ("Additional context. " * 500)
     signal = ExtractableSignal(id=FIRST, title="Cholera cases rise", raw_text=long_body)
     model = ScriptedModel([_answer_without_location(), GOOD])
@@ -219,6 +227,11 @@ def test_missing_identity_in_initial_context_gets_one_expanded_retry() -> None:
     assert result.expanded_retries == 1
     assert len(model.requests) == 2
     assert len(model.requests[1].user) > len(model.requests[0].user)
+    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
+    assert "IDENTITY REPAIR:" in model.requests[1].user
+    assert "TITLE: Cholera cases rise" in model.requests[1].user
+    assert BODY in model.requests[1].user
+    assert model.requests[0].response_schema == model.requests[1].response_schema
 
 
 def test_complete_initial_extraction_does_not_expand() -> None:
@@ -231,18 +244,19 @@ def test_complete_initial_extraction_does_not_expand() -> None:
     assert result.expanded_retries == 0
 
 
-def test_short_article_does_not_expand_an_incomplete_identity() -> None:
+def test_short_article_gets_identity_retry() -> None:
     repository = ExtractRepository((english(),))
-    model = ScriptedModel([_answer_without_location()])
+    model = ScriptedModel([_answer_without_location(), GOOD])
 
     result = run(repository, model)
 
     assert result.extracted == 1
-    assert result.requests == 1
-    assert result.expanded_retries == 0
+    assert result.requests == 2
+    assert result.expanded_retries == 1
+    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
 
 
-def test_request_guard_stops_before_expansion_and_keeps_initial_answer() -> None:
+def test_request_guard_stops_before_identity_retry_and_keeps_initial_answer() -> None:
     long_body = BODY + "\n" + ("Additional context. " * 500)
     signal = ExtractableSignal(id=FIRST, title="Cholera cases rise", raw_text=long_body)
     repository = ExtractRepository((signal,))
@@ -260,6 +274,110 @@ def test_request_guard_stops_before_expansion_and_keeps_initial_answer() -> None
     assert result.requests == 1
     assert result.expanded_retries == 1
     assert result.stopped_early is True
+
+
+def test_failed_identity_retry_preserves_initial_extraction() -> None:
+    repository = ExtractRepository((english(),))
+    model = ScriptedModel([_answer_without_location(), ModelUnavailable("429")])
+
+    result = run(repository, model)
+
+    assert result.extracted == 1
+    assert result.requests == 2
+    assert repository.stored[FIRST].extraction.locations == ()
+    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
+
+
+def test_rejected_identity_retry_preserves_initial_extraction() -> None:
+    repository = ExtractRepository((english(),))
+    model = ScriptedModel([_answer_without_location(), UNGROUNDED])
+
+    result = run(repository, model)
+
+    assert result.extracted == 1
+    assert result.requests == 2
+    assert repository.stored[FIRST].extraction.locations == ()
+    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
+
+
+def test_identity_retry_happens_only_once() -> None:
+    repository = ExtractRepository((english(),))
+    model = ScriptedModel([_answer_without_location(), _answer_without_location(), GOOD])
+
+    result = run(repository, model)
+
+    assert result.extracted == 1
+    assert result.requests == 2
+    assert model.asked == ["vendor2/model:free", "vendor3/model:free"]
+    assert len(model.script) == 1
+    assert repository.stored[FIRST].extraction.locations == ()
+
+
+@pytest.mark.parametrize(
+    ("disease", "country", "place"),
+    (
+        ("Ebola", "CD", "North Kivu"),
+        ("Nipah virus", "IN", "Kerala"),
+        ("measles", "US", "Pennsylvania"),
+        ("MERS-CoV", "SA", "Riyadh"),
+        ("malaria", "DE", "Frankfurt"),
+        ("H5N1", "AU", "South Australia"),
+    ),
+)
+def test_identity_retry_keeps_explicit_disease_and_country(
+    disease: str, country: str, place: str
+) -> None:
+    signal = ExtractableSignal(
+        id=FIRST,
+        title=f"{disease} reported in {place}",
+        raw_text=BODY,
+    )
+    repository = ExtractRepository((signal,))
+    model = ScriptedModel(
+        [_answer_without_location(), _answer_with_identity(disease, country, place)]
+    )
+
+    run_extraction(repository, model, guards=guards(), limit=100, now=lambda: NOW)
+
+    stored = repository.stored[FIRST].extraction
+    assert stored.disease is not None
+    assert stored.disease.name == disease
+    assert stored.locations[0].country == country
+
+
+def test_a_genuinely_non_event_article_does_not_gain_identity() -> None:
+    signal = ExtractableSignal(
+        id=FIRST,
+        title="Back-to-school health checklist",
+        raw_text="No disease outbreak is reported in this checklist.",
+    )
+    payload = json.loads(GOOD)
+    payload["title_english"] = "Health checklist"
+    payload["brief"] = [
+        {"slot": slot, "text": "Not reported.", "reported": False}
+        for slot in ("what_where", "counts", "timing", "spread", "reporting")
+    ]
+    payload["disease"] = None
+    payload["locations"] = []
+    payload["epidemiology"] = {}
+    payload["dates"] = {}
+    payload["transmission"] = None
+    payload["response_actions"] = []
+    payload["driver_or_barrier_evidence"] = []
+    answer = json.dumps(payload)
+    repository = ExtractRepository((signal,))
+
+    run_extraction(
+        repository,
+        ScriptedModel([answer, answer]),
+        guards=guards(),
+        limit=100,
+        now=lambda: NOW,
+    )
+
+    stored = repository.stored[FIRST].extraction
+    assert stored.disease is None
+    assert stored.locations == ()
 
 
 def test_the_resolved_disease_is_attached_when_the_vocabulary_knows_it() -> None:

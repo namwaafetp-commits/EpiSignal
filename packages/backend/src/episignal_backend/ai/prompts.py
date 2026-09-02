@@ -50,6 +50,22 @@ Rules:
 The object must match this JSON Schema exactly:
 """
 
+IDENTITY_REPAIR = """IDENTITY REPAIR:
+
+The previous valid extraction omitted disease and/or primary event country.
+
+Re-read TITLE first, then ARTICLE.
+
+TITLE is evidence.
+
+If the disease/pathogen or event country is explicitly stated in TITLE or ARTICLE,
+populate it.
+
+Do not infer unsupported information.
+Do not use publisher/organization location.
+Return the complete extraction JSON schema.
+"""
+
 CLASSIFICATION_RULES = """You decide whether each news item concerns a public health event.
 
 Rules:
@@ -118,6 +134,11 @@ def extraction_prompt(signal: ExtractableSignal, *, max_characters: int) -> tupl
     system = EXTRACTION_RULES + json.dumps(extraction_json_schema(), sort_keys=True)
     user = f"TITLE: {signal.title}\n\nARTICLE:\n{truncate(signal.raw_text, max_characters)}"
     return system, user
+
+
+def identity_repair_prompt(signal: ExtractableSignal, *, max_characters: int) -> tuple[str, str]:
+    system, user = extraction_prompt(signal, max_characters=max_characters)
+    return system, user + "\n\n" + IDENTITY_REPAIR
 
 
 CLASSIFICATION_SNIPPET_CHARACTERS = 400
