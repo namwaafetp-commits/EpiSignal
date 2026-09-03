@@ -10,7 +10,9 @@ module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
+from uuid import UUID
 
 from episignal_backend.ingestion.protocol import (
     DiscoveryConnector,
@@ -43,8 +45,14 @@ def run_retrieval(
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     batch_size: int = DEFAULT_BATCH_SIZE,
     window_hours: int = DEFAULT_WINDOW_HOURS,
+    signal_ids: Sequence[UUID] | None = None,
 ) -> RetrievalResult:
-    waiting = repository.gated_awaiting_retrieval(max_attempts=max_attempts, limit=batch_size)
+    if signal_ids is None:
+        waiting = repository.gated_awaiting_retrieval(max_attempts=max_attempts, limit=batch_size)
+    else:
+        waiting = repository.gated_awaiting_retrieval(
+            max_attempts=max_attempts, limit=batch_size, signal_ids=signal_ids
+        )
     filtered = 0
     retrieved = 0
     duplicates = 0

@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from episignal_backend.ai.documents import (
     ChatRequest,
@@ -223,13 +224,16 @@ def run_extraction(
     min_confidence: float = 0.0,
     workers: int = 1,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    signal_ids: Sequence[UUID] | None = None,
 ) -> ExtractionResult:
     del max_tier, min_confidence, workers
     spec = model_for_purpose(repository.models(), AiPurpose.EXTRACTION)
     return _run_pass(
         repository,
         model,
-        repository.awaiting_extraction(limit=limit),
+        repository.awaiting_extraction(limit=limit)
+        if signal_ids is None
+        else repository.awaiting_extraction(limit=limit, signal_ids=signal_ids),
         spec=spec,
         guards=guards,
         demote_on_rejection=True,

@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 
 class StageName(StrEnum):
@@ -41,6 +42,14 @@ class DiscoveryWindow:
         # run_discovery takes minutes, not instants. A window rounding to zero
         # would ask for nothing at all, so the floor is one minute.
         return max(1, int((self.end - self.start).total_seconds() // 60))
+
+
+@dataclass
+class PipelineCohort:
+    """In-memory identity of the signals and events touched by one run."""
+
+    signal_ids: tuple[UUID, ...] = ()
+    touched_event_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)

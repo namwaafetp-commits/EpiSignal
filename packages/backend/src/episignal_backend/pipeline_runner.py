@@ -20,7 +20,7 @@ from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
 from episignal_backend.requeue import requeue_historical_extractions
 from episignal_backend.schedule.chains import chain_for
-from episignal_backend.schedule.documents import ChainOutcome, StageName
+from episignal_backend.schedule.documents import ChainOutcome, PipelineCohort, StageName
 from episignal_backend.schedule.repository import SqlAlchemyPipelineRunRepository
 from episignal_backend.schedule.run import run_chain
 from episignal_backend.schedule.stages import build_stage_runners
@@ -112,7 +112,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     window=window if StageName.DISCOVER in chain else None,
                 )
 
-                outcome = run_chain(chain, build_stage_runners(window=window))
+                outcome = run_chain(
+                    chain,
+                    build_stage_runners(window=window, cohort=PipelineCohort()),
+                )
                 backlog = repository.backlog_depth()
 
                 repository.finish_run(

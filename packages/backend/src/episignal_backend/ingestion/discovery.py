@@ -12,6 +12,7 @@ publisher connection is opened, and what remains is capped.
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from episignal_backend.ingestion.documents import DiscoveredArticle, Rejection, TimeWindow
 from episignal_backend.ingestion.filtering import compile_rules, evaluate
@@ -41,6 +42,7 @@ class DiscoveryResult:
     stored: int = 0
     needs_review: int = 0
     failed: int = 0
+    signal_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,7 @@ def run_discovery(
     selected = candidates[:max_articles]
 
     stored = 0
+    signal_ids: list[UUID] = []
     for article in selected:
         first_seen = repository.first_seen_at(article.canonical_url) or moment
         # Retrieval moved behind the keyword gate: a body is downloaded in the
@@ -148,7 +151,11 @@ def run_discovery(
 
         try:
             source_id = repository.publisher_source_id(signal.publisher)
-            repository.add(signal, source_id)
+            stored_id = repository.add(signal, source_id)
+            # Older lightweight repository fakes may return None; production
+            # repositories return the flushed UUID used for cohort scoping.
+            if stored_id is not None:
+                signal_ids.append(stored_id)
             repository.commit()
         except Exception as error:
             repository.rollback()
@@ -173,6 +180,7 @@ def run_discovery(
         stored=stored,
         needs_review=0,
         failed=failed,
+        signal_ids=tuple(signal_ids),
     )
 
 

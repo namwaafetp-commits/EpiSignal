@@ -8,7 +8,7 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
@@ -51,6 +51,7 @@ class AssemblySummary(BaseModel):
     deltas_applied: int = 0
     ambiguous_judged: int = 0
     ambiguous_attached: int = 0
+    touched_event_ids: tuple[UUID, ...] = ()
 
 
 def _maybe_run_delta(
@@ -91,6 +92,7 @@ def run_event_assembly(
     delta_model: ChatModel | None = None,
     delta_spec: ModelSpec | None = None,
     followup_window_days: float | None = None,
+    signal_ids: Sequence[UUID] | None = None,
 ) -> AssemblySummary:
     """Run the end-to-end event assembly pass.
 
@@ -102,7 +104,10 @@ def run_event_assembly(
     Ambiguous, refused, and incomplete matches create new events. Matching
     never waits for a model or a human decision.
     """
-    signals = repo.signals_to_match(limit=limit, stale=stale)
+    if signal_ids is None:
+        signals = repo.signals_to_match(limit=limit, stale=stale)
+    else:
+        signals = repo.signals_to_match(limit=limit, stale=stale, signal_ids=signal_ids)
     if not signals:
         repo.commit()
         return AssemblySummary(
@@ -112,6 +117,7 @@ def run_event_assembly(
             signals_attached=0,
             signals_refused=0,
             unclusterable=0,
+            touched_event_ids=(),
         )
 
     clusters, unclusterable = build_clusters(
@@ -126,6 +132,7 @@ def run_event_assembly(
     deltas_applied = 0
     ambiguous_judged = 0
     ambiguous_attached = 0
+    touched_event_ids: list[UUID] = []
 
     for cluster in clusters:
         candidates = repo.candidate_events(
@@ -156,6 +163,8 @@ def run_event_assembly(
         if decision.action is MatchAction.ATTACH:
             assert decision.event_id is not None
             event_id = decision.event_id
+            if event_id not in touched_event_ids:
+                touched_event_ids.append(event_id)
             match_score = decision.match_score if decision.match_score is not None else 1.0
             chosen = next((cand for cand in candidates if cand.event_id == event_id), None)
             previous_brief = repo.latest_brief(event_id)
@@ -207,6 +216,7 @@ def run_event_assembly(
             )
             logger.info("ambiguous match; created new event event_id=%s", created.event_id)
             events_created += 1
+            touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.CREATE:
@@ -219,6 +229,7 @@ def run_event_assembly(
             )
             logger.info("created event event_id=%s", created.event_id)
             events_created += 1
+            touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.REFUSE:
@@ -231,6 +242,7 @@ def run_event_assembly(
             )
             logger.info("multiple matches; created new event event_id=%s", created.event_id)
             events_created += 1
+            touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
     for sig in unclusterable:
@@ -243,6 +255,7 @@ def run_event_assembly(
         )
         logger.info("uncertain event fields; created new event event_id=%s", created.event_id)
         events_created += 1
+        touched_event_ids.append(created.event_id)
         signals_attached += 1
 
     repo.commit()
@@ -257,4 +270,5 @@ def run_event_assembly(
         deltas_applied=deltas_applied,
         ambiguous_judged=ambiguous_judged,
         ambiguous_attached=ambiguous_attached,
+        touched_event_ids=tuple(dict.fromkeys(touched_event_ids)),
     )

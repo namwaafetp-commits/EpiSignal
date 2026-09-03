@@ -115,17 +115,20 @@ class SqlAlchemyAiRepository:
             for row in rows
         )
 
-    def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
+    def awaiting_classification(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ClassifiableSignal]:
         """Discovery metadata waiting for the cheap relevance decision."""
+        conditions = [
+            Signal.processing_status.in_((ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED)),
+            Signal.public_health_relevant.is_(None),
+        ]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
         stmt = (
             select(Signal, Source.name)
             .join(Source, Source.id == Signal.source_id)
-            .where(
-                Signal.processing_status.in_(
-                    (ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED)
-                ),
-                Signal.public_health_relevant.is_(None),
-            )
+            .where(*conditions)
             .order_by(Signal.first_seen_at)
         )
         rows = self._session.execute(stmt.limit(limit)).all()
@@ -205,22 +208,19 @@ class SqlAlchemyAiRepository:
             for row in rows
         )
 
-    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
-        stmt = (
-            select(Signal)
-            .where(
-                Signal.processing_status.in_(
-                    (
-                        ProcessingStatus.FETCHED,
-                        ProcessingStatus.NORMALIZED,
-                        ProcessingStatus.CLASSIFIED,
-                    )
-                ),
-                Signal.public_health_relevant.is_(True),
-                Signal.raw_text.is_not(None),
-            )
-            .order_by(Signal.first_seen_at)
-        )
+    def awaiting_extraction(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ExtractableSignal]:
+        conditions = [
+            Signal.processing_status.in_(
+                (ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED, ProcessingStatus.CLASSIFIED)
+            ),
+            Signal.public_health_relevant.is_(True),
+            Signal.raw_text.is_not(None),
+        ]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
+        stmt = select(Signal).where(*conditions).order_by(Signal.first_seen_at)
         rows = self._scan_valid_signals(stmt, limit, "extraction")
         return tuple(
             ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")

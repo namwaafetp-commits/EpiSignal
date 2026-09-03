@@ -11,8 +11,10 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
 from rapidfuzz import fuzz
 
@@ -128,9 +130,13 @@ def run_dedupe(
     window_hours: int = DEFAULT_WINDOW_HOURS,
     batch_size: int = DEFAULT_BATCH_SIZE,
     metadata_only: bool = False,
+    signal_ids: Sequence[UUID] | None = None,
 ) -> DedupeResult:
     limits = thresholds or DedupeThresholds()
-    pending = repository.pending(limit=batch_size)
+    if signal_ids is None:
+        pending = repository.pending(limit=batch_size)
+    else:
+        pending = repository.pending(limit=batch_size, signal_ids=signal_ids)
 
     primaries = 0
     duplicates = 0

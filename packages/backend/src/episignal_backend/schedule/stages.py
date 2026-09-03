@@ -48,15 +48,20 @@ from episignal_backend.ingestion.repository import (
 )
 from episignal_backend.ingestion.retrieval import run_retrieval
 from episignal_backend.ingestion.who_don import WhoDonConnector
-from episignal_backend.schedule.documents import DiscoveryWindow, StageName
+from episignal_backend.schedule.documents import DiscoveryWindow, PipelineCohort, StageName
 from episignal_backend.schedule.run import StageRunner
 
 SUMMARY_MAX_WORKERS = 4
 
 
-def _ingest(connector: SourceConnector) -> Mapping[str, int]:
+def _ingest(
+    connector: SourceConnector, window: DiscoveryWindow, cohort: PipelineCohort
+) -> Mapping[str, int]:
     with session_scope() as session:
-        result = run_ingestion(SqlAlchemySignalRepository(session), connector, since=None)
+        result = run_ingestion(
+            SqlAlchemySignalRepository(session), connector, since=window.start, now=window.end
+        )
+    cohort.signal_ids = tuple(dict.fromkeys((*cohort.signal_ids, *result.signal_ids)))
     return {
         "inserted": result.inserted,
         "skipped": result.skipped,
@@ -65,7 +70,7 @@ def _ingest(connector: SourceConnector) -> Mapping[str, int]:
     }
 
 
-def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
+def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     connector = GdeltConnector(
         search=GdeltDocClient(),
@@ -84,6 +89,7 @@ def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
             window_minutes=window.minutes,
             max_articles=settings.gdelt_max_articles_per_run,
         )
+    cohort.signal_ids = tuple(dict.fromkeys((*cohort.signal_ids, *discovered.signal_ids)))
     return {
         "window_minutes": window.minutes,
         "rules": discovered.rules_run,
@@ -93,10 +99,13 @@ def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
         "rejected": discovered.rejected,
         "stored": discovered.stored,
         "failed": discovered.failed,
+        "existing_duplicates": discovered.duplicate,
+        "new_signals": discovered.stored,
+        "cohort_size": len(discovered.signal_ids),
     }
 
 
-def _retrieve() -> Mapping[str, int]:
+def _retrieve(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     connector = GdeltConnector(
         search=GdeltDocClient(),
@@ -113,6 +122,7 @@ def _retrieve() -> Mapping[str, int]:
             max_attempts=settings.gdelt_max_retrieval_attempts,
             batch_size=settings.gdelt_retry_batch_size,
             window_hours=settings.stage0_candidate_window_hours,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": result.examined,
@@ -125,7 +135,7 @@ def _retrieve() -> Mapping[str, int]:
     }
 
 
-def _classify() -> Mapping[str, int]:
+def _classify(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     guards = Guards(
         max_requests=settings.ai_max_requests_per_run,
@@ -144,6 +154,7 @@ def _classify() -> Mapping[str, int]:
             guards=guards,
             limit=settings.ai_triage_batch_limit,
             max_tier=settings.ai_max_tier,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": result.examined,
@@ -155,7 +166,7 @@ def _classify() -> Mapping[str, int]:
     }
 
 
-def _dedupe() -> Mapping[str, int]:
+def _dedupe(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
         result = run_dedupe(
@@ -170,6 +181,7 @@ def _dedupe() -> Mapping[str, int]:
             window_hours=settings.stage0_candidate_window_hours,
             batch_size=settings.stage0_batch_size,
             metadata_only=True,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": result.examined,
@@ -210,7 +222,7 @@ def _triage() -> Mapping[str, int]:
     }
 
 
-def _extract() -> Mapping[str, int]:
+def _extract(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     guards = Guards(
         max_requests=settings.ai_max_requests_per_run,
@@ -232,6 +244,7 @@ def _extract() -> Mapping[str, int]:
             max_input_characters=settings.ai_max_input_characters,
             min_confidence=settings.ai_min_confidence,
             workers=settings.ai_extraction_workers,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": extracted.examined,
@@ -243,7 +256,7 @@ def _extract() -> Mapping[str, int]:
     }
 
 
-def _match() -> Mapping[str, int]:
+def _match(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
         event_repository = SqlAlchemyEventRepository(session)
@@ -259,7 +272,9 @@ def _match() -> Mapping[str, int]:
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
             candidate_limit=settings.event_candidate_limit,
+            signal_ids=cohort.signal_ids,
         )
+        cohort.touched_event_ids = summary.touched_event_ids
     return {
         "seen": summary.signals_seen,
         "clusters": summary.clusters_built,
@@ -271,7 +286,7 @@ def _match() -> Mapping[str, int]:
     }
 
 
-def _summarize() -> Mapping[str, int]:
+def _summarize(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     now = datetime.now(UTC)
     with session_scope() as session:
@@ -281,6 +296,7 @@ def _summarize() -> Mapping[str, int]:
         awaiting = event_repository.events_awaiting_summary(
             limit=settings.event_match_batch_size,
             max_age_hours=settings.resummary_max_age_hours,
+            event_ids=cohort.touched_event_ids,
         )
 
         examined = 0
@@ -372,15 +388,18 @@ def _summarize() -> Mapping[str, int]:
     }
 
 
-def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunner]:
+def build_stage_runners(
+    *, window: DiscoveryWindow, cohort: PipelineCohort | None = None
+) -> dict[StageName, StageRunner]:
     """Map each stage to a callable. Nothing here runs until the chain calls it."""
+    run_cohort = cohort or PipelineCohort()
     return {
-        StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector()),
-        StageName.DISCOVER: lambda: _discover(window),
-        StageName.DEDUPE: _dedupe,
-        StageName.CLASSIFY: _classify,
-        StageName.RETRIEVE: _retrieve,
-        StageName.EXTRACT: _extract,
-        StageName.MATCH: _match,
-        StageName.SUMMARIZE: _summarize,
+        StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector(), window, run_cohort),
+        StageName.DISCOVER: lambda: _discover(window, run_cohort),
+        StageName.DEDUPE: lambda: _dedupe(run_cohort),
+        StageName.CLASSIFY: lambda: _classify(run_cohort),
+        StageName.RETRIEVE: lambda: _retrieve(run_cohort),
+        StageName.EXTRACT: lambda: _extract(run_cohort),
+        StageName.MATCH: lambda: _match(run_cohort),
+        StageName.SUMMARIZE: lambda: _summarize(run_cohort),
     }

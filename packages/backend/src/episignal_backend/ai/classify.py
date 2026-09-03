@@ -1,7 +1,7 @@
 """DeepSeek relevance pass over discovery metadata."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -47,6 +47,7 @@ def run_classification(
     batch_size: int = 1,
     max_tier: int = 3,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    signal_ids: Sequence[UUID] | None = None,
 ) -> ClassificationResult:
     """Ask DeepSeek once per sighting; no disease/location extraction here."""
     del batch_size, max_tier
@@ -54,7 +55,10 @@ def run_classification(
     spec = model_for_purpose(specs, AiPurpose.CLASSIFICATION)
     ladder = Ladder(rungs=(spec,))
     budget = RunBudget(guards)
-    pending = repository.awaiting_classification(limit=limit)
+    if signal_ids is None:
+        pending = repository.awaiting_classification(limit=limit)
+    else:
+        pending = repository.awaiting_classification(limit=limit, signal_ids=signal_ids)
     relevant = irrelevant = reviewed = unavailable = requests = 0
     stopped_early = False
 

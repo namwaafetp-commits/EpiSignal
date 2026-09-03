@@ -160,7 +160,9 @@ class SqlAlchemyEventRepository:
             self._metadata_resolver = local_metadata_resolver(self._session)
         return self._metadata_resolver
 
-    def signals_to_match(self, limit: int, *, stale: bool = False) -> Sequence[SignalForMatching]:
+    def signals_to_match(
+        self, limit: int, *, stale: bool = False, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[SignalForMatching]:
         """Select extracted signals awaiting matching or matched when stale."""
         status_filter: ColumnElement[bool]
         if stale:
@@ -170,10 +172,13 @@ class SqlAlchemyEventRepository:
         else:
             status_filter = Signal.processing_status == ProcessingStatus.EXTRACTED
 
+        conditions = [status_filter]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
         query = (
             select(Signal, Source.is_official, Source.credibility_tier)
             .join(Source, Signal.source_id == Source.id)
-            .where(status_filter)
+            .where(*conditions)
             .order_by(Signal.first_seen_at.asc(), Signal.id.asc())
             .limit(limit)
         )
@@ -573,7 +578,7 @@ class SqlAlchemyEventRepository:
         )
 
     def events_awaiting_summary(
-        self, *, limit: int, max_age_hours: int
+        self, *, limit: int, max_age_hours: int, event_ids: Sequence[UUID] | None = None
     ) -> Sequence[EventForSummary]:
         """Events that may need a new summary, newest update first.
 
@@ -582,16 +587,21 @@ class SqlAlchemyEventRepository:
         Material-change detection then makes the final per-event decision, so
         a copied report or unchanged source attachment cannot trigger a call.
         """
-        event_ids = (
+        if event_ids is not None and not event_ids:
+            return ()
+        conditions = [
+            or_(
+                Event.last_summarized_at.is_(None),
+                Event.last_summarized_at < Event.last_updated_at,
+            )
+        ]
+        if event_ids is not None:
+            conditions.append(Event.id.in_(tuple(event_ids)))
+        selected_event_ids = (
             self._session.execute(
                 select(Event.id)
                 .join(EventSignal, EventSignal.event_id == Event.id)
-                .where(
-                    or_(
-                        Event.last_summarized_at.is_(None),
-                        Event.last_summarized_at < Event.last_updated_at,
-                    )
-                )
+                .where(*conditions)
                 # EventSignal is a one-to-many join. Group before limiting so
                 # the batch size counts events, not attached signals.
                 .group_by(Event.id)
@@ -602,7 +612,7 @@ class SqlAlchemyEventRepository:
             .all()
         )
 
-        return tuple(self._build_event_for_summary(event_id) for event_id in event_ids)
+        return tuple(self._build_event_for_summary(event_id) for event_id in selected_event_ids)
 
     def _build_event_for_summary(self, event_id: UUID) -> EventForSummary:
         event = self._session.execute(select(Event).where(Event.id == event_id)).scalar_one()
