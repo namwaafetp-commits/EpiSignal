@@ -44,6 +44,34 @@ def _stored_disease_text(session: Session, event_id: UUID) -> str | None:
     return str(extraction.disease) if extraction is not None and extraction.disease else None
 
 
+def _stored_disease_text_bulk(session: Session, event_ids: list[UUID]) -> dict[UUID, str]:
+    from episignal_backend.events.repository import read_stored_extraction
+
+    rows = session.execute(
+        select(
+            EventSignal.event_id,
+            Signal.ai_extraction,
+        )
+        .join(Signal, Signal.id == EventSignal.signal_id)
+        .where(EventSignal.event_id.in_(event_ids))
+        .order_by(
+            EventSignal.event_id,
+            EventSignal.is_primary.desc(),
+            Signal.first_seen_at.desc(),
+        )
+    ).all()
+    selected_event_ids: set[UUID] = set()
+    fallback_disease_by_event_id: dict[UUID, str] = {}
+    for event_id, payload in rows:
+        if event_id in selected_event_ids:
+            continue
+        selected_event_ids.add(event_id)
+        extraction = read_stored_extraction(payload)
+        if extraction is not None and extraction.disease:
+            fallback_disease_by_event_id[event_id] = str(extraction.disease)
+    return fallback_disease_by_event_id
+
+
 @dataclass(frozen=True)
 class EventListItem:
     public_id: str
@@ -237,6 +265,11 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
     if not rows:
         return DashboardEventPage(items=(), total=0)
 
+    fallback_event_ids = [event.id for event, disease_name in rows if not disease_name]
+    fallback_disease_by_event_id = (
+        _stored_disease_text_bulk(session, fallback_event_ids) if fallback_event_ids else {}
+    )
+
     country_codes = {event.country_code for event, _ in rows if event.country_code is not None}
     admin1_centroids: dict[tuple[str, str], tuple[str, float, float]] = {}
     if country_codes:
@@ -291,7 +324,7 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
             public_id=event.public_id,
             headline=event.headline,
             summary=event.summary,
-            disease=disease_name or _stored_disease_text(session, event.id),
+            disease=disease_name or fallback_disease_by_event_id.get(event.id),
             event_type=event.event_type.value,
             status=event.status.value,
             country_code=event.country_code,

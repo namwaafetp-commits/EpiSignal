@@ -41,6 +41,24 @@ class FakeSession:
         return self.results.pop(0)
 
 
+def _dashboard_event(event_id: Any, public_id: str, *, country_code: str | None = None) -> Any:
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    return SimpleNamespace(
+        id=event_id,
+        public_id=public_id,
+        headline=f"{public_id} headline",
+        summary=f"{public_id} summary",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        country_code=country_code,
+        admin1=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+    )
+
+
 def test_event_detail_loads_sources_through_event_signal_join() -> None:
     event_id = uuid4()
     signal_id = uuid4()
@@ -308,3 +326,48 @@ def test_dashboard_resolves_admin1_then_country_and_leaves_missing_country_unmap
     assert "ORDER BY events.last_updated_at DESC" in rendered
     assert "published_at" not in rendered
     assert not any("event_locations" in str(statement) for statement in session.executed)
+
+
+def test_dashboard_prefers_canonical_and_preserves_fallback_signal_selection() -> None:
+    canonical_id = uuid4()
+    primary_id = uuid4()
+    newest_id = uuid4()
+    rows = [
+        (_dashboard_event(canonical_id, "EVT-CANONICAL"), "Canonical disease"),
+        (_dashboard_event(primary_id, "EVT-PRIMARY"), None),
+        (_dashboard_event(newest_id, "EVT-NEWEST"), None),
+    ]
+    fallback_rows = [
+        (primary_id, {"disease": "Primary disease"}),
+        (primary_id, {"disease": "Newer secondary disease"}),
+        (newest_id, {"disease": "Newest disease"}),
+        (newest_id, {"disease": "Older disease"}),
+    ]
+    session = FakeSession([FakeResult(rows), FakeResult(fallback_rows)])
+
+    page = query_dashboard_events(session)
+
+    diseases = {item.public_id: item.disease for item in page.items}
+    assert diseases == {
+        "EVT-CANONICAL": "Canonical disease",
+        "EVT-PRIMARY": "Primary disease",
+        "EVT-NEWEST": "Newest disease",
+    }
+    fallback_statement = session.executed[1]
+    rendered = str(fallback_statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "event_signals.event_id IN" in rendered
+    assert "event_signals.is_primary DESC" in rendered
+    assert "signals.first_seen_at DESC" in rendered
+
+
+def test_dashboard_bulk_fallback_stays_bounded_for_many_events() -> None:
+    events = [
+        (_dashboard_event(uuid4(), f"EVT-{index:03d}"), None)
+        for index in range(25)
+    ]
+    session = FakeSession([FakeResult(events), FakeResult([])])
+
+    page = query_dashboard_events(session)
+
+    assert page.total == 25
+    assert len(session.executed) == 2
