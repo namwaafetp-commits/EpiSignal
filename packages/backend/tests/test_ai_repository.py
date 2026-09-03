@@ -25,6 +25,7 @@ from episignal_backend.db.types import (
 from episignal_backend.ingestion.fingerprint import content_hash as compute_hash
 from episignal_backend.models.signal import Signal
 from sqlalchemy import Update
+from sqlalchemy.dialects import postgresql
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 
@@ -307,6 +308,23 @@ def test_a_disease_is_resolved_case_insensitively_or_not_at_all() -> None:
 
     assert repository.resolve_disease("cholera") == identifier
     assert repository.resolve_disease("a disease nobody seeded") is None
+
+
+def test_disease_resolution_uses_postgresql_exact_normalized_array_elements() -> None:
+    session = FakeSession([FakeResult(None)])
+
+    assert SqlAlchemyAiRepository(session).resolve_disease("West   Nile virus infection") is None
+
+    rendered = str(
+        session.executed[0].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+
+    assert "unnest(diseases.synonyms)" in rendered
+    assert "regexp_replace" in rendered
+    assert "lower" in rendered
+    assert "ANY (diseases.synonyms)" not in rendered
 
 
 def test_an_accepted_extraction_does_not_write_a_legacy_signal_summary() -> None:

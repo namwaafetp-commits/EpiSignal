@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Select, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, Select, exists, func, or_, select, update
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from episignal_backend.ai.documents import (
     AiRequestRecord,
@@ -58,6 +58,13 @@ EXCERPT_CHARACTERS = 1200
 # The candidate list rides in one classification prompt, so it is capped: a
 # vocabulary too large for one request is also too large for one-shot choice.
 MAX_DISEASE_CANDIDATES = 400
+
+
+def _normalized_disease_text(
+    expression: ColumnElement[str] | InstrumentedAttribute[str],
+) -> ColumnElement[str]:
+    """Normalize reviewed vocabulary text using PostgreSQL string semantics."""
+    return func.lower(func.regexp_replace(func.trim(expression), r"[[:space:]]+", " ", "g"))
 
 
 class SqlAlchemyAiRepository:
@@ -263,12 +270,13 @@ class SqlAlchemyAiRepository:
         # synonyms. No fuzzy matching: guessing which disease was meant is how a
         # measles report becomes a cholera event.
         needle = " ".join(name.split()).lower()
+        synonym = func.unnest(Disease.synonyms).column_valued("synonym")
         return self._session.execute(
             select(Disease.id).where(
                 or_(
-                    func.lower(Disease.canonical_name) == needle,
-                    func.lower(Disease.slug) == needle,
-                    Disease.synonyms.any(needle),  # type: ignore[arg-type]
+                    _normalized_disease_text(Disease.canonical_name) == needle,
+                    _normalized_disease_text(Disease.slug) == needle,
+                    exists(select(1).where(_normalized_disease_text(synonym) == needle)),
                 )
             )
         ).scalar_one_or_none()
