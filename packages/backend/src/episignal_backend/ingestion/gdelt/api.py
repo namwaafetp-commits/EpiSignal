@@ -67,6 +67,7 @@ class GdeltDocClient:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._fallback_client = fallback_client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
+        self._https_unavailable = False
 
     def search(self, rule: QueryRule, window: TimeWindow) -> tuple[DiscoveredArticle, ...]:
         query = rule.query
@@ -129,15 +130,25 @@ class GdeltDocClient:
 
     def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
         last_error: Exception | None = None
-        fallback_used = False
 
         for attempt in range(MAX_ATTEMPTS):
             try:
-                response = self._client.get(API_URL, params=parameters, timeout=TIMEOUT_SECONDS)
+                if self._https_unavailable:
+                    response = self._fallback_client.get(
+                        HTTP_FALLBACK_URL,
+                        params=parameters,
+                        timeout=TIMEOUT_SECONDS,
+                    )
+                else:
+                    response = self._client.get(
+                        API_URL,
+                        params=parameters,
+                        timeout=TIMEOUT_SECONDS,
+                    )
             except httpx.TimeoutException as error:
                 last_error = error
-                if not fallback_used:
-                    fallback_used = True
+                if not self._https_unavailable:
+                    self._https_unavailable = True
                     try:
                         response = self._fallback_client.get(
                             HTTP_FALLBACK_URL,

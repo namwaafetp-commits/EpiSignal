@@ -131,6 +131,28 @@ def test_search_retries_https_timeout_once_over_http() -> None:
     assert "authorization" not in requests[1].headers
 
 
+def test_search_uses_http_directly_after_https_timeout() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.scheme == "https":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return artlist_response()
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+
+    client.search(RULE, WINDOW)
+    client.search(RULE, WINDOW)
+
+    assert [request.url.scheme for request in requests] == ["https", "http", "http"]
+
+
 def test_search_skips_an_entry_with_no_url() -> None:
     client = client_returning(
         httpx.Response(
