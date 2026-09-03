@@ -23,7 +23,8 @@ from episignal_backend.ingestion.urls import canonicalize_url
 
 logger = logging.getLogger("episignal_backend.ingestion.gdelt.api")
 
-API_URL = "http://api.gdeltproject.org/api/v2/doc/doc"
+API_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+HTTP_FALLBACK_URL = "http://api.gdeltproject.org/api/v2/doc/doc"
 MAX_RECORDS = 250
 TIMEOUT_SECONDS = 30.0
 MAX_ATTEMPTS = 3
@@ -60,9 +61,11 @@ class GdeltDocClient:
     def __init__(
         self,
         client: httpx.Client | None = None,
+        fallback_client: httpx.Client | None = None,
         sleep: Callable[[float], None] = default_sleep,
     ) -> None:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
+        self._fallback_client = fallback_client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
 
     def search(self, rule: QueryRule, window: TimeWindow) -> tuple[DiscoveredArticle, ...]:
@@ -126,22 +129,38 @@ class GdeltDocClient:
 
     def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
         last_error: Exception | None = None
+        fallback_used = False
 
         for attempt in range(MAX_ATTEMPTS):
             try:
                 response = self._client.get(API_URL, params=parameters, timeout=TIMEOUT_SECONDS)
-            except (httpx.TimeoutException, httpx.TransportError) as error:
+            except httpx.TimeoutException as error:
+                last_error = error
+                if not fallback_used:
+                    fallback_used = True
+                    try:
+                        response = self._fallback_client.get(
+                            HTTP_FALLBACK_URL,
+                            params=parameters,
+                            timeout=TIMEOUT_SECONDS,
+                        )
+                    except (httpx.TimeoutException, httpx.TransportError) as fallback_error:
+                        last_error = fallback_error
+                    else:
+                        payload = self._response_payload(response)
+                        if payload is not None:
+                            return payload
+                        last_error = httpx.HTTPStatusError(
+                            f"GDELT returned {response.status_code}",
+                            request=response.request,
+                            response=response,
+                        )
+            except httpx.TransportError as error:
                 last_error = error
             else:
-                if response.status_code not in RETRY_STATUS:
-                    response.raise_for_status()
-                    try:
-                        payload = response.json()
-                    except ValueError:
-                        # GDELT answers an unmatched query with a bare sentence
-                        # rather than JSON, which means no results, not a fault.
-                        return {}
-                    return payload if isinstance(payload, dict) else {}
+                payload = self._response_payload(response)
+                if payload is not None:
+                    return payload
                 last_error = httpx.HTTPStatusError(
                     f"GDELT returned {response.status_code}",
                     request=response.request,
@@ -152,3 +171,16 @@ class GdeltDocClient:
                 self._sleep(2.0**attempt)
 
         raise GdeltUnavailable("GDELT search failed") from last_error
+
+    @staticmethod
+    def _response_payload(response: httpx.Response) -> dict[str, Any] | None:
+        if response.status_code in RETRY_STATUS:
+            return None
+        response.raise_for_status()
+        try:
+            payload = response.json()
+        except ValueError:
+            # GDELT answers an unmatched query with a bare sentence rather
+            # than JSON, which means no results, not a fault.
+            return {}
+        return payload if isinstance(payload, dict) else {}
