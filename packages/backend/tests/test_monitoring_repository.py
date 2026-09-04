@@ -93,9 +93,10 @@ def test_repository_reads_pipeline_trigger_for_slot_coverage() -> None:
         finished_at=NOW,
         status=PipelineRunStatus.SUCCEEDED,
     )
-    session = FakeSession([(health, PipelineTrigger.SCHEDULED)])
+    session = FakeSession([(health, PipelineTrigger.SCHEDULED, {"extract": {"duration_sec": 2.5}})])
     repository = SqlAlchemyPipelineHealthRepository(session)
 
     rows = repository.recent_records(NOW)
 
     assert rows[0].trigger is PipelineTrigger.SCHEDULED
+    assert rows[0].stage_durations_sec == {"extract": 2.5}

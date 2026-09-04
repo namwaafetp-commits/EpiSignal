@@ -163,7 +163,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                         PipelineRunStatus.SUCCEEDED if outcome.ok else PipelineRunStatus.FAILED
                     ),
                     finished_at=finished_at,
-                    stage_counts={str(item.stage): dict(item.counts) for item in outcome.outcomes},
+                    stage_counts={
+                        str(item.stage): {
+                            **dict(item.counts),
+                            **(
+                                {"duration_sec": item.duration_sec}
+                                if item.duration_sec is not None
+                                else {}
+                            ),
+                        }
+                        for item in outcome.outcomes
+                    },
                     backlog=backlog,
                     failed_stages=[item for item in outcome.outcomes if not item.ok],
                 )

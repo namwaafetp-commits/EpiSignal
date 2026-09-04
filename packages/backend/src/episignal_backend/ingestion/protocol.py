@@ -93,7 +93,11 @@ class DiscoveryRepository(Protocol):
     ) -> Sequence[StubRetrieval]: ...
 
     def gated_awaiting_retrieval(
-        self, *, max_attempts: int, limit: int
+        self,
+        *,
+        max_attempts: int,
+        limit: int,
+        signal_ids: Sequence[UUID] | None = None,
     ) -> Sequence[StubRetrieval]: ...
 
     def record_filtered(self, signal_id: UUID) -> None: ...
@@ -156,3 +160,7 @@ class RetrievalFailed(Exception):
     Distinct from `UnsupportedDocument`: the article is wanted, and the
     discovery is kept as a stub for retry, rather than rejected outright.
     """
+
+    def __init__(self, detail: str = "", *, category: str | None = None) -> None:
+        super().__init__(detail)
+        self.category = category

@@ -3,6 +3,7 @@
 import logging
 from dataclasses import fields
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ class SqlAlchemyPipelineHealthRepository:
         values = {
             field.name: getattr(record, field.name)
             for field in fields(PipelineHealthRecord)
-            if field.name not in {"run_id", "trigger"}
+            if field.name not in {"run_id", "trigger", "stage_durations_sec"}
         }
         values["pipeline_run_id"] = record.run_id
         self._session.merge(PipelineHealthRun(**values))
@@ -34,7 +35,7 @@ class SqlAlchemyPipelineHealthRepository:
         self, now: datetime, *, lookback_days: int = 8
     ) -> tuple[PipelineHealthRecord, ...]:
         rows = self._session.execute(
-            select(PipelineHealthRun, PipelineRun.trigger)
+            select(PipelineHealthRun, PipelineRun.trigger, PipelineRun.stage_counts)
             .join(PipelineRun, PipelineRun.id == PipelineHealthRun.pipeline_run_id)
             .where(
                 PipelineHealthRun.finished_at.is_not(None),
@@ -43,10 +44,17 @@ class SqlAlchemyPipelineHealthRepository:
             )
             .order_by(PipelineHealthRun.finished_at.desc())
         ).all()
-        return tuple(self._record_from_row(health_row, trigger) for health_row, trigger in rows)
+        return tuple(
+            self._record_from_row(health_row, trigger, stage_counts)
+            for health_row, trigger, stage_counts in rows
+        )
 
     @staticmethod
-    def _record_from_row(row: PipelineHealthRun, trigger: PipelineTrigger) -> PipelineHealthRecord:
+    def _record_from_row(
+        row: PipelineHealthRun,
+        trigger: PipelineTrigger,
+        stage_counts: Any,
+    ) -> PipelineHealthRecord:
         return PipelineHealthRecord(
             run_id=row.pipeline_run_id,
             started_at=row.started_at,
@@ -54,6 +62,7 @@ class SqlAlchemyPipelineHealthRepository:
             status=row.status,
             trigger=trigger,
             duration_sec=row.duration_sec,
+            stage_durations_sec=_stage_durations(stage_counts),
             discovered=row.discovered,
             dedup_primary=row.dedup_primary,
             deepseek_requested=row.deepseek_requested,
@@ -83,6 +92,19 @@ class SqlAlchemyPipelineHealthRepository:
             db_query_duration_ms=row.db_query_duration_ms,
             unavailable_metrics=row.unavailable_metrics,
         )
+
+
+def _stage_durations(raw: Any) -> dict[str, float]:
+    if not isinstance(raw, dict):
+        return {}
+    durations: dict[str, float] = {}
+    for stage, counts in raw.items():
+        if not isinstance(stage, str) or not isinstance(counts, dict):
+            continue
+        duration = counts.get("duration_sec")
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0:
+            durations[stage] = float(duration)
+    return durations
 
 
 def persist_pipeline_health_best_effort(record: PipelineHealthRecord) -> None:

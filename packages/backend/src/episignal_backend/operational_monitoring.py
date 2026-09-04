@@ -61,6 +61,7 @@ class PipelineHealthRecord:
     status: PipelineRunStatus
     trigger: PipelineTrigger | None = None
     duration_sec: float | None = None
+    stage_durations_sec: Mapping[str, float] = field(default_factory=dict)
     discovered: int | None = None
     dedup_primary: int | None = None
     deepseek_requested: int | None = None
@@ -177,6 +178,16 @@ def build_health_record(
         event_total = new_events + updated_events
 
     errors = Counter(item.error or "unknown" for item in outcome.outcomes if not item.ok)
+    for item in outcome.outcomes:
+        if item.error_category is not None:
+            errors[f"{item.stage.value}:{item.error_category}"] += 1
+        for key, value in item.counts.items():
+            if (
+                key.startswith("failure_")
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+            ):
+                errors[f"{item.stage.value}:{key.removeprefix('failure_')}"] += value
     if fatal_error_type is not None:
         errors[fatal_error_type] += 1
     fatal_error_count = len(outcome.failed_stages) + (1 if fatal_error_type else 0)
@@ -201,6 +212,11 @@ def build_health_record(
         ),
         trigger=trigger,
         duration_sec=(finished_at - started_at).total_seconds() if finished_at else None,
+        stage_durations_sec={
+            str(item.stage): item.duration_sec
+            for item in outcome.outcomes
+            if item.duration_sec is not None
+        },
         discovered=_count(discover, "discovered"),
         dedup_primary=_count(dedupe, "primaries"),
         deepseek_requested=_count(deepseek, "requests"),

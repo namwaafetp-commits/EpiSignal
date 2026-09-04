@@ -10,7 +10,9 @@ and the failure policy testable without a database.
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from time import perf_counter
 
+from episignal_backend.diagnostics import classify_exception
 from episignal_backend.schedule.documents import ChainOutcome, StageName, StageOutcome
 
 StageRunner = Callable[[], Mapping[str, int]]
@@ -23,14 +25,30 @@ def run_chain(
     outcomes: list[StageOutcome] = []
 
     for stage in chain:
+        started = perf_counter()
         try:
             counts = runners[stage]()
         except Exception as error:
             # The type name only. An exception raised near the session can carry
             # the connection string, and one raised near a prompt can carry the
             # article.
-            outcomes.append(StageOutcome(stage=stage, ok=False, error=type(error).__name__))
+            outcomes.append(
+                StageOutcome(
+                    stage=stage,
+                    ok=False,
+                    error=type(error).__name__,
+                    duration_sec=perf_counter() - started,
+                    error_category=classify_exception(error).value,
+                )
+            )
             continue
-        outcomes.append(StageOutcome(stage=stage, ok=True, counts=dict(counts)))
+        outcomes.append(
+            StageOutcome(
+                stage=stage,
+                ok=True,
+                counts=dict(counts),
+                duration_sec=perf_counter() - started,
+            )
+        )
 
     return ChainOutcome(outcomes=tuple(outcomes))

@@ -62,6 +62,8 @@ class StageOutcome:
     # The exception's type name only. Never its payload: an exception raised
     # near the session can carry the connection string.
     error: str | None = None
+    duration_sec: float | None = None
+    error_category: str | None = None
 
 
 @dataclass(frozen=True)

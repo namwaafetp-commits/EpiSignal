@@ -121,6 +121,29 @@ def test_build_health_record_maps_existing_stage_counts_without_changing_stages(
     assert record.fatal_error_count == 0
 
 
+def test_build_health_record_exposes_stage_durations_and_failure_categories() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.CLASSIFY,
+                True,
+                {"requests": 2, "relevant": 1, "irrelevant": 0, "failure_http_429": 1},
+                duration_sec=1.25,
+            ),
+        )
+    )
+
+    record = build_health_record(
+        run_id=uuid4(),
+        started_at=NOW - timedelta(seconds=2),
+        finished_at=NOW,
+        outcome=outcome,
+    )
+
+    assert record.stage_durations_sec == {"classify": 1.25}
+    assert record.error_categories == {"classify:http_429": 1}
+
+
 def test_zero_relevant_signals_is_successful_telemetry() -> None:
     outcome = ChainOutcome(
         outcomes=(

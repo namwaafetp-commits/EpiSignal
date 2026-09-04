@@ -127,12 +127,14 @@ def _retrieve(cohort: PipelineCohort) -> Mapping[str, int]:
         )
     return {
         "examined": result.examined,
+        "unclassified": result.unclassified,
         "filtered": result.filtered,
         "retrieved": result.retrieved,
         "duplicates": result.duplicates,
         "redundant": result.redundant,
         "still_failing": result.still_failing,
         "failed": result.failed,
+        **{f"failure_{key}": value for key, value in result.failure_categories.items()},
     }
 
 
@@ -164,6 +166,7 @@ def _classify(cohort: PipelineCohort) -> Mapping[str, int]:
         "reviewed": result.reviewed,
         "unavailable": result.unavailable,
         "requests": result.requests,
+        **{f"failure_{key}": value for key, value in result.failure_categories.items()},
     }
 
 

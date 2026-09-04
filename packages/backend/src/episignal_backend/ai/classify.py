@@ -1,8 +1,9 @@
 """DeepSeek relevance pass over discovery metadata."""
 
 import logging
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from episignal_backend.ai.registry import model_for_purpose
 from episignal_backend.ai.schema import ClassificationVerdict, classification_json_schema
 from episignal_backend.ai.validate import validate_classification
 from episignal_backend.db.types import AiPurpose, SignalType
+from episignal_backend.diagnostics import classify_ai_failure
 
 CLASSIFICATION_SCHEMA_NAME = "relevance_response"
 logger = logging.getLogger(__name__)
@@ -36,6 +38,7 @@ class ClassificationResult:
     unavailable: int = 0
     requests: int = 0
     stopped_early: bool = False
+    failure_categories: Mapping[str, int] = field(default_factory=dict)
 
 
 def run_classification(
@@ -60,6 +63,7 @@ def run_classification(
     else:
         pending = repository.awaiting_classification(limit=limit, signal_ids=signal_ids)
     relevant = irrelevant = reviewed = unavailable = requests = 0
+    failure_categories: Counter[str] = Counter()
     stopped_early = False
 
     for signal in pending:
@@ -85,6 +89,15 @@ def run_classification(
             on_attempt=attempts.append,
         )
         requests += len(attempts)
+        for attempt in attempts:
+            if attempt.outcome.value != "accepted":
+                failure_categories[
+                    classify_ai_failure(
+                        attempt.reason,
+                        http_status=attempt.http_status,
+                        rejected=attempt.outcome.value == "rejected",
+                    ).value
+                ] += 1
         at = now()
         try:
             for attempt in attempts:
@@ -140,6 +153,7 @@ def run_classification(
         unavailable=unavailable,
         requests=requests,
         stopped_early=stopped_early,
+        failure_categories=dict(failure_categories),
     )
 
 

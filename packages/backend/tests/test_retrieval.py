@@ -205,6 +205,35 @@ def test_an_unfetchable_page_records_a_failed_attempt() -> None:
     assert repository.filtered == []
 
 
+def test_retrieval_failure_category_is_recorded_without_changing_retry_behavior() -> None:
+    repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,))
+    connector = CountingConnector(failing=True)
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.still_failing == 1
+    assert result.failure_categories == {"other": 1}
+    assert repository.failed_attempts == [MEASLES_STORY.signal_id]
+
+
+def test_intentional_filter_duplicate_and_redundant_outcomes_are_not_failures() -> None:
+    irrelevant = STADIUM.model_copy(update={"public_health_relevant": False})
+    redundant = make_stub("Fresh malaria report", "https://example.vn/malaria")
+    repository = FakeRetrievalRepository(
+        waiting=(irrelevant, COPY, redundant),
+        rules=(OUTBREAK,),
+        titles={COPY.normalized_title: ORIGINAL_ID},
+        promotable=False,
+    )
+
+    result = run_retrieval(repository, CountingConnector(), max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.filtered == 1
+    assert result.duplicates == 1
+    assert result.redundant == 1
+    assert result.failure_categories == {}
+
+
 def test_a_redundant_promotion_is_counted_not_failed() -> None:
     repository = FakeRetrievalRepository(
         waiting=(MEASLES_STORY,), rules=(OUTBREAK,), promotable=False

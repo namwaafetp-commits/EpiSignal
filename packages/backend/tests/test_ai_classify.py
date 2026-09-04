@@ -157,6 +157,20 @@ def test_relevance_provider_unavailable_leaves_signal_untouched() -> None:
     assert repository.requests[0].outcome is AiOutcome.UNAVAILABLE
 
 
+def test_relevance_failure_categories_are_diagnostic_only() -> None:
+    repository = FakeRepository(
+        (signal(FIRST, "Cholera cases rise"), signal(SECOND, "City wins the cup"))
+    )
+    model = ScriptedModel([ModelUnavailable("429"), "not json"])
+
+    result = run_classification(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert result.unavailable == 1
+    assert result.reviewed == 1
+    assert result.failure_categories == {"http_429": 1, "schema_parse_error": 1}
+    assert repository.verdicts == {}
+
+
 def test_relevance_guard_stops_after_the_allowed_request() -> None:
     repository = FakeRepository((signal(FIRST, "a"), signal(SECOND, "b")))
     model = ScriptedModel([answer(True, 0.9), answer(True, 0.9)])

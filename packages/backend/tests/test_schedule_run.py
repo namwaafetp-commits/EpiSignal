@@ -67,6 +67,15 @@ def test_counts_are_kept_per_stage() -> None:
     assert outcome.ok is True
 
 
+def test_stage_duration_is_diagnostic_and_does_not_change_success_behavior() -> None:
+    chain = (StageName.DEDUPE,)
+    outcome = run_chain(chain, {StageName.DEDUPE: _record([], StageName.DEDUPE, {"examined": 1})})
+
+    assert outcome.ok is True
+    assert outcome.outcomes[0].duration_sec is not None
+    assert outcome.outcomes[0].duration_sec >= 0
+
+
 def test_a_stage_with_no_runner_is_a_failure_not_a_crash() -> None:
     outcome = run_chain((StageName.MATCH,), {})
 

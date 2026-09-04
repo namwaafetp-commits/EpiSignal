@@ -334,8 +334,19 @@ class SqlAlchemyDiscoveryRepository:
         self._session.flush()
         return db_signal.id
 
-    def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
-        return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
+    def stubs_awaiting_retrieval(
+        self,
+        *,
+        max_attempts: int,
+        limit: int,
+        signal_ids: Sequence[UUID] | None = None,
+    ) -> Sequence[StubRetrieval]:
+        return self._retrievals(
+            ProcessingStatus.FETCHED,
+            max_attempts=max_attempts,
+            limit=limit,
+            signal_ids=signal_ids,
+        )
 
     def _retrievals(
         self,
