@@ -9,9 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.session import session_scope
-from episignal_backend.db.types import PipelineTrigger
+from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
 from episignal_backend.models import PipelineHealthRun, PipelineRun
-from episignal_backend.operational_monitoring import PipelineHealthRecord
+from episignal_backend.operational_monitoring import ACTIVE_RUN_MAX_AGE, PipelineHealthRecord
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class SqlAlchemyPipelineHealthRepository:
     def recent_records(
         self, now: datetime, *, lookback_days: int = 8
     ) -> tuple[PipelineHealthRecord, ...]:
-        rows = self._session.execute(
+        health_rows = self._session.execute(
             select(PipelineHealthRun, PipelineRun.trigger, PipelineRun.stage_counts)
             .join(PipelineRun, PipelineRun.id == PipelineHealthRun.pipeline_run_id)
             .where(
@@ -44,10 +44,35 @@ class SqlAlchemyPipelineHealthRepository:
             )
             .order_by(PipelineHealthRun.finished_at.desc())
         ).all()
-        return tuple(
+        completed = tuple(
             self._record_from_row(health_row, trigger, stage_counts)
-            for health_row, trigger, stage_counts in rows
+            for health_row, trigger, stage_counts in health_rows
         )
+        active_rows = (
+            self._session.execute(
+                select(PipelineRun)
+                .where(
+                    PipelineRun.status == PipelineRunStatus.RUNNING,
+                    PipelineRun.trigger == PipelineTrigger.SCHEDULED,
+                    PipelineRun.started_at >= now - ACTIVE_RUN_MAX_AGE,
+                    PipelineRun.started_at <= now,
+                )
+                .order_by(PipelineRun.started_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        active = tuple(
+            PipelineHealthRecord(
+                run_id=row.id,
+                started_at=row.started_at,
+                finished_at=None,
+                status=PipelineRunStatus.RUNNING,
+                trigger=PipelineTrigger.SCHEDULED,
+            )
+            for row in active_rows
+        )
+        return completed + active
 
     @staticmethod
     def _record_from_row(

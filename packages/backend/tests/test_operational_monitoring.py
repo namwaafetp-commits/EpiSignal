@@ -320,6 +320,132 @@ def test_current_day_coverage_counts_only_completed_scheduled_hourly_slots() -> 
     assert summary.run_coverage == 1.0
 
 
+def test_running_scheduled_run_covers_its_current_hourly_slot() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    completed = [scheduled_run_at(hour, now=now) for hour in range(12, 17)]
+    active = run(
+        started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+        finished_at=None,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+
+    summary = summarize_health([*completed, active], now=now)
+
+    assert summary.current_day_expected_runs_so_far == 6
+    assert summary.run_coverage == 1.0
+
+
+def test_five_completed_and_one_active_scheduled_slot_are_fully_covered() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    records = [scheduled_run_at(hour, now=now) for hour in range(12, 17)]
+    records.append(
+        run(
+            started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+            finished_at=None,
+            status=PipelineRunStatus.RUNNING,
+            trigger=PipelineTrigger.SCHEDULED,
+        )
+    )
+
+    summary = summarize_health(records, now=now)
+
+    assert summary.run_coverage == 1.0
+    assert summary.coverage_status is HealthStatus.HEALTHY
+
+
+def test_manual_running_run_does_not_cover_a_scheduled_slot() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    records = [scheduled_run_at(hour, now=now) for hour in range(12, 17)]
+    records.append(
+        run(
+            started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+            finished_at=None,
+            status=PipelineRunStatus.RUNNING,
+            trigger=PipelineTrigger.MANUAL,
+        )
+    )
+
+    summary = summarize_health(records, now=now)
+
+    assert summary.run_coverage == pytest.approx(5 / 6)
+
+
+def test_active_scheduled_run_crossing_an_hour_covers_the_later_slot() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    records = [scheduled_run_at(hour, now=now) for hour in range(12, 16)]
+    records.append(
+        run(
+            started_at=datetime(2026, 9, 4, 16, 30, tzinfo=BANGKOK),
+            finished_at=None,
+            status=PipelineRunStatus.RUNNING,
+            trigger=PipelineTrigger.SCHEDULED,
+        )
+    )
+
+    summary = summarize_health(records, now=now)
+
+    assert summary.run_coverage == 1.0
+
+
+def test_active_scheduled_run_crossing_midnight_covers_the_new_day_slot() -> None:
+    now = datetime(2026, 9, 5, 0, 5, tzinfo=BANGKOK)
+    active = run(
+        started_at=datetime(2026, 9, 4, 23, 30, tzinfo=BANGKOK),
+        finished_at=None,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+
+    summary = summarize_health([active], now=now)
+
+    assert summary.current_day_expected_runs_so_far == 1
+    assert summary.run_coverage == 1.0
+
+
+def test_stale_running_scheduled_run_does_not_cover_indefinitely() -> None:
+    now = datetime(2026, 9, 4, 17, 30, tzinfo=BANGKOK)
+    active = run(
+        started_at=datetime(2026, 9, 4, 16, 0, tzinfo=BANGKOK),
+        finished_at=None,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+
+    summary = summarize_health([active], now=now)
+
+    assert summary.run_coverage == 0.0
+
+
+def test_running_records_do_not_enter_completed_success_or_stage_denominators() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    completed = scheduled_run_at(
+        12,
+        now=now,
+        deepseek_requested=10,
+        deepseek_success=10,
+        retrieval_requested=10,
+        retrieval_success=10,
+    )
+    active = run(
+        started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+        finished_at=None,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+        deepseek_requested=100,
+        deepseek_success=0,
+        retrieval_requested=100,
+        retrieval_success=0,
+    )
+
+    summary = summarize_health([completed, active], now=now)
+
+    assert summary.completed_runs == 1
+    assert summary.success_rate == 1.0
+    assert summary.stage_success_rates["deepseek"].value == 1.0
+    assert summary.stage_success_rates["retrieval"].value == 1.0
+
+
 def test_old_quarter_hour_runs_in_one_hour_cover_one_slot() -> None:
     now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
     records = [scheduled_run_at(14, minute=minute, now=now) for minute in (0, 15, 30, 45)]

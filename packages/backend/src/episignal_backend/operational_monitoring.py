@@ -15,6 +15,8 @@ from episignal_backend.schedule.documents import ChainOutcome, StageName
 BANGKOK = ZoneInfo("Asia/Bangkok")
 SCHEDULE_INTERVAL_MINUTES = 60
 EXPECTED_RUNS_PER_DAY = 1440 // SCHEDULE_INTERVAL_MINUTES
+# Match the scheduled wrapper's 3600-second timeout; older running rows are stale.
+ACTIVE_RUN_MAX_AGE = timedelta(hours=1)
 # Health rows first became observable around noon on the transition date. This
 # fixed bootstrap boundary prevents unobservable pre-activation hours from
 # becoming fabricated misses; later dates naturally start at Bangkok midnight.
@@ -282,31 +284,55 @@ def _current_day_expected_runs_so_far(now: datetime) -> int:
 def _current_day_coverage(
     records: Sequence[PipelineHealthRecord], *, now: datetime
 ) -> float | None:
-    """Cover current-day scheduled slots from completed runs, using ``started_at``."""
+    """Cover slots from started scheduled runs, including a bounded active run."""
     local_now = now.astimezone(BANGKOK)
     start = _coverage_start(local_now)
     if start is None:
         return None
 
     current_day = local_now.date()
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     covered_slots: set[int] = set()
     unknown_trigger = False
     for record in records:
-        if record.finished_at is None or record.finished_at > now:
-            continue
         local_started = record.started_at.astimezone(BANGKOK)
-        if local_started.date() != current_day or local_started < start or record.started_at > now:
+        if record.started_at > now:
+            continue
+        active = record.finished_at is None
+        if active:
+            if record.status is not PipelineRunStatus.RUNNING:
+                continue
+            if now - record.started_at > ACTIVE_RUN_MAX_AGE:
+                continue
+        elif record.finished_at is not None and record.finished_at > now:
             continue
         if record.trigger is None:
             unknown_trigger = True
             continue
         if record.trigger is not PipelineTrigger.SCHEDULED:
             continue
+        # The one-time activation boundary is not covered by an old run that
+        # began before monitoring could observe the hourly schedule.
+        if local_started.date() == current_day and local_started < start:
+            continue
+        if local_started.date() != current_day and not active:
+            continue
 
-        day_start = local_started.replace(hour=0, minute=0, second=0, microsecond=0)
-        elapsed_minutes = (local_started - day_start).total_seconds() / 60
-        slot = int(elapsed_minutes // SCHEDULE_INTERVAL_MINUTES)
-        covered_slots.add(slot)
+        first_slot = local_started.replace(minute=0, second=0, microsecond=0)
+        if active:
+            first_slot = max(first_slot, start)
+            last_slot = local_now.replace(minute=0, second=0, microsecond=0)
+            slot_start = first_slot
+            while slot_start <= last_slot:
+                covered_slots.add(
+                    int(
+                        (slot_start - day_start).total_seconds() // (SCHEDULE_INTERVAL_MINUTES * 60)
+                    )
+                )
+                slot_start += timedelta(minutes=SCHEDULE_INTERVAL_MINUTES)
+        else:
+            elapsed_minutes = (local_started - day_start).total_seconds() / 60
+            covered_slots.add(int(elapsed_minutes // SCHEDULE_INTERVAL_MINUTES))
 
     if unknown_trigger:
         return None

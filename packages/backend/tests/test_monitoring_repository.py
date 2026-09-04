@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from episignal_backend.db.base import Base
 from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
-from episignal_backend.models import PipelineHealthRun
+from episignal_backend.models import PipelineHealthRun, PipelineRun
 from episignal_backend.monitoring_repository import SqlAlchemyPipelineHealthRepository
 from episignal_backend.operational_monitoring import PipelineHealthRecord
 
@@ -46,7 +46,10 @@ class FakeSession:
 
     def execute(self, statement: Any) -> FakeScalarResult:
         self.executed.append(statement)
-        return FakeScalarResult(self.rows)
+        if not self.rows:
+            return FakeScalarResult([])
+        result = self.rows.pop(0)
+        return FakeScalarResult(result if isinstance(result, list) else [result])
 
 
 def test_health_table_has_one_row_per_pipeline_run_and_nullable_telemetry() -> None:
@@ -75,15 +78,16 @@ def test_repository_maps_record_without_touching_pipeline_or_event_tables() -> N
     assert row.__tablename__ == "pipeline_health_runs"
 
 
-def test_repository_reads_recent_rows_with_one_query() -> None:
+def test_repository_reads_recent_rows_and_active_runs() -> None:
     session = FakeSession()
     repository = SqlAlchemyPipelineHealthRepository(session)
 
     rows = repository.recent_records(NOW)
 
     assert rows == ()
-    assert len(session.executed) == 1
+    assert len(session.executed) == 2
     assert "pipeline_health_runs" in str(session.executed[0])
+    assert "pipeline_runs" in str(session.executed[1])
 
 
 def test_repository_reads_pipeline_trigger_for_slot_coverage() -> None:
@@ -93,10 +97,31 @@ def test_repository_reads_pipeline_trigger_for_slot_coverage() -> None:
         finished_at=NOW,
         status=PipelineRunStatus.SUCCEEDED,
     )
-    session = FakeSession([(health, PipelineTrigger.SCHEDULED, {"extract": {"duration_sec": 2.5}})])
+    session = FakeSession(
+        [(health, PipelineTrigger.SCHEDULED, {"extract": {"duration_sec": 2.5}}), []]
+    )
     repository = SqlAlchemyPipelineHealthRepository(session)
 
     rows = repository.recent_records(NOW)
 
     assert rows[0].trigger is PipelineTrigger.SCHEDULED
     assert rows[0].stage_durations_sec == {"extract": 2.5}
+
+
+def test_repository_projects_recent_active_scheduled_runs_for_coverage() -> None:
+    active = PipelineRun(
+        id=uuid4(),
+        started_at=NOW,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+    session = FakeSession([[], [active]])
+    repository = SqlAlchemyPipelineHealthRepository(session)
+
+    rows = repository.recent_records(NOW)
+
+    assert len(rows) == 1
+    assert rows[0].run_id == active.id
+    assert rows[0].finished_at is None
+    assert rows[0].status is PipelineRunStatus.RUNNING
+    assert rows[0].trigger is PipelineTrigger.SCHEDULED
