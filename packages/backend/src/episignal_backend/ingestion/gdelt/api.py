@@ -30,6 +30,8 @@ HTTP_FALLBACK_URL = "http://api.gdeltproject.org/api/v2/doc/doc"
 MAX_RECORDS = 250
 TIMEOUT_SECONDS = 30.0
 MAX_ATTEMPTS = 3
+CIRCUIT_FAILURE_THRESHOLD = 8
+CIRCUIT_FAILURE_ELAPSED_BUDGET_SEC = 180.0
 SEEN_FORMAT = "%Y%m%dT%H%M%SZ"
 WINDOW_FORMAT = "%Y%m%d%H%M%S"
 # The `sourcelang:` operator wants GDELT's three-letter codes, while query
@@ -75,22 +77,39 @@ class GdeltRunSummary:
     http_attempts: int
     failure_counts: dict[str, int]
     circuit_open: bool
+    circuit_open_reason: str | None
+    failure_streak_elapsed_sec: float
 
 
 class GdeltCircuitBreaker:
-    def __init__(self, threshold: int = 8) -> None:
+    def __init__(
+        self,
+        threshold: int = CIRCUIT_FAILURE_THRESHOLD,
+        elapsed_budget_sec: float = CIRCUIT_FAILURE_ELAPSED_BUDGET_SEC,
+    ) -> None:
         self.threshold = threshold
+        self.elapsed_budget_sec = elapsed_budget_sec
         self.failure_streak = 0
+        self.failure_streak_elapsed_sec = 0.0
         self.open = False
+        self.open_reason: str | None = None
         self.skipped = 0
 
     def record_success(self) -> None:
         self.failure_streak = 0
+        self.failure_streak_elapsed_sec = 0.0
 
-    def record_failure(self) -> None:
+    def record_failure(self, elapsed_sec: float) -> None:
         self.failure_streak += 1
-        if self.failure_streak >= self.threshold:
+        self.failure_streak_elapsed_sec += elapsed_sec
+        if self.failure_streak >= self.threshold and self.open_reason is None:
             self.open = True
+            self.open_reason = "consecutive_failures"
+        elif (
+            self.failure_streak_elapsed_sec >= self.elapsed_budget_sec and self.open_reason is None
+        ):
+            self.open = True
+            self.open_reason = "failure_time_budget"
 
 
 class _PayloadFailure(Exception):
@@ -116,10 +135,12 @@ class GdeltDocClient:
         client: httpx.Client | None = None,
         fallback_client: httpx.Client | None = None,
         sleep: Callable[[float], None] = default_sleep,
+        monotonic: Callable[[], float] = perf_counter,
     ) -> None:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._fallback_client = fallback_client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
+        self._monotonic = monotonic
         self._https_unavailable = False
         self._circuit = GdeltCircuitBreaker()
         self._reset_run_metrics()
@@ -157,8 +178,11 @@ class GdeltDocClient:
     def finish_run(self, rules_total: int) -> GdeltRunSummary:
         if self._circuit.open:
             logger.warning(
-                "gdelt_circuit_open consecutive_failures=%d remaining_rules=%d",
+                "gdelt_circuit_open reason=%s consecutive_failures=%d "
+                "failure_elapsed_sec=%.1f remaining_rules=%d",
+                self._circuit.open_reason,
                 self._circuit.failure_streak,
+                self._circuit.failure_streak_elapsed_sec,
                 max(0, rules_total - self._rules_attempted),
             )
         summary = GdeltRunSummary(
@@ -171,13 +195,16 @@ class GdeltDocClient:
             http_attempts=self._http_attempts,
             failure_counts=dict(self._failure_counts),
             circuit_open=self._circuit.open,
+            circuit_open_reason=self._circuit.open_reason,
+            failure_streak_elapsed_sec=self._circuit.failure_streak_elapsed_sec,
         )
         logger.info(
             "gdelt_run_summary rules_total=%d rules_attempted=%d rules_succeeded=%d "
             "rules_failed=%d rules_skipped_circuit=%d https_attempts=%d http_attempts=%d "
             "failure_connect_timeout=%d failure_read_timeout=%d failure_tls_error=%d "
             "failure_http_429=%d failure_http_5xx=%d failure_invalid_response=%d "
-            "failure_parse_error=%d failure_other=%d circuit_open=%s",
+            "failure_parse_error=%d failure_other=%d circuit_open=%s "
+            "circuit_open_reason=%s failure_streak_elapsed_sec=%.1f",
             summary.rules_total,
             summary.rules_attempted,
             summary.rules_succeeded,
@@ -194,6 +221,8 @@ class GdeltDocClient:
             summary.failure_counts["parse_error"],
             summary.failure_counts["other"],
             str(summary.circuit_open).lower(),
+            summary.circuit_open_reason or "null",
+            summary.failure_streak_elapsed_sec,
         )
         return summary
 
@@ -216,13 +245,14 @@ class GdeltDocClient:
             "startdatetime": window.start.astimezone(UTC).strftime(WINDOW_FORMAT),
             "enddatetime": window.end.astimezone(UTC).strftime(WINDOW_FORMAT),
         }
+        rule_started = self._monotonic()
         try:
             payload = self._request(parameters)
         except GdeltUnavailable as error:
             self._rules_failed += 1
             failure = error.failure or GdeltFailure("other", "https", None, 0.0, str(error))
             self._failure_counts[failure.category] += 1
-            self._circuit.record_failure()
+            self._circuit.record_failure(self._monotonic() - rule_started)
             logger.warning(
                 "gdelt_rule_failed rule=%s rule_id=%s transport=%s error=%s "
                 "status_code=%s elapsed_ms=%.1f detail=%s",
@@ -328,7 +358,7 @@ class GdeltDocClient:
                 params=parameters,
                 timeout=TIMEOUT_SECONDS,
             )
-        except Exception as error:
+        except (httpx.TimeoutException, httpx.TransportError) as error:
             return None, GdeltFailure(
                 category=self._transport_category(error),
                 transport=transport,
