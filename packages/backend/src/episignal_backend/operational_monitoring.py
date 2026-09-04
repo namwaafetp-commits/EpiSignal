@@ -15,7 +15,10 @@ from episignal_backend.schedule.documents import ChainOutcome, StageName
 BANGKOK = ZoneInfo("Asia/Bangkok")
 SCHEDULE_INTERVAL_MINUTES = 60
 EXPECTED_RUNS_PER_DAY = 1440 // SCHEDULE_INTERVAL_MINUTES
-SCHEDULE_TRANSITION_DATE = date(2026, 9, 4)
+# Health rows first became observable around noon on the transition date. This
+# fixed bootstrap boundary prevents unobservable pre-activation hours from
+# becoming fabricated misses; later dates naturally start at Bangkok midnight.
+MONITORING_ACTIVATION_AT = datetime(2026, 9, 4, 12, 0, tzinfo=BANGKOK)
 HEALTHY_COVERAGE = 0.98
 WARNING_COVERAGE = 0.95
 HEALTHY_SUCCESS = 0.99
@@ -237,11 +240,27 @@ def expected_runs_so_far(now: datetime, *, timezone: ZoneInfo = BANGKOK) -> int:
     )
 
 
+def _coverage_start(now: datetime) -> datetime | None:
+    local_now = now.astimezone(BANGKOK)
+    if local_now < MONITORING_ACTIVATION_AT:
+        return None
+    if local_now.date() == MONITORING_ACTIVATION_AT.date():
+        return MONITORING_ACTIVATION_AT
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _expected_slots_since(start: datetime, now: datetime) -> int:
+    elapsed_minutes = (now - start).total_seconds() / 60
+    return min(
+        EXPECTED_RUNS_PER_DAY,
+        int(elapsed_minutes // SCHEDULE_INTERVAL_MINUTES) + 1,
+    )
+
+
 def _current_day_expected_runs_so_far(now: datetime) -> int:
     local_now = now.astimezone(BANGKOK)
-    if local_now.date() < SCHEDULE_TRANSITION_DATE:
-        return 0
-    return expected_runs_so_far(local_now)
+    start = _coverage_start(local_now)
+    return _expected_slots_since(start, local_now) if start is not None else 0
 
 
 def _current_day_coverage(
@@ -249,7 +268,8 @@ def _current_day_coverage(
 ) -> float | None:
     """Cover current-day scheduled slots from completed runs, using ``started_at``."""
     local_now = now.astimezone(BANGKOK)
-    if local_now.date() < SCHEDULE_TRANSITION_DATE:
+    start = _coverage_start(local_now)
+    if start is None:
         return None
 
     current_day = local_now.date()
@@ -259,7 +279,7 @@ def _current_day_coverage(
         if record.finished_at is None or record.finished_at > now:
             continue
         local_started = record.started_at.astimezone(BANGKOK)
-        if local_started.date() != current_day or record.started_at > now:
+        if local_started.date() != current_day or local_started < start or record.started_at > now:
             continue
         if record.trigger is None:
             unknown_trigger = True
@@ -274,7 +294,7 @@ def _current_day_coverage(
 
     if unknown_trigger:
         return None
-    expected = expected_runs_so_far(local_now)
+    expected = _expected_slots_since(start, local_now)
     if expected == 0:
         return None
     return min(1.0, len(covered_slots) / expected)

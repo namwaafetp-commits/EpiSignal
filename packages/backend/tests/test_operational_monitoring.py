@@ -232,7 +232,7 @@ def test_current_day_expected_runs_uses_bangkok_boundary() -> None:
 
     assert expected_runs_so_far(before_midnight_utc) == 24
     assert expected_runs_so_far(after_midnight_bangkok) == 1
-    assert summarize_health([], now=after_midnight_bangkok).current_day_expected_runs_so_far == 1
+    assert summarize_health([], now=after_midnight_bangkok).current_day_expected_runs_so_far == 0
 
 
 def test_fatal_errors_and_stage_targets_contribute_to_health() -> None:
@@ -275,21 +275,25 @@ def test_missed_runs_make_coverage_critical_but_zero_relevance_does_not() -> Non
 
 def test_coverage_uses_hourly_denominator() -> None:
     now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
-    one_run = summarize_health([scheduled_run_at(0, now=now)], now=now)
-    full_day = summarize_health([scheduled_run_at(hour, now=now) for hour in range(16)], now=now)
-    one_missed = summarize_health([scheduled_run_at(hour, now=now) for hour in range(15)], now=now)
+    one_run = summarize_health([scheduled_run_at(12, now=now)], now=now)
+    full_day = summarize_health(
+        [scheduled_run_at(hour, now=now) for hour in range(12, 16)], now=now
+    )
+    one_missed = summarize_health(
+        [scheduled_run_at(hour, now=now) for hour in range(12, 15)], now=now
+    )
 
-    assert one_run.run_coverage == pytest.approx(1 / 16)
+    assert one_run.run_coverage == pytest.approx(1 / 4)
     assert full_day.run_coverage == 1.0
-    assert one_missed.run_coverage == pytest.approx(15 / 16)
+    assert one_missed.run_coverage == pytest.approx(3 / 4)
     assert one_missed.coverage_status is HealthStatus.CRITICAL
 
 
 def test_current_day_coverage_counts_only_completed_scheduled_hourly_slots() -> None:
     now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
-    summary = summarize_health([scheduled_run_at(hour, now=now) for hour in range(16)], now=now)
+    summary = summarize_health([scheduled_run_at(hour, now=now) for hour in range(12, 16)], now=now)
 
-    assert summary.current_day_expected_runs_so_far == 16
+    assert summary.current_day_expected_runs_so_far == 4
     assert summary.run_coverage == 1.0
 
 
@@ -299,7 +303,7 @@ def test_old_quarter_hour_runs_in_one_hour_cover_one_slot() -> None:
 
     summary = summarize_health(records, now=now)
 
-    assert summary.run_coverage == pytest.approx(1 / 16)
+    assert summary.run_coverage == pytest.approx(1 / 4)
 
 
 def test_scheduled_runs_in_two_hours_cover_two_slots() -> None:
@@ -309,13 +313,14 @@ def test_scheduled_runs_in_two_hours_cover_two_slots() -> None:
         [scheduled_run_at(13, now=now), scheduled_run_at(14, now=now)], now=now
     )
 
-    assert summary.run_coverage == pytest.approx(2 / 16)
+    assert summary.run_coverage == pytest.approx(2 / 4)
 
 
 def test_future_hour_is_not_counted_as_missed() -> None:
     now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
     summary = summarize_health(
-        [scheduled_run_at(hour, now=now) for hour in range(16)] + [scheduled_run_at(16, now=now)],
+        [scheduled_run_at(hour, now=now) for hour in range(12, 16)]
+        + [scheduled_run_at(16, now=now)],
         now=now,
     )
 
@@ -328,7 +333,7 @@ def test_duplicate_runs_cannot_push_current_day_coverage_above_100_percent() -> 
 
     summary = summarize_health(records, now=now)
 
-    assert summary.run_coverage == pytest.approx(1 / 16)
+    assert summary.run_coverage == pytest.approx(1 / 4)
     assert summary.run_coverage <= 1.0
 
 
@@ -376,6 +381,42 @@ def test_manual_run_does_not_cover_current_day_scheduled_slot() -> None:
     assert summary.run_coverage == 0.0
 
 
+def test_monitoring_activation_starts_midday_on_transition_date() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    summary = summarize_health([], now=now)
+
+    assert summary.current_day_expected_runs_so_far == 4
+    assert summary.run_coverage == 0.0
+
+
+def test_pre_activation_runs_do_not_affect_current_day_coverage() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    records = [scheduled_run_at(hour, now=now) for hour in (11, 12, 13, 14, 15)]
+
+    summary = summarize_health(records, now=now)
+
+    assert summary.current_day_expected_runs_so_far == 4
+    assert summary.run_coverage == 1.0
+
+
+def test_pre_activation_missing_slots_are_neutral() -> None:
+    now = datetime(2026, 9, 4, 11, 59, tzinfo=BANGKOK)
+
+    summary = summarize_health([], now=now)
+
+    assert summary.current_day_expected_runs_so_far == 0
+    assert summary.run_coverage is None
+    assert summary.coverage_status is HealthStatus.NEUTRAL
+
+
+def test_next_day_expected_slots_restart_at_bangkok_midnight() -> None:
+    now = datetime(2026, 9, 5, 8, 10, tzinfo=BANGKOK)
+
+    summary = summarize_health([], now=now)
+
+    assert summary.current_day_expected_runs_so_far == 9
+
+
 def test_pre_transition_day_has_neutral_scheduled_coverage() -> None:
     now = datetime(2026, 9, 3, 15, 17, tzinfo=BANGKOK)
 
@@ -410,7 +451,7 @@ def test_non_coverage_metrics_still_use_preceding_24_hours() -> None:
 
     summary = summarize_health([current, previous], now=now)
 
-    assert summary.run_coverage == pytest.approx(1 / 16)
+    assert summary.run_coverage == pytest.approx(1 / 4)
     assert summary.success_rate == 0.5
     assert summary.p95_runtime_sec == pytest.approx(117.0)
     assert summary.fatal_errors == 1
