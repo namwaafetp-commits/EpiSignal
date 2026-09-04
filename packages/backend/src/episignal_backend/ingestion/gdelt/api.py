@@ -11,7 +11,9 @@ saw the article. It is stored as `gdelt_seen_at` and never as `published_at`.
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from time import perf_counter
 from time import sleep as default_sleep
 from typing import Any
 
@@ -28,7 +30,6 @@ HTTP_FALLBACK_URL = "http://api.gdeltproject.org/api/v2/doc/doc"
 MAX_RECORDS = 250
 TIMEOUT_SECONDS = 30.0
 MAX_ATTEMPTS = 3
-RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 SEEN_FORMAT = "%Y%m%dT%H%M%SZ"
 WINDOW_FORMAT = "%Y%m%d%H%M%S"
 # The `sourcelang:` operator wants GDELT's three-letter codes, while query
@@ -46,6 +47,58 @@ class GdeltUnavailable(Exception):
     Expected rather than exceptional: the API rate-limits aggressively, and one
     unreachable rule must not fail a run covering fifty others.
     """
+
+    def __init__(
+        self, message: str = "GDELT search failed", *, failure: "GdeltFailure | None" = None
+    ) -> None:
+        super().__init__(message)
+        self.failure = failure
+
+
+@dataclass(frozen=True)
+class GdeltFailure:
+    category: str
+    transport: str
+    status_code: int | None
+    elapsed_ms: float
+    detail: str
+
+
+@dataclass(frozen=True)
+class GdeltRunSummary:
+    rules_total: int
+    rules_attempted: int
+    rules_succeeded: int
+    rules_failed: int
+    rules_skipped_circuit: int
+    https_attempts: int
+    http_attempts: int
+    failure_counts: dict[str, int]
+    circuit_open: bool
+
+
+class GdeltCircuitBreaker:
+    def __init__(self, threshold: int = 8) -> None:
+        self.threshold = threshold
+        self.failure_streak = 0
+        self.open = False
+        self.skipped = 0
+
+    def record_success(self) -> None:
+        self.failure_streak = 0
+
+    def record_failure(self) -> None:
+        self.failure_streak += 1
+        if self.failure_streak >= self.threshold:
+            self.open = True
+
+
+class _PayloadFailure(Exception):
+    def __init__(self, category: str, status_code: int | None, detail: str) -> None:
+        super().__init__(detail)
+        self.category = category
+        self.status_code = status_code
+        self.detail = detail
 
 
 def parse_seen_date(value: str) -> datetime | None:
@@ -68,8 +121,88 @@ class GdeltDocClient:
         self._fallback_client = fallback_client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
         self._https_unavailable = False
+        self._circuit = GdeltCircuitBreaker()
+        self._reset_run_metrics()
+
+    @property
+    def circuit_open(self) -> bool:
+        return self._circuit.open
+
+    def begin_run(self) -> None:
+        """Reset all circuit and request state for one discovery run."""
+        self._https_unavailable = False
+        self._circuit = GdeltCircuitBreaker()
+        self._reset_run_metrics()
+
+    def _reset_run_metrics(self) -> None:
+        self._rules_attempted = 0
+        self._rules_succeeded = 0
+        self._rules_failed = 0
+        self._https_attempts = 0
+        self._http_attempts = 0
+        self._failure_counts = {
+            category: 0
+            for category in (
+                "connect_timeout",
+                "read_timeout",
+                "tls_error",
+                "http_429",
+                "http_5xx",
+                "invalid_response",
+                "parse_error",
+                "other",
+            )
+        }
+
+    def finish_run(self, rules_total: int) -> GdeltRunSummary:
+        if self._circuit.open:
+            logger.warning(
+                "gdelt_circuit_open consecutive_failures=%d remaining_rules=%d",
+                self._circuit.failure_streak,
+                max(0, rules_total - self._rules_attempted),
+            )
+        summary = GdeltRunSummary(
+            rules_total=rules_total,
+            rules_attempted=self._rules_attempted,
+            rules_succeeded=self._rules_succeeded,
+            rules_failed=self._rules_failed,
+            rules_skipped_circuit=self._circuit.skipped,
+            https_attempts=self._https_attempts,
+            http_attempts=self._http_attempts,
+            failure_counts=dict(self._failure_counts),
+            circuit_open=self._circuit.open,
+        )
+        logger.info(
+            "gdelt_run_summary rules_total=%d rules_attempted=%d rules_succeeded=%d "
+            "rules_failed=%d rules_skipped_circuit=%d https_attempts=%d http_attempts=%d "
+            "failure_connect_timeout=%d failure_read_timeout=%d failure_tls_error=%d "
+            "failure_http_429=%d failure_http_5xx=%d failure_invalid_response=%d "
+            "failure_parse_error=%d failure_other=%d circuit_open=%s",
+            summary.rules_total,
+            summary.rules_attempted,
+            summary.rules_succeeded,
+            summary.rules_failed,
+            summary.rules_skipped_circuit,
+            summary.https_attempts,
+            summary.http_attempts,
+            summary.failure_counts["connect_timeout"],
+            summary.failure_counts["read_timeout"],
+            summary.failure_counts["tls_error"],
+            summary.failure_counts["http_429"],
+            summary.failure_counts["http_5xx"],
+            summary.failure_counts["invalid_response"],
+            summary.failure_counts["parse_error"],
+            summary.failure_counts["other"],
+            str(summary.circuit_open).lower(),
+        )
+        return summary
 
     def search(self, rule: QueryRule, window: TimeWindow) -> tuple[DiscoveredArticle, ...]:
+        if self._circuit.open:
+            self._circuit.skipped += 1
+            return ()
+
+        self._rules_attempted += 1
         query = rule.query
         operator = LANGUAGE_OPERATOR_CODES.get(rule.language)
         if operator is not None:
@@ -83,7 +216,28 @@ class GdeltDocClient:
             "startdatetime": window.start.astimezone(UTC).strftime(WINDOW_FORMAT),
             "enddatetime": window.end.astimezone(UTC).strftime(WINDOW_FORMAT),
         }
-        payload = self._request(parameters)
+        try:
+            payload = self._request(parameters)
+        except GdeltUnavailable as error:
+            self._rules_failed += 1
+            failure = error.failure or GdeltFailure("other", "https", None, 0.0, str(error))
+            self._failure_counts[failure.category] += 1
+            self._circuit.record_failure()
+            logger.warning(
+                "gdelt_rule_failed rule=%s rule_id=%s transport=%s error=%s "
+                "status_code=%s elapsed_ms=%.1f detail=%s",
+                rule.label,
+                rule.id,
+                failure.transport,
+                failure.category,
+                failure.status_code,
+                failure.elapsed_ms,
+                failure.detail,
+            )
+            raise
+
+        self._rules_succeeded += 1
+        self._circuit.record_success()
         entries = payload.get("articles")
         if not isinstance(entries, list):
             return ()
@@ -129,69 +283,111 @@ class GdeltDocClient:
         )
 
     def _request(self, parameters: dict[str, str]) -> dict[str, Any]:
-        last_error: Exception | None = None
+        last_failure: GdeltFailure | None = None
 
         for attempt in range(MAX_ATTEMPTS):
-            try:
-                if self._https_unavailable:
-                    response = self._fallback_client.get(
-                        HTTP_FALLBACK_URL,
-                        params=parameters,
-                        timeout=TIMEOUT_SECONDS,
-                    )
-                else:
-                    response = self._client.get(
-                        API_URL,
-                        params=parameters,
-                        timeout=TIMEOUT_SECONDS,
-                    )
-            except httpx.TimeoutException as error:
-                last_error = error
-                if not self._https_unavailable:
-                    self._https_unavailable = True
-                    try:
-                        response = self._fallback_client.get(
-                            HTTP_FALLBACK_URL,
-                            params=parameters,
-                            timeout=TIMEOUT_SECONDS,
-                        )
-                    except (httpx.TimeoutException, httpx.TransportError) as fallback_error:
-                        last_error = fallback_error
-                    else:
-                        payload = self._response_payload(response)
-                        if payload is not None:
-                            return payload
-                        last_error = httpx.HTTPStatusError(
-                            f"GDELT returned {response.status_code}",
-                            request=response.request,
-                            response=response,
-                        )
-            except httpx.TransportError as error:
-                last_error = error
-            else:
-                payload = self._response_payload(response)
+            transport = "http" if self._https_unavailable else "https"
+            client = self._fallback_client if transport == "http" else self._client
+            payload, failure = self._attempt(client, transport, parameters)
+            if payload is not None:
+                return payload
+            assert failure is not None
+            last_failure = failure
+
+            if transport == "https" and failure.category in {
+                "connect_timeout",
+                "read_timeout",
+                "tls_error",
+            }:
+                self._https_unavailable = True
+                payload, fallback_failure = self._attempt(self._fallback_client, "http", parameters)
                 if payload is not None:
                     return payload
-                last_error = httpx.HTTPStatusError(
-                    f"GDELT returned {response.status_code}",
-                    request=response.request,
-                    response=response,
-                )
+                assert fallback_failure is not None
+                last_failure = fallback_failure
 
             if attempt < MAX_ATTEMPTS - 1:
                 self._sleep(2.0**attempt)
 
-        raise GdeltUnavailable("GDELT search failed") from last_error
+        raise GdeltUnavailable("GDELT search failed", failure=last_failure)
+
+    def _attempt(
+        self,
+        client: httpx.Client,
+        transport: str,
+        parameters: dict[str, str],
+    ) -> tuple[dict[str, Any] | None, GdeltFailure | None]:
+        if transport == "https":
+            self._https_attempts += 1
+        else:
+            self._http_attempts += 1
+        started = perf_counter()
+        try:
+            response = client.get(
+                API_URL if transport == "https" else HTTP_FALLBACK_URL,
+                params=parameters,
+                timeout=TIMEOUT_SECONDS,
+            )
+        except Exception as error:
+            return None, GdeltFailure(
+                category=self._transport_category(error),
+                transport=transport,
+                status_code=None,
+                elapsed_ms=(perf_counter() - started) * 1000,
+                detail=str(error) or type(error).__name__,
+            )
+
+        try:
+            payload = self._response_payload(response)
+        except _PayloadFailure as error:
+            return None, GdeltFailure(
+                category=error.category,
+                transport=transport,
+                status_code=error.status_code,
+                elapsed_ms=(perf_counter() - started) * 1000,
+                detail=error.detail,
+            )
+        return payload, None
+
+    @staticmethod
+    def _transport_category(error: Exception) -> str:
+        if isinstance(error, httpx.ConnectTimeout):
+            return "connect_timeout"
+        if isinstance(error, httpx.ReadTimeout):
+            return "read_timeout"
+        if isinstance(error, httpx.TimeoutException):
+            return "read_timeout"
+        detail = f"{error} {error.__cause__ or ''}".lower()
+        if isinstance(error, httpx.ConnectError) and any(
+            marker in detail for marker in ("tls", "ssl", "certificate", "handshake")
+        ):
+            return "tls_error"
+        return "other"
 
     @staticmethod
     def _response_payload(response: httpx.Response) -> dict[str, Any] | None:
-        if response.status_code in RETRY_STATUS:
-            return None
-        response.raise_for_status()
+        if response.status_code == 429:
+            raise _PayloadFailure("http_429", response.status_code, "GDELT returned HTTP 429")
+        if 500 <= response.status_code <= 599:
+            raise _PayloadFailure(
+                "http_5xx", response.status_code, f"GDELT returned HTTP {response.status_code}"
+            )
+        if not 200 <= response.status_code < 300:
+            raise _PayloadFailure(
+                "invalid_response",
+                response.status_code,
+                f"GDELT returned HTTP {response.status_code}",
+            )
         try:
             payload = response.json()
-        except ValueError:
+        except ValueError as error:
             # GDELT answers an unmatched query with a bare sentence rather
             # than JSON, which means no results, not a fault.
-            return {}
-        return payload if isinstance(payload, dict) else {}
+            if response.text.strip().lower().startswith("no results"):
+                return {}
+            raise _PayloadFailure(
+                "parse_error", response.status_code, "GDELT returned non-JSON"
+            ) from error
+        if not isinstance(payload, dict) or not isinstance(payload.get("articles"), list):
+            raise _PayloadFailure("invalid_response", response.status_code, "GDELT response schema")
+        return payload

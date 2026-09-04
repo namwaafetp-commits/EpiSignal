@@ -94,6 +94,7 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, i
         "window_minutes": window.minutes,
         "rules": discovered.rules_run,
         "rules_failed": discovered.rules_failed,
+        "rules_skipped_circuit": discovered.rules_skipped_circuit,
         "discovered": discovered.discovered,
         "duplicate": discovered.duplicate,
         "rejected": discovered.rejected,

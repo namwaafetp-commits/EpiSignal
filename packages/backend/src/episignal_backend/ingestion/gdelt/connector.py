@@ -18,7 +18,7 @@ from episignal_backend.ingestion.documents import (
     TimeWindow,
 )
 from episignal_backend.ingestion.fingerprint import content_hash
-from episignal_backend.ingestion.gdelt.api import GdeltDocClient
+from episignal_backend.ingestion.gdelt.api import GdeltDocClient, GdeltRunSummary
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher, Disallowed, Unfetchable
 from episignal_backend.ingestion.gdelt.extract import extract_page
 from episignal_backend.ingestion.protocol import RetrievalFailed
@@ -48,6 +48,12 @@ class GdeltConnector:
 
     def discover(self, rule: QueryRule, window: TimeWindow) -> Sequence[DiscoveredArticle]:
         return self._search.search(rule, window)
+
+    def begin_discovery_run(self) -> None:
+        self._search.begin_run()
+
+    def finish_discovery_run(self, rules_total: int) -> GdeltRunSummary:
+        return self._search.finish_run(rules_total)
 
     def retrieve(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:
         try:

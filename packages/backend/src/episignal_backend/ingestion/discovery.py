@@ -34,6 +34,7 @@ logger = logging.getLogger("episignal_backend.ingestion.discovery")
 class DiscoveryResult:
     rules_run: int = 0
     rules_failed: int = 0
+    rules_skipped_circuit: int = 0
     rules_invalid: int = 0
     discovered: int = 0
     duplicate: int = 0
@@ -73,8 +74,13 @@ def run_discovery(
         # counts alone.
         logger.info("No active filter rules; discovery is running unfiltered")
     rules_failed = 0
+    rules_skipped_circuit = 0
     failed = 0
     discovered: dict[str, DiscoveredArticle] = {}
+
+    begin_run = getattr(connector, "begin_discovery_run", None)
+    if callable(begin_run):
+        begin_run()
 
     for rule in rules:
         try:
@@ -92,6 +98,11 @@ def run_discovery(
             # Within a run the same story arrives under several rules; the first
             # sighting keeps the rule that found it.
             discovered.setdefault(article.canonical_url, article)
+
+    finish_run = getattr(connector, "finish_discovery_run", None)
+    if callable(finish_run):
+        summary = finish_run(len(rules))
+        rules_skipped_circuit = int(getattr(summary, "rules_skipped_circuit", 0))
 
     already_stored = repository.seen_urls(tuple(discovered))
     surviving = [
@@ -172,6 +183,7 @@ def run_discovery(
     return DiscoveryResult(
         rules_run=len(rules),
         rules_failed=rules_failed,
+        rules_skipped_circuit=rules_skipped_circuit,
         rules_invalid=filters.invalid,
         discovered=len(discovered),
         duplicate=len(already_stored),

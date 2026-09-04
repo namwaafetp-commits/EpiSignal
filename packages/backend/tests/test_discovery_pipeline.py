@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import httpx
 from episignal_backend.db.types import FilterRuleGroup, ProcessingStatus
 from episignal_backend.ingestion.discovery import (
     DiscoveryResult,
@@ -16,8 +17,11 @@ from episignal_backend.ingestion.documents import (
     Rejection,
     TimeWindow,
 )
-from episignal_backend.ingestion.gdelt.api import GdeltUnavailable
+from episignal_backend.ingestion.gdelt.api import GdeltDocClient, GdeltUnavailable
+from episignal_backend.ingestion.gdelt.connector import GdeltConnector
 from episignal_backend.ingestion.protocol import RetrievalFailed
+from episignal_backend.schedule.documents import StageName
+from episignal_backend.schedule.run import run_chain
 
 NOW = datetime(2026, 8, 26, 8, 0, tzinfo=UTC)
 SEEN = datetime(2026, 8, 26, 7, 45, tzinfo=UTC)
@@ -369,3 +373,52 @@ def test_discovery_defers_every_retrieval() -> None:
     assert result.needs_review == 0
     assert repository.added[0][0].processing_status is ProcessingStatus.FETCHED
     assert repository.added[0][0].raw_text is None
+
+
+def test_gdelt_circuit_open_returns_a_successful_stage_for_later_pipeline_stages() -> None:
+    rules = tuple(
+        QueryRule(
+            id=uuid4(),
+            rule_group="syndromic",
+            query=f"rule-{index}",
+            label=f"Rule {index}",
+        )
+        for index in range(9)
+    )
+
+    class ManyRules(FakeRepository):
+        def active_rules(self) -> Sequence[QueryRule]:
+            return rules
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+    discovery = GdeltConnector(search=client)  # type: ignore[arg-type]
+    result = run_discovery(ManyRules(), discovery, now=NOW)
+
+    called: list[str] = []
+    outcome = run_chain(
+        [StageName.DISCOVER, StageName.RETRIEVE],
+        {
+            StageName.DISCOVER: lambda: (
+                called.append("discover")
+                or {
+                    "rules": result.rules_run,
+                    "rules_failed": result.rules_failed,
+                    "rules_skipped_circuit": result.rules_skipped_circuit,
+                }
+            ),
+            StageName.RETRIEVE: lambda: called.append("retrieve") or {"retrieved": 0},
+        },
+    )
+
+    assert result.rules_failed == 8
+    assert result.rules_skipped_circuit == 1
+    assert outcome.ok
+    assert called == ["discover", "retrieve"]
