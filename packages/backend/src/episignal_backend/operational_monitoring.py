@@ -9,12 +9,13 @@ from statistics import mean
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from episignal_backend.db.types import PipelineRunStatus
+from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
 from episignal_backend.schedule.documents import ChainOutcome, StageName
 
 BANGKOK = ZoneInfo("Asia/Bangkok")
 SCHEDULE_INTERVAL_MINUTES = 60
 EXPECTED_RUNS_PER_DAY = 1440 // SCHEDULE_INTERVAL_MINUTES
+SCHEDULE_TRANSITION_DATE = date(2026, 9, 4)
 HEALTHY_COVERAGE = 0.98
 WARNING_COVERAGE = 0.95
 HEALTHY_SUCCESS = 0.99
@@ -55,6 +56,7 @@ class PipelineHealthRecord:
     started_at: datetime
     finished_at: datetime | None
     status: PipelineRunStatus
+    trigger: PipelineTrigger | None = None
     duration_sec: float | None = None
     discovered: int | None = None
     dedup_primary: int | None = None
@@ -148,6 +150,7 @@ def build_health_record(
     started_at: datetime,
     finished_at: datetime | None,
     outcome: ChainOutcome,
+    trigger: PipelineTrigger | None = None,
     fatal_error_type: str | None = None,
 ) -> PipelineHealthRecord:
     """Translate existing stage outputs into optional monitoring telemetry."""
@@ -193,6 +196,7 @@ def build_health_record(
             if not outcome.ok or fatal_error_type is not None
             else PipelineRunStatus.SUCCEEDED
         ),
+        trigger=trigger,
         duration_sec=(finished_at - started_at).total_seconds() if finished_at else None,
         discovered=_count(discover, "discovered"),
         dedup_primary=_count(dedupe, "primaries"),
@@ -231,6 +235,49 @@ def expected_runs_so_far(now: datetime, *, timezone: ZoneInfo = BANGKOK) -> int:
         EXPECTED_RUNS_PER_DAY,
         int(elapsed_minutes // SCHEDULE_INTERVAL_MINUTES) + 1,
     )
+
+
+def _current_day_expected_runs_so_far(now: datetime) -> int:
+    local_now = now.astimezone(BANGKOK)
+    if local_now.date() < SCHEDULE_TRANSITION_DATE:
+        return 0
+    return expected_runs_so_far(local_now)
+
+
+def _current_day_coverage(
+    records: Sequence[PipelineHealthRecord], *, now: datetime
+) -> float | None:
+    """Cover current-day scheduled slots from completed runs, using ``started_at``."""
+    local_now = now.astimezone(BANGKOK)
+    if local_now.date() < SCHEDULE_TRANSITION_DATE:
+        return None
+
+    current_day = local_now.date()
+    covered_slots: set[int] = set()
+    unknown_trigger = False
+    for record in records:
+        if record.finished_at is None or record.finished_at > now:
+            continue
+        local_started = record.started_at.astimezone(BANGKOK)
+        if local_started.date() != current_day or record.started_at > now:
+            continue
+        if record.trigger is None:
+            unknown_trigger = True
+            continue
+        if record.trigger is not PipelineTrigger.SCHEDULED:
+            continue
+
+        day_start = local_started.replace(hour=0, minute=0, second=0, microsecond=0)
+        elapsed_minutes = (local_started - day_start).total_seconds() / 60
+        slot = int(elapsed_minutes // SCHEDULE_INTERVAL_MINUTES)
+        covered_slots.add(slot)
+
+    if unknown_trigger:
+        return None
+    expected = expected_runs_so_far(local_now)
+    if expected == 0:
+        return None
+    return min(1.0, len(covered_slots) / expected)
 
 
 def _status_from_rate(
@@ -379,7 +426,7 @@ def summarize_health(
     coverage = (
         coverage_override
         if coverage_override is not None
-        else (len(completed) / expected_runs if expected_runs else None)
+        else _current_day_coverage(records, now=now)
     )
     success_rate = _rate(successful, len(completed))
     finished_times = [record.finished_at for record in completed if record.finished_at is not None]
@@ -453,7 +500,7 @@ def summarize_health(
     return HealthSummary(
         status=_severity(statuses),
         expected_runs=expected_runs,
-        current_day_expected_runs_so_far=expected_runs_so_far(now),
+        current_day_expected_runs_so_far=_current_day_expected_runs_so_far(now),
         completed_runs=len(completed),
         run_coverage=coverage,
         coverage_status=_coverage_status(coverage),

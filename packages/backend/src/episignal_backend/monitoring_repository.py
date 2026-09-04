@@ -8,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from episignal_backend.db.session import session_scope
-from episignal_backend.models import PipelineHealthRun
+from episignal_backend.db.types import PipelineTrigger
+from episignal_backend.models import PipelineHealthRun, PipelineRun
 from episignal_backend.operational_monitoring import PipelineHealthRecord
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class SqlAlchemyPipelineHealthRepository:
         values = {
             field.name: getattr(record, field.name)
             for field in fields(PipelineHealthRecord)
-            if field.name != "run_id"
+            if field.name not in {"run_id", "trigger"}
         }
         values["pipeline_run_id"] = record.run_id
         self._session.merge(PipelineHealthRun(**values))
@@ -32,28 +33,26 @@ class SqlAlchemyPipelineHealthRepository:
     def recent_records(
         self, now: datetime, *, lookback_days: int = 8
     ) -> tuple[PipelineHealthRecord, ...]:
-        rows = (
-            self._session.execute(
-                select(PipelineHealthRun)
-                .where(
-                    PipelineHealthRun.finished_at.is_not(None),
-                    PipelineHealthRun.finished_at > now - timedelta(days=lookback_days),
-                    PipelineHealthRun.finished_at <= now,
-                )
-                .order_by(PipelineHealthRun.finished_at.desc())
+        rows = self._session.execute(
+            select(PipelineHealthRun, PipelineRun.trigger)
+            .join(PipelineRun, PipelineRun.id == PipelineHealthRun.pipeline_run_id)
+            .where(
+                PipelineHealthRun.finished_at.is_not(None),
+                PipelineHealthRun.finished_at > now - timedelta(days=lookback_days),
+                PipelineHealthRun.finished_at <= now,
             )
-            .scalars()
-            .all()
-        )
-        return tuple(self._record_from_row(row) for row in rows)
+            .order_by(PipelineHealthRun.finished_at.desc())
+        ).all()
+        return tuple(self._record_from_row(health_row, trigger) for health_row, trigger in rows)
 
     @staticmethod
-    def _record_from_row(row: PipelineHealthRun) -> PipelineHealthRecord:
+    def _record_from_row(row: PipelineHealthRun, trigger: PipelineTrigger) -> PipelineHealthRecord:
         return PipelineHealthRecord(
             run_id=row.pipeline_run_id,
             started_at=row.started_at,
             finished_at=row.finished_at,
             status=row.status,
+            trigger=trigger,
             duration_sec=row.duration_sec,
             discovered=row.discovered,
             dedup_primary=row.dedup_primary,

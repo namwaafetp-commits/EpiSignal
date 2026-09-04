@@ -3,7 +3,7 @@ from typing import Any
 from uuid import uuid4
 
 from episignal_backend.db.base import Base
-from episignal_backend.db.types import PipelineRunStatus
+from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
 from episignal_backend.models import PipelineHealthRun
 from episignal_backend.monitoring_repository import SqlAlchemyPipelineHealthRepository
 from episignal_backend.operational_monitoring import PipelineHealthRecord
@@ -84,3 +84,18 @@ def test_repository_reads_recent_rows_with_one_query() -> None:
     assert rows == ()
     assert len(session.executed) == 1
     assert "pipeline_health_runs" in str(session.executed[0])
+
+
+def test_repository_reads_pipeline_trigger_for_slot_coverage() -> None:
+    health = PipelineHealthRun(
+        pipeline_run_id=uuid4(),
+        started_at=NOW,
+        finished_at=NOW,
+        status=PipelineRunStatus.SUCCEEDED,
+    )
+    session = FakeSession([(health, PipelineTrigger.SCHEDULED)])
+    repository = SqlAlchemyPipelineHealthRepository(session)
+
+    rows = repository.recent_records(NOW)
+
+    assert rows[0].trigger is PipelineTrigger.SCHEDULED

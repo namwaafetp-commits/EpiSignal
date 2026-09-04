@@ -88,6 +88,7 @@ def _persist_health_best_effort(
     started_at: datetime,
     finished_at: datetime | None,
     outcome: ChainOutcome,
+    trigger: PipelineTrigger | None = None,
     fatal_error_type: str | None = None,
 ) -> None:
     try:
@@ -97,6 +98,7 @@ def _persist_health_best_effort(
                 started_at=started_at,
                 finished_at=finished_at,
                 outcome=outcome,
+                trigger=trigger,
                 fatal_error_type=fatal_error_type,
             )
         )
@@ -173,6 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 started_at=started_at,
                 finished_at=finished_at,
                 outcome=outcome,
+                trigger=PipelineTrigger(arguments.trigger),
             )
     except Exception as error:
         if run_id is not None and started_at is not None:
@@ -181,6 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 started_at=started_at,
                 finished_at=datetime.now(UTC),
                 outcome=outcome or ChainOutcome(outcomes=()),
+                trigger=PipelineTrigger(arguments.trigger),
                 fatal_error_type=type(error).__name__,
             )
         print(

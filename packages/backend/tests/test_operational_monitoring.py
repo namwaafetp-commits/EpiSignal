@@ -3,7 +3,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-from episignal_backend.db.types import PipelineRunStatus
+from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
 from episignal_backend.operational_monitoring import (
     HealthStatus,
     PipelineHealthRecord,
@@ -37,6 +37,25 @@ def run(
     }
     values.update(overrides)
     return PipelineHealthRecord(**values)  # type: ignore[arg-type]
+
+
+def scheduled_run_at(
+    hour: int,
+    *,
+    minute: int = 0,
+    status: PipelineRunStatus = PipelineRunStatus.SUCCEEDED,
+    now: datetime = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK),
+    **overrides: object,
+) -> PipelineHealthRecord:
+    started_at = datetime(2026, 9, 4, hour, minute, tzinfo=BANGKOK)
+    values: dict[str, object] = {
+        "started_at": started_at,
+        "finished_at": started_at + timedelta(minutes=5),
+        "status": status,
+        "trigger": PipelineTrigger.SCHEDULED,
+    }
+    values.update(overrides)
+    return run(**values)  # type: ignore[arg-type]
 
 
 def test_build_health_record_maps_existing_stage_counts_without_changing_stages() -> None:
@@ -238,7 +257,15 @@ def test_fatal_errors_and_stage_targets_contribute_to_health() -> None:
 
 
 def test_missed_runs_make_coverage_critical_but_zero_relevance_does_not() -> None:
-    records = [run(discovered=0, deepseek_requested=0, deepseek_success=0, deepseek_relevant=0)]
+    records = [
+        run(
+            discovered=0,
+            deepseek_requested=0,
+            deepseek_success=0,
+            deepseek_relevant=0,
+            trigger=PipelineTrigger.SCHEDULED,
+        )
+    ]
     summary = summarize_health(records, now=NOW)
 
     assert summary.coverage_status is HealthStatus.CRITICAL
@@ -247,14 +274,146 @@ def test_missed_runs_make_coverage_critical_but_zero_relevance_does_not() -> Non
 
 
 def test_coverage_uses_hourly_denominator() -> None:
-    one_run = summarize_health([run()], now=NOW)
-    full_day = summarize_health([run() for _ in range(24)], now=NOW)
-    one_missed = summarize_health([run() for _ in range(23)], now=NOW)
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    one_run = summarize_health([scheduled_run_at(0, now=now)], now=now)
+    full_day = summarize_health([scheduled_run_at(hour, now=now) for hour in range(16)], now=now)
+    one_missed = summarize_health([scheduled_run_at(hour, now=now) for hour in range(15)], now=now)
 
-    assert one_run.run_coverage == pytest.approx(1 / 24)
+    assert one_run.run_coverage == pytest.approx(1 / 16)
     assert full_day.run_coverage == 1.0
-    assert one_missed.run_coverage == pytest.approx(23 / 24)
-    assert one_missed.coverage_status is HealthStatus.WARNING
+    assert one_missed.run_coverage == pytest.approx(15 / 16)
+    assert one_missed.coverage_status is HealthStatus.CRITICAL
+
+
+def test_current_day_coverage_counts_only_completed_scheduled_hourly_slots() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    summary = summarize_health([scheduled_run_at(hour, now=now) for hour in range(16)], now=now)
+
+    assert summary.current_day_expected_runs_so_far == 16
+    assert summary.run_coverage == 1.0
+
+
+def test_old_quarter_hour_runs_in_one_hour_cover_one_slot() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    records = [scheduled_run_at(14, minute=minute, now=now) for minute in (0, 15, 30, 45)]
+
+    summary = summarize_health(records, now=now)
+
+    assert summary.run_coverage == pytest.approx(1 / 16)
+
+
+def test_scheduled_runs_in_two_hours_cover_two_slots() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+
+    summary = summarize_health(
+        [scheduled_run_at(13, now=now), scheduled_run_at(14, now=now)], now=now
+    )
+
+    assert summary.run_coverage == pytest.approx(2 / 16)
+
+
+def test_future_hour_is_not_counted_as_missed() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    summary = summarize_health(
+        [scheduled_run_at(hour, now=now) for hour in range(16)] + [scheduled_run_at(16, now=now)],
+        now=now,
+    )
+
+    assert summary.run_coverage == 1.0
+
+
+def test_duplicate_runs_cannot_push_current_day_coverage_above_100_percent() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    records = [scheduled_run_at(14, minute=minute, now=now) for minute in range(0, 60, 5)]
+
+    summary = summarize_health(records, now=now)
+
+    assert summary.run_coverage == pytest.approx(1 / 16)
+    assert summary.run_coverage <= 1.0
+
+
+def test_previous_day_records_do_not_cover_current_day_slots() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    previous_day = run(
+        started_at=datetime(2026, 9, 3, 23, 0, tzinfo=BANGKOK),
+        finished_at=datetime(2026, 9, 3, 23, 5, tzinfo=BANGKOK),
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+
+    summary = summarize_health([previous_day], now=now)
+
+    assert summary.run_coverage == 0.0
+    assert summary.success_rate == 1.0
+
+
+def test_unknown_trigger_is_neutral_for_current_day_coverage() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+
+    summary = summarize_health(
+        [
+            run(
+                started_at=datetime(2026, 9, 4, 15, 0, tzinfo=BANGKOK),
+                finished_at=datetime(2026, 9, 4, 15, 5, tzinfo=BANGKOK),
+            )
+        ],
+        now=now,
+    )
+
+    assert summary.run_coverage is None
+    assert summary.coverage_status is HealthStatus.NEUTRAL
+
+
+def test_manual_run_does_not_cover_current_day_scheduled_slot() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    manual = run(
+        started_at=datetime(2026, 9, 4, 15, 0, tzinfo=BANGKOK),
+        finished_at=datetime(2026, 9, 4, 15, 5, tzinfo=BANGKOK),
+        trigger=PipelineTrigger.MANUAL,
+    )
+
+    summary = summarize_health([manual], now=now)
+
+    assert summary.run_coverage == 0.0
+
+
+def test_pre_transition_day_has_neutral_scheduled_coverage() -> None:
+    now = datetime(2026, 9, 3, 15, 17, tzinfo=BANGKOK)
+
+    summary = summarize_health(
+        [
+            run(
+                started_at=datetime(2026, 9, 3, 15, 0, tzinfo=BANGKOK),
+                finished_at=datetime(2026, 9, 3, 15, 5, tzinfo=BANGKOK),
+                trigger=PipelineTrigger.SCHEDULED,
+            )
+        ],
+        now=now,
+    )
+
+    assert summary.run_coverage is None
+    assert summary.coverage_status is HealthStatus.NEUTRAL
+    assert summary.current_day_expected_runs_so_far == 0
+
+
+def test_non_coverage_metrics_still_use_preceding_24_hours() -> None:
+    now = datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK)
+    current = scheduled_run_at(15, now=now, discovered=10, duration_sec=60)
+    previous = run(
+        started_at=datetime(2026, 9, 3, 23, 0, tzinfo=BANGKOK),
+        finished_at=datetime(2026, 9, 3, 23, 5, tzinfo=BANGKOK),
+        trigger=PipelineTrigger.MANUAL,
+        status=PipelineRunStatus.FAILED,
+        discovered=20,
+        duration_sec=120,
+        fatal_error_count=1,
+    )
+
+    summary = summarize_health([current, previous], now=now)
+
+    assert summary.run_coverage == pytest.approx(1 / 16)
+    assert summary.success_rate == 0.5
+    assert summary.p95_runtime_sec == pytest.approx(117.0)
+    assert summary.fatal_errors == 1
 
 
 def test_insufficient_seven_day_baseline_is_neutral_and_volume_not_critical() -> None:
