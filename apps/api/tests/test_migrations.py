@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260901_0020"]
+    assert scripts.get_heads() == ["20260904_0021"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -321,6 +321,25 @@ def test_the_flash_brief_revision_adds_structured_summary_fields() -> None:
     assert "risk" in sql
     assert "material_facts" in sql
     assert "event_summary_trajectory_values" in sql
+
+
+def test_the_disease_vocabulary_revision_is_idempotent_and_append_only() -> None:
+    module = _load_revision("20260904_0021_disease_vocabulary")
+    source = _revision_source("20260904_0021_disease_vocabulary")
+    sql = render_offline("upgrade", "20260901_0020:20260904_0021").lower()
+
+    assert module.down_revision == "20260901_0020"
+    assert "rabies" in sql
+    assert "a82" in sql
+    assert "rabies virus infection" in sql
+    assert "west nile virus" in sql
+    assert "h5 bird flu" in sql
+    assert "on conflict (slug) do nothing" in sql
+    assert "not (" in sql
+    assert "any (synonyms)" in sql
+    assert "synonyms || array" in sql
+    assert "delete from diseases" not in source.lower()
+    assert "cannot downgrade" in source.lower()
 
 
 def test_the_summary_downgrade_refuses_to_erase_judge_cost_rows() -> None:

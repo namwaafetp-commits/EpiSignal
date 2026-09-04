@@ -49,10 +49,17 @@
     "category": "viral_haemorrhagic_fever"
   },
   {
+    "canonical_name": "Rabies",
+    "slug": "rabies",
+    "icd10": "A82",
+    "synonyms": ["rabies virus infection"],
+    "category": "zoonotic"
+  },
+  {
     "canonical_name": "West Nile virus disease",
     "slug": "west-nile-virus-disease",
     "icd10": "A92.3",
-    "synonyms": ["West Nile fever", "West Nile virus infection", "WNV"],
+    "synonyms": ["West Nile fever", "West Nile virus infection", "WNV", "West Nile virus"],
     "category": "vector_borne"
   },
   {
@@ -66,7 +73,7 @@
     "canonical_name": "Avian influenza",
     "slug": "avian-influenza",
     "icd10": "J09",
-    "synonyms": ["bird flu", "H5N1", "H5N6", "H7N9", "highly pathogenic avian influenza"],
+    "synonyms": ["bird flu", "H5N1", "H5N6", "H7N9", "highly pathogenic avian influenza", "H5 bird flu"],
     "category": "respiratory"
   },
   {
