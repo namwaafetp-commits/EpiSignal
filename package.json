@@ -40,6 +40,7 @@
     "summarize:events": "uv run --package episignal-backend python -m episignal_backend.summarize_runner",
     "test:pipeline": "uv run pytest packages/backend/tests/test_pipeline_fixture.py packages/backend/tests/test_dedupe.py packages/backend/tests/test_pipeline_order_contract.py -v",
     "pipeline:run": "uv run --package episignal-backend python -m episignal_backend.pipeline_runner",
+    "monitor:health": "uv run --package episignal-backend python -m episignal_backend.monitoring_runner",
     "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
 
 

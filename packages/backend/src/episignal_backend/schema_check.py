@@ -28,6 +28,7 @@ EXPECTED_TABLES = (
     "gazetteer_places",
     "signal_locations",
     "pipeline_runs",
+    "pipeline_health_runs",
     "signal_review_cases",
     "signal_review_candidates",
     "geocode_cache",

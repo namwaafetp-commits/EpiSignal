@@ -13,7 +13,7 @@ from episignal_backend.models.event import (
     EventSummary,
 )
 from episignal_backend.models.geography import GazetteerPlace, GeocodeCache, SignalLocation
-from episignal_backend.models.pipeline import PipelineRun
+from episignal_backend.models.pipeline import PipelineHealthRun, PipelineRun
 from episignal_backend.models.review import SignalReviewCandidate, SignalReviewCase
 from episignal_backend.models.signal import Signal
 from episignal_backend.models.story import StoryGroup, StoryGroupMember
@@ -31,6 +31,7 @@ __all__ = [
     "GdeltQueryRule",
     "GeocodeCache",
     "Pathogen",
+    "PipelineHealthRun",
     "PipelineRun",
     "RejectedSighting",
     "Signal",

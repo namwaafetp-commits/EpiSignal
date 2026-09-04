@@ -279,6 +279,7 @@ def _match(cohort: PipelineCohort) -> Mapping[str, int]:
         "seen": summary.signals_seen,
         "clusters": summary.clusters_built,
         "created": summary.events_created,
+        "updated": max(0, len(summary.touched_event_ids) - summary.events_created),
         "attached": summary.signals_attached,
         "refused": summary.signals_refused,
         "unclusterable": summary.unclusterable,
