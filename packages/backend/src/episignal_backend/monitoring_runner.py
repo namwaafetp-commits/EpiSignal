@@ -32,8 +32,10 @@ def main() -> int:
     now = datetime.now(UTC)
     with session_scope() as session:
         enforce_read_only_transaction(session)
-        records = SqlAlchemyPipelineHealthRepository(session).recent_records(now)
-    summary = summarize_health(records, now=now)
+        repository = SqlAlchemyPipelineHealthRepository(session)
+        records = repository.recent_records(now)
+        coverage_runs = repository.recent_pipeline_runs(now)
+    summary = summarize_health(records, now=now, coverage_runs=coverage_runs)
     print(json.dumps(health_summary_to_dict(summary), sort_keys=True))
     return 0
 

@@ -95,6 +95,17 @@ class PipelineHealthRecord:
 
 
 @dataclass(frozen=True)
+class PipelineRunCoverageRecord:
+    """Minimal pipeline-run evidence used only for scheduled slot coverage."""
+
+    run_id: UUID
+    started_at: datetime
+    finished_at: datetime | None
+    status: PipelineRunStatus
+    trigger: PipelineTrigger | None = None
+
+
+@dataclass(frozen=True)
 class HealthSummary:
     status: HealthStatus
     expected_runs: int
@@ -282,7 +293,7 @@ def _current_day_expected_runs_so_far(now: datetime) -> int:
 
 
 def _current_day_coverage(
-    records: Sequence[PipelineHealthRecord], *, now: datetime
+    records: Sequence[PipelineRunCoverageRecord], *, now: datetime
 ) -> float | None:
     """Cover slots from started scheduled runs, including a bounded active run."""
     local_now = now.astimezone(BANGKOK)
@@ -298,13 +309,8 @@ def _current_day_coverage(
         local_started = record.started_at.astimezone(BANGKOK)
         if record.started_at > now:
             continue
-        active = record.finished_at is None
-        if active:
-            if record.status is not PipelineRunStatus.RUNNING:
-                continue
-            if now - record.started_at > ACTIVE_RUN_MAX_AGE:
-                continue
-        elif record.finished_at is not None and record.finished_at > now:
+        active = record.status is PipelineRunStatus.RUNNING
+        if active and now - record.started_at > ACTIVE_RUN_MAX_AGE:
             continue
         if record.trigger is None:
             unknown_trigger = True
@@ -476,6 +482,7 @@ def summarize_health(
     now: datetime,
     expected_runs: int = EXPECTED_RUNS_PER_DAY,
     coverage_override: float | None = None,
+    coverage_runs: Sequence[PipelineRunCoverageRecord] | None = None,
 ) -> HealthSummary:
     """Evaluate completed health records from the preceding 24 hours."""
     window_start = now - timedelta(hours=24)
@@ -488,7 +495,21 @@ def summarize_health(
     coverage = (
         coverage_override
         if coverage_override is not None
-        else _current_day_coverage(records, now=now)
+        else _current_day_coverage(
+            coverage_runs
+            if coverage_runs is not None
+            else tuple(
+                PipelineRunCoverageRecord(
+                    run_id=record.run_id,
+                    started_at=record.started_at,
+                    finished_at=record.finished_at,
+                    status=record.status,
+                    trigger=record.trigger,
+                )
+                for record in records
+            ),
+            now=now,
+        )
     )
     success_rate = _rate(successful, len(completed))
     finished_times = [record.finished_at for record in completed if record.finished_at is not None]

@@ -7,6 +7,7 @@ from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
 from episignal_backend.operational_monitoring import (
     HealthStatus,
     PipelineHealthRecord,
+    PipelineRunCoverageRecord,
     VolumeAnomaly,
     build_health_record,
     expected_runs_so_far,
@@ -56,6 +57,22 @@ def scheduled_run_at(
     }
     values.update(overrides)
     return run(**values)  # type: ignore[arg-type]
+
+
+def pipeline_run_at(
+    hour: int,
+    *,
+    minute: int = 0,
+    status: PipelineRunStatus = PipelineRunStatus.SUCCEEDED,
+) -> PipelineRunCoverageRecord:
+    started_at = datetime(2026, 9, 4, hour, minute, tzinfo=BANGKOK)
+    return PipelineRunCoverageRecord(
+        run_id=uuid4(),
+        started_at=started_at,
+        finished_at=started_at + timedelta(minutes=5),
+        status=status,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
 
 
 def test_build_health_record_maps_existing_stage_counts_without_changing_stages() -> None:
@@ -318,6 +335,99 @@ def test_current_day_coverage_counts_only_completed_scheduled_hourly_slots() -> 
 
     assert summary.current_day_expected_runs_so_far == 4
     assert summary.run_coverage == 1.0
+
+
+def test_pipeline_run_without_health_row_covers_completed_scheduled_slot() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    coverage_runs = [pipeline_run_at(hour) for hour in range(12, 18)]
+
+    summary = summarize_health([], now=now, coverage_runs=coverage_runs)
+
+    assert summary.current_day_expected_runs_so_far == 6
+    assert summary.run_coverage == 1.0
+
+
+def test_five_completed_and_one_active_pipeline_run_cover_six_slots() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    active = PipelineRunCoverageRecord(
+        run_id=uuid4(),
+        started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+        finished_at=None,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+
+    summary = summarize_health(
+        [], now=now, coverage_runs=[pipeline_run_at(hour) for hour in range(12, 17)] + [active]
+    )
+
+    assert summary.run_coverage == 1.0
+
+
+def test_failed_scheduled_pipeline_run_covers_its_slot_without_health_row() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    coverage_runs = [pipeline_run_at(hour) for hour in range(12, 17)]
+    coverage_runs.append(pipeline_run_at(17, status=PipelineRunStatus.FAILED))
+
+    summary = summarize_health([], now=now, coverage_runs=coverage_runs)
+
+    assert summary.run_coverage == 1.0
+    assert summary.completed_runs == 0
+    assert summary.success_rate is None
+
+
+def test_active_pipeline_run_is_coverage_only_when_explicitly_supplied() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    active = PipelineRunCoverageRecord(
+        run_id=uuid4(),
+        started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+        finished_at=None,
+        status=PipelineRunStatus.RUNNING,
+        trigger=PipelineTrigger.SCHEDULED,
+    )
+
+    summary = summarize_health([], now=now, coverage_runs=[active])
+
+    assert summary.run_coverage == pytest.approx(1 / 6)
+    assert summary.completed_runs == 0
+
+
+def test_manual_pipeline_run_does_not_cover_scheduled_slot() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    manual = PipelineRunCoverageRecord(
+        run_id=uuid4(),
+        started_at=datetime(2026, 9, 4, 17, 0, tzinfo=BANGKOK),
+        finished_at=now,
+        status=PipelineRunStatus.SUCCEEDED,
+        trigger=PipelineTrigger.MANUAL,
+    )
+
+    summary = summarize_health([], now=now, coverage_runs=[manual])
+
+    assert summary.run_coverage == 0.0
+
+
+def test_pipeline_run_occupancy_does_not_contaminate_health_denominators() -> None:
+    now = datetime(2026, 9, 4, 17, 5, tzinfo=BANGKOK)
+    health = scheduled_run_at(
+        16,
+        now=now,
+        deepseek_requested=10,
+        deepseek_success=10,
+        retrieval_requested=10,
+        retrieval_success=10,
+    )
+    coverage_runs = [
+        pipeline_run_at(17, status=PipelineRunStatus.RUNNING),
+        pipeline_run_at(15, status=PipelineRunStatus.FAILED),
+    ]
+
+    summary = summarize_health([health], now=now, coverage_runs=coverage_runs)
+
+    assert summary.completed_runs == 1
+    assert summary.success_rate == 1.0
+    assert summary.stage_success_rates["deepseek"].value == 1.0
+    assert summary.stage_success_rates["retrieval"].value == 1.0
 
 
 def test_running_scheduled_run_covers_its_current_hourly_slot() -> None:

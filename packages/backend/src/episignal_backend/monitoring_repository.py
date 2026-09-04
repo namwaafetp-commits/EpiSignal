@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import PipelineRunStatus, PipelineTrigger
 from episignal_backend.models import PipelineHealthRun, PipelineRun
-from episignal_backend.operational_monitoring import ACTIVE_RUN_MAX_AGE, PipelineHealthRecord
+from episignal_backend.operational_monitoring import (
+    PipelineHealthRecord,
+    PipelineRunCoverageRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +47,27 @@ class SqlAlchemyPipelineHealthRepository:
             )
             .order_by(PipelineHealthRun.finished_at.desc())
         ).all()
-        completed = tuple(
+        return tuple(
             self._record_from_row(health_row, trigger, stage_counts)
             for health_row, trigger, stage_counts in health_rows
         )
-        active_rows = (
+
+    def recent_pipeline_runs(
+        self, now: datetime, *, lookback_days: int = 1
+    ) -> tuple[PipelineRunCoverageRecord, ...]:
+        rows = (
             self._session.execute(
                 select(PipelineRun)
                 .where(
-                    PipelineRun.status == PipelineRunStatus.RUNNING,
                     PipelineRun.trigger == PipelineTrigger.SCHEDULED,
-                    PipelineRun.started_at >= now - ACTIVE_RUN_MAX_AGE,
+                    PipelineRun.status.in_(
+                        (
+                            PipelineRunStatus.RUNNING,
+                            PipelineRunStatus.SUCCEEDED,
+                            PipelineRunStatus.FAILED,
+                        )
+                    ),
+                    PipelineRun.started_at >= now - timedelta(days=lookback_days),
                     PipelineRun.started_at <= now,
                 )
                 .order_by(PipelineRun.started_at.desc())
@@ -62,17 +75,16 @@ class SqlAlchemyPipelineHealthRepository:
             .scalars()
             .all()
         )
-        active = tuple(
-            PipelineHealthRecord(
+        return tuple(
+            PipelineRunCoverageRecord(
                 run_id=row.id,
                 started_at=row.started_at,
-                finished_at=None,
-                status=PipelineRunStatus.RUNNING,
-                trigger=PipelineTrigger.SCHEDULED,
+                finished_at=row.finished_at,
+                status=row.status,
+                trigger=row.trigger,
             )
-            for row in active_rows
+            for row in rows
         )
-        return completed + active
 
     @staticmethod
     def _record_from_row(
