@@ -13,12 +13,12 @@ from episignal_backend.operational_monitoring import (
 def test_health_summary_serializes_to_structured_json() -> None:
     summary = HealthSummary(
         status=HealthStatus.HEALTHY,
-        expected_runs=96,
+        expected_runs=24,
         current_day_expected_runs_so_far=4,
-        completed_runs=96,
+        completed_runs=24,
         run_coverage=1.0,
         coverage_status=HealthStatus.HEALTHY,
-        successful_runs=96,
+        successful_runs=24,
         success_rate=1.0,
         success_status=HealthStatus.HEALTHY,
         latest_run=datetime(2026, 9, 4, 5, 0, tzinfo=UTC),

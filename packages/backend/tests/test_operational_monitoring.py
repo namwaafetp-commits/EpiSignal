@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from episignal_backend.db.types import PipelineRunStatus
@@ -14,6 +15,7 @@ from episignal_backend.operational_monitoring import (
 from episignal_backend.schedule.documents import ChainOutcome, StageName, StageOutcome
 
 NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
+BANGKOK = ZoneInfo("Asia/Bangkok")
 
 
 def run(
@@ -183,11 +185,33 @@ def test_denominator_zero_is_neutral_not_zero_percent() -> None:
     assert summary.success_rate == 1.0
 
 
+def test_full_day_has_24_expected_runs() -> None:
+    assert summarize_health([], now=NOW).expected_runs == 24
+
+
+@pytest.mark.parametrize(
+    ("local_time", "expected"),
+    [
+        (datetime(2026, 9, 4, 0, 0, tzinfo=BANGKOK), 1),
+        (datetime(2026, 9, 4, 0, 30, tzinfo=BANGKOK), 1),
+        (datetime(2026, 9, 4, 1, 30, tzinfo=BANGKOK), 2),
+        (datetime(2026, 9, 4, 8, 10, tzinfo=BANGKOK), 9),
+        (datetime(2026, 9, 4, 15, 0, tzinfo=BANGKOK), 16),
+        (datetime(2026, 9, 4, 15, 17, tzinfo=BANGKOK), 16),
+        (datetime(2026, 9, 4, 23, 59, tzinfo=BANGKOK), 24),
+    ],
+)
+def test_expected_runs_so_far_uses_bangkok_hourly_slots(
+    local_time: datetime, expected: int
+) -> None:
+    assert expected_runs_so_far(local_time) == expected
+
+
 def test_current_day_expected_runs_uses_bangkok_boundary() -> None:
     before_midnight_utc = datetime(2026, 9, 3, 16, 59, tzinfo=UTC)
     after_midnight_bangkok = datetime(2026, 9, 3, 17, 1, tzinfo=UTC)
 
-    assert expected_runs_so_far(before_midnight_utc) == 96
+    assert expected_runs_so_far(before_midnight_utc) == 24
     assert expected_runs_so_far(after_midnight_bangkok) == 1
     assert summarize_health([], now=after_midnight_bangkok).current_day_expected_runs_so_far == 1
 
@@ -215,11 +239,22 @@ def test_fatal_errors_and_stage_targets_contribute_to_health() -> None:
 
 def test_missed_runs_make_coverage_critical_but_zero_relevance_does_not() -> None:
     records = [run(discovered=0, deepseek_requested=0, deepseek_success=0, deepseek_relevant=0)]
-    summary = summarize_health(records, now=NOW, expected_runs=96)
+    summary = summarize_health(records, now=NOW)
 
     assert summary.coverage_status is HealthStatus.CRITICAL
     assert summary.status is HealthStatus.CRITICAL
     assert summary.relevant == 0
+
+
+def test_coverage_uses_hourly_denominator() -> None:
+    one_run = summarize_health([run()], now=NOW)
+    full_day = summarize_health([run() for _ in range(24)], now=NOW)
+    one_missed = summarize_health([run() for _ in range(23)], now=NOW)
+
+    assert one_run.run_coverage == pytest.approx(1 / 24)
+    assert full_day.run_coverage == 1.0
+    assert one_missed.run_coverage == pytest.approx(23 / 24)
+    assert one_missed.coverage_status is HealthStatus.WARNING
 
 
 def test_insufficient_seven_day_baseline_is_neutral_and_volume_not_critical() -> None:

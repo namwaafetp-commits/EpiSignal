@@ -13,8 +13,8 @@ from episignal_backend.db.types import PipelineRunStatus
 from episignal_backend.schedule.documents import ChainOutcome, StageName
 
 BANGKOK = ZoneInfo("Asia/Bangkok")
-RUN_INTERVAL_MINUTES = 15
-FULL_DAY_RUNS = 96
+SCHEDULE_INTERVAL_MINUTES = 60
+EXPECTED_RUNS_PER_DAY = 1440 // SCHEDULE_INTERVAL_MINUTES
 HEALTHY_COVERAGE = 0.98
 WARNING_COVERAGE = 0.95
 HEALTHY_SUCCESS = 0.99
@@ -223,11 +223,14 @@ def build_health_record(
 
 
 def expected_runs_so_far(now: datetime, *, timezone: ZoneInfo = BANGKOK) -> int:
-    """Count quarter-hour schedule slots elapsed in local calendar day."""
+    """Count hourly schedule slots elapsed in the local calendar day."""
     local_now = now.astimezone(timezone)
     day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     elapsed_minutes = max(0.0, (local_now - day_start).total_seconds() / 60)
-    return min(FULL_DAY_RUNS, int(elapsed_minutes // RUN_INTERVAL_MINUTES) + 1)
+    return min(
+        EXPECTED_RUNS_PER_DAY,
+        int(elapsed_minutes // SCHEDULE_INTERVAL_MINUTES) + 1,
+    )
 
 
 def _status_from_rate(
@@ -362,7 +365,7 @@ def summarize_health(
     records: Sequence[PipelineHealthRecord],
     *,
     now: datetime,
-    expected_runs: int = FULL_DAY_RUNS,
+    expected_runs: int = EXPECTED_RUNS_PER_DAY,
     coverage_override: float | None = None,
 ) -> HealthSummary:
     """Evaluate completed health records from the preceding 24 hours."""
