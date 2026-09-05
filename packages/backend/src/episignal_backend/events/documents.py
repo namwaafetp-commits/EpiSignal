@@ -111,7 +111,7 @@ class StoryCluster(BaseModel):
 
     @property
     def disease_id(self) -> UUID | None:
-        return self.signals[0].disease_id
+        return next((signal.disease_id for signal in self.signals if signal.disease_id), None)
 
     @property
     def disease_text(self) -> str | None:
@@ -244,6 +244,9 @@ class SummarySource(BaseModel):
     source_name: str = Field(min_length=1)
     is_official: bool = False
     published_at: datetime | None = None
+    article_text: str = ""
+    # Historical callers may still provide a brief; active summarization never
+    # reads it and uses article_text as authoritative evidence.
     brief: tuple[BriefPoint, ...] = ()
 
 
@@ -262,6 +265,10 @@ class EventForSummary(BaseModel):
     # observation today. Material-change detection compares the two.
     previous_counts: dict[str, object] | None = None
     latest_observation: dict[str, object] | None = None
+    # Every linked observation is supplied to the event-level summarizer so it
+    # can preserve history, source disagreement, and confirmed/probable/
+    # suspected distinctions instead of treating one article as the event.
+    observations: tuple[dict[str, object], ...] = ()
     unsummarized_articles: int = 0
     last_summarized_at: datetime | None = None
     sources: tuple[SummarySource, ...] = ()

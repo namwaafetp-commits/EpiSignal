@@ -8,13 +8,28 @@ from episignal_backend.seeds import load_diseases, load_sources
 
 def test_disease_seed_natural_keys_are_unique() -> None:
     diseases = load_diseases()
-    assert len(diseases) == 29
+    assert len(diseases) == 30
     assert len({item.slug for item in diseases}) == len(diseases)
     assert {item.canonical_name for item in diseases} >= {
         "Cholera",
         "Dengue",
+        "Rabies",
         "Unknown disease",
     }
+
+
+def test_disease_seed_adds_only_requested_conservative_aliases() -> None:
+    diseases = {item.slug: item for item in load_diseases()}
+
+    assert diseases["rabies"].model_dump() == {
+        "canonical_name": "Rabies",
+        "slug": "rabies",
+        "icd10": "A82",
+        "synonyms": ["rabies virus infection"],
+        "category": "zoonotic",
+    }
+    assert "West Nile virus" in diseases["west-nile-virus-disease"].synonyms
+    assert "H5 bird flu" in diseases["avian-influenza"].synonyms
 
 
 def test_source_seeds_are_official_and_unique() -> None:

@@ -10,7 +10,11 @@ from episignal_backend.db.types import (
     RelationshipType,
     VerificationStatus,
 )
-from episignal_backend.events.read import query_dashboard_events, query_event_detail
+from episignal_backend.events.read import (
+    normalize_summary_snapshot,
+    query_dashboard_events,
+    query_event_detail,
+)
 
 
 class FakeResult:
@@ -35,6 +39,24 @@ class FakeSession:
     def execute(self, statement: Any) -> FakeResult:
         self.executed.append(statement)
         return self.results.pop(0)
+
+
+def _dashboard_event(event_id: Any, public_id: str, *, country_code: str | None = None) -> Any:
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    return SimpleNamespace(
+        id=event_id,
+        public_id=public_id,
+        headline=f"{public_id} headline",
+        summary=f"{public_id} summary",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        country_code=country_code,
+        admin1=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+    )
 
 
 def test_event_detail_loads_sources_through_event_signal_join() -> None:
@@ -62,6 +84,7 @@ def test_event_detail_loads_sources_through_event_signal_join() -> None:
     session = FakeSession(
         [
             FakeResult((event, "Dengue")),
+            FakeResult([]),
             FakeResult(
                 [
                     (
@@ -89,6 +112,130 @@ def test_event_detail_loads_sources_through_event_signal_join() -> None:
     assert len(detail.sources) == 1
     assert detail.sources[0].signal_id == signal_id
     assert detail.sources[0].source_name == "Public Health Office"
+
+
+def test_event_detail_normalizes_legacy_snapshot_objects_to_fact_lists() -> None:
+    event_id = uuid4()
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    event = SimpleNamespace(
+        id=event_id,
+        public_id="EVT-2026-LEGACY",
+        headline="Dengue outbreak",
+        summary="Legacy summary",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        verification_status=VerificationStatus.SIGNAL,
+        country_code="TH",
+        admin1=None,
+        admin2=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+        early_signal_score=None,
+        evidence_score=None,
+    )
+    legacy = SimpleNamespace(
+        version=1,
+        headline="Dengue outbreak",
+        summary="Legacy summary",
+        trajectory=None,
+        snapshot={
+            "cases": "42 confirmed cases",
+            "deaths": None,
+            "cfr": "4.2% CFR",
+            "geographic_extent": "Chiang Mai",
+        },
+        key_driver=None,
+        response=None,
+        risk=None,
+        model_id="old-model",
+        created_at=now,
+    )
+    session = FakeSession(
+        [
+            FakeResult((event, "Dengue")),
+            FakeResult([]),
+            FakeResult([]),
+            FakeResult([]),
+            FakeResult([legacy]),
+        ]
+    )
+
+    detail = query_event_detail(session, public_id=event.public_id)
+
+    assert detail is not None
+    assert detail.summaries[0].snapshot == (
+        "42 confirmed cases",
+        "4.2% CFR",
+        "Chiang Mai",
+    )
+
+
+def test_event_detail_reads_legacy_observation_columns_without_migration() -> None:
+    event_id = uuid4()
+    signal_id = uuid4()
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    event = SimpleNamespace(
+        id=event_id,
+        public_id="EVT-2026-LEGACY-OBS",
+        headline="Dengue outbreak",
+        summary="Legacy summary",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        verification_status=VerificationStatus.SIGNAL,
+        country_code="TH",
+        admin1=None,
+        admin2=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+        early_signal_score=None,
+        evidence_score=None,
+    )
+    old_observation = SimpleNamespace(
+        signal_id=signal_id,
+        observation_date=now.date(),
+        reported_at=now,
+        notes="legacy row",
+        confirmed_cases=42,
+        deaths=2,
+        material_facts=None,
+    )
+    session = FakeSession(
+        [
+            FakeResult((event, "Dengue")),
+            FakeResult([]),
+            FakeResult([]),
+            FakeResult([old_observation]),
+            FakeResult([]),
+        ]
+    )
+
+    detail = query_event_detail(session, public_id=event.public_id)
+
+    assert detail is not None
+    assert detail.observations[0].signal_id == signal_id
+    assert detail.observations[0].notes == "legacy row"
+    assert detail.observations[0].material_facts is None
+
+
+def test_legacy_snapshot_combines_deaths_and_cfr_without_exceeding_three_facts() -> None:
+    assert normalize_summary_snapshot(
+        {
+            "cases": "412 cases",
+            "deaths": "18 deaths",
+            "cfr": "CFR 4.4%",
+            "geographic_extent": "4 counties",
+        }
+    ) == ("412 cases", "18 deaths / CFR 4.4%", "4 counties")
+
+
+def test_legacy_snapshot_preserves_deaths_when_cfr_is_missing() -> None:
+    assert normalize_summary_snapshot(
+        {"cases": "27 illnesses", "deaths": "2 deaths", "cfr": None}
+    ) == ("27 illnesses", "2 deaths")
 
 
 def test_dashboard_resolves_admin1_then_country_and_leaves_missing_country_unmapped() -> None:
@@ -179,3 +326,45 @@ def test_dashboard_resolves_admin1_then_country_and_leaves_missing_country_unmap
     assert "ORDER BY events.last_updated_at DESC" in rendered
     assert "published_at" not in rendered
     assert not any("event_locations" in str(statement) for statement in session.executed)
+
+
+def test_dashboard_prefers_canonical_and_preserves_fallback_signal_selection() -> None:
+    canonical_id = uuid4()
+    primary_id = uuid4()
+    newest_id = uuid4()
+    rows = [
+        (_dashboard_event(canonical_id, "EVT-CANONICAL"), "Canonical disease"),
+        (_dashboard_event(primary_id, "EVT-PRIMARY"), None),
+        (_dashboard_event(newest_id, "EVT-NEWEST"), None),
+    ]
+    fallback_rows = [
+        (primary_id, {"disease": "Primary disease"}),
+        (primary_id, {"disease": "Newer secondary disease"}),
+        (newest_id, {"disease": "Newest disease"}),
+        (newest_id, {"disease": "Older disease"}),
+    ]
+    session = FakeSession([FakeResult(rows), FakeResult(fallback_rows)])
+
+    page = query_dashboard_events(session)
+
+    diseases = {item.public_id: item.disease for item in page.items}
+    assert diseases == {
+        "EVT-CANONICAL": "Canonical disease",
+        "EVT-PRIMARY": "Primary disease",
+        "EVT-NEWEST": "Newest disease",
+    }
+    fallback_statement = session.executed[1]
+    rendered = str(fallback_statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "event_signals.event_id IN" in rendered
+    assert "event_signals.is_primary DESC" in rendered
+    assert "signals.first_seen_at DESC" in rendered
+
+
+def test_dashboard_bulk_fallback_stays_bounded_for_many_events() -> None:
+    events = [(_dashboard_event(uuid4(), f"EVT-{index:03d}"), None) for index in range(25)]
+    session = FakeSession([FakeResult(events), FakeResult([])])
+
+    page = query_dashboard_events(session)
+
+    assert page.total == 25
+    assert len(session.executed) == 2

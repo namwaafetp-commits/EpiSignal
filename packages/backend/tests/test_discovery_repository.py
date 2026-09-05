@@ -325,42 +325,35 @@ def test_recording_a_rejection_issues_one_statement() -> None:
     assert len(session.executed) == 1
 
 
-def test_initial_contentless_discovery_opens_retrieval_failed_case() -> None:
-    from episignal_backend.db.types import ReviewReason, ReviewStatus
-    from episignal_backend.models.review import SignalReviewCase
+def test_initial_contentless_discovery_is_stored_as_a_fetchable_signal() -> None:
+    from episignal_backend.models import Signal
 
-    # When discovering a stub signal with no raw text
-    stub_signal = discovered(raw_text=None, processing_status=ProcessingStatus.NEEDS_REVIEW)
-    session = FakeSession([None])  # select existing case -> None
+    # Retrieval is deferred; a bodyless discovery has not failed yet.
+    stub_signal = discovered(raw_text=None, processing_status=ProcessingStatus.FETCHED)
+    session = FakeSession([])
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
 
     repository.add(stub_signal, uuid4())
 
-    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
-    assert len(cases) == 1
-    assert cases[0].reason is ReviewReason.RETRIEVAL_FAILED
-    assert cases[0].status is ReviewStatus.OPEN
+    signals = [obj for obj in session.added if isinstance(obj, Signal)]
+    assert len(signals) == 1
+    assert signals[0].processing_status is ProcessingStatus.FETCHED
+    assert signals[0].raw_text is None
 
 
 def test_record_failed_attempt_opens_retrieval_failed_when_max_attempts_reached() -> None:
-    from episignal_backend.db.types import ReviewReason
-    from episignal_backend.models.review import SignalReviewCase
-
     row = stub_row(attempts=2)
-    session = FakeSession([None], stored={row.id: row})  # select existing case -> None
+    session = FakeSession([], stored={row.id: row})
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
 
     repository.record_failed_attempt(row.id, max_attempts=3)
 
     assert row.retrieval_attempts == 3
-    assert row.processing_status is ProcessingStatus.NEEDS_REVIEW
-    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
-    assert len(cases) == 1
-    assert cases[0].reason is ReviewReason.RETRIEVAL_FAILED
+    assert row.processing_status is ProcessingStatus.FAILED
 
 
-def test_promotion_closes_open_retrieval_case_automatically() -> None:
-    from episignal_backend.db.types import ReviewReason, ReviewResolution, ReviewStatus
+def test_promotion_does_not_manage_human_review_cases() -> None:
+    from episignal_backend.db.types import ReviewReason, ReviewStatus
     from episignal_backend.models.review import SignalReviewCase
 
     row = stub_row()
@@ -375,8 +368,7 @@ def test_promotion_closes_open_retrieval_case_automatically() -> None:
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
 
     assert repository.promote(row.id, discovered()) is True
-    assert open_case.status is ReviewStatus.RESOLVED
-    assert open_case.resolution is ReviewResolution.RECOVERED_AUTOMATICALLY
+    assert open_case.status is ReviewStatus.OPEN
 
 
 def test_promotion_does_not_close_non_retrieval_case() -> None:
@@ -410,7 +402,8 @@ def deferred_signal_row() -> Any:
         content_hash="f" * 64,
         discovered_via=DiscoveryMethod.GDELT,
         retrieval_attempts=0,
-        processing_status=ProcessingStatus.FETCHED,
+        processing_status=ProcessingStatus.CLASSIFIED,
+        public_health_relevant=True,
     )
 
 
@@ -456,6 +449,17 @@ def test_gated_signals_awaiting_retrieval_are_bodyless_and_fetched() -> None:
     assert {item.signal_id for item in waiting} == {DEFERRED_SIGNAL_ID}
 
 
+def test_gated_retrieval_query_requires_completed_relevant_classification() -> None:
+    session = FakeSession([[]])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    repository.gated_awaiting_retrieval(max_attempts=3, limit=10)
+
+    rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "processing_status = 'classified'" in rendered
+    assert "public_health_relevant IS true" in rendered
+
+
 def test_a_filtered_signal_is_never_selected_for_retrieval() -> None:
     session = FakeSession([None, []])
     repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
@@ -488,7 +492,7 @@ def test_recording_filtered_preserves_the_row() -> None:
     assert res.url == "https://example.vn/deferred"
 
 
-def test_the_retry_pass_only_sees_needs_review_stubs() -> None:
+def test_the_retry_pass_only_sees_fetched_stubs() -> None:
     from sqlalchemy import Select
 
     session = FakeSession([[]])
@@ -499,4 +503,4 @@ def test_the_retry_pass_only_sees_needs_review_stubs() -> None:
     statement = session.executed[0]
     assert isinstance(statement, Select)
     rendered = str(statement.compile(compile_kwargs={"literal_binds": True}))
-    assert f"signals.processing_status = '{ProcessingStatus.NEEDS_REVIEW.value}'" in rendered
+    assert f"signals.processing_status = '{ProcessingStatus.FETCHED.value}'" in rendered

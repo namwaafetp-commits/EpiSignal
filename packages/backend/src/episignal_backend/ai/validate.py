@@ -1,27 +1,12 @@
-"""Every deterministic check a model answer must pass before it is stored.
-
-The order matters and is the design's order: parse, shape, batch identity,
-arithmetic, grounding, emptiness, privacy, confidence. Confidence is last on
-purpose, so that a confident fabrication is caught by grounding long before the
-model's opinion of itself is consulted.
-
-This module imports neither SQLAlchemy nor httpx.
-"""
+"""Strict parsing for active relevance and identity-extraction answers."""
 
 import json
-import re
 from collections.abc import Sequence
 from enum import StrEnum
-from uuid import UUID
 
 from pydantic import ValidationError
 
-from episignal_backend.ai.schema import (
-    ClassificationResponse,
-    Epidemiology,
-    Extraction,
-    GroundedCount,
-)
+from episignal_backend.ai.schema import ClassificationVerdict, Epidemiology, Extraction
 
 
 class RejectionReason(StrEnum):
@@ -36,186 +21,65 @@ class RejectionReason(StrEnum):
 
 
 class Rejected(Exception):
-    """The answer arrived and cannot be trusted.
-
-    Carries the name of the first check that failed, which is what the cost row
-    records and what the admin view will show.
-    """
-
     def __init__(self, reason: RejectionReason, detail: str = "") -> None:
         super().__init__(f"{reason.value}: {detail}" if detail else reason.value)
         self.reason = reason
         self.detail = detail
 
 
+MIN_CONFIDENCE_DEFAULT = 0.60
+_ACTIVE_EXTRACTION_KEYS = frozenset({"disease", "locations"})
+
+
 def _loads(content: str) -> object:
-    # No salvaging: a model that wrapped its answer in prose or a code fence did
-    # not follow the contract, and stripping the wrapper teaches it that the
-    # contract is optional. Escalating is cheaper than a parser that guesses.
     try:
         return json.loads(content)
     except json.JSONDecodeError as error:
         raise Rejected(RejectionReason.NOT_JSON, str(error)) from error
 
 
-def _at_most(smaller: GroundedCount | None, larger: GroundedCount | None, label: str) -> None:
-    if smaller is None or larger is None:
-        return
-    if smaller.value > larger.value:
-        raise Rejected(RejectionReason.ARITHMETIC, label)
-
-
-def check_arithmetic(epidemiology: Epidemiology) -> None:
-    total = epidemiology.total_cases
-    _at_most(epidemiology.deaths, total, "deaths above total_cases")
-    _at_most(epidemiology.new_cases, total, "new_cases above total_cases")
-    _at_most(epidemiology.confirmed_cases, total, "confirmed_cases above total_cases")
-    _at_most(epidemiology.suspected_cases, total, "suspected_cases above total_cases")
-    _at_most(epidemiology.new_deaths, epidemiology.deaths, "new_deaths above deaths")
-
-    confirmed = epidemiology.confirmed_cases
-    suspected = epidemiology.suspected_cases
-    if (
-        total is not None
-        and confirmed is not None
-        and suspected is not None
-        and confirmed.value + suspected.value > total.value
-    ):
-        raise Rejected(
-            RejectionReason.ARITHMETIC, "confirmed_cases plus suspected_cases above total_cases"
-        )
-
-
 def parse_extraction(content: str) -> Extraction:
-    payload = _loads(content)
     try:
-        extraction = Extraction.model_validate(payload)
+        return Extraction.model_validate(_loads(content))
     except ValidationError as error:
         raise Rejected(RejectionReason.SHAPE, error.title) from error
-
-    check_arithmetic(extraction.epidemiology)
-    return extraction
-
-
-MIN_CONFIDENCE_DEFAULT = 0.60
-
-# Deliberately narrow. This is a check on what this system agrees to store, not
-# a PII detector and not a claim about what the publisher wrote. A false
-# positive costs one escalation; a false negative stores a person's contact
-# details in an evidence column.
-_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
-_TELEPHONE = re.compile(r"(?:\+\d[\d\s().-]{7,}\d)|(?:\b\d[\d\s().-]{8,}\d\b)")
-_LONG_DIGIT_RUN = re.compile(r"\d{9,}")
-
-
-def _flatten(text: str) -> str:
-    """Whitespace-collapsed and case-folded, so a reflowed article still matches.
-
-    A span copied out of a page that wraps mid-sentence differs from the stored
-    text only in whitespace, and rejecting that would reject the honest case.
-    """
-    return " ".join(text.split()).casefold()
-
-
-def check_privacy(extraction: Extraction) -> None:
-    candidates = [extraction.title_english]
-    candidates.extend(point.text for point in extraction.brief)
-    candidates.extend(
-        location.place_name for location in extraction.locations if location.place_name
-    )
-    for candidate in candidates:
-        for pattern in (_EMAIL, _TELEPHONE, _LONG_DIGIT_RUN):
-            if pattern.search(candidate):
-                raise Rejected(RejectionReason.PRIVACY, pattern.pattern)
-
-
-def _check_span(span: str, bodies: Sequence[str], index: int, label: str) -> None:
-    if not 0 <= index < len(bodies):
-        # A claim that names an article nobody sent is ungrounded in the
-        # strongest sense: there is no text it could ever be checked against.
-        raise Rejected(RejectionReason.UNGROUNDED, f"{label} cites source_index {index}")
-    if _flatten(span) not in bodies[index]:
-        raise Rejected(RejectionReason.UNGROUNDED, label)
-
-
-def check_grounding(extraction: Extraction, bodies: Sequence[str]) -> None:
-    """Every claim against the one article it names, never against the batch.
-
-    Checking a span against the concatenation would let one member's sentence
-    vouch for another member's number, which is exactly the confusion batching
-    invites and exactly what this system must never store.
-    """
-    flat_bodies = [_flatten(body) for body in bodies]
-
-    for label, count in (
-        ("suspected_cases", extraction.epidemiology.suspected_cases),
-        ("confirmed_cases", extraction.epidemiology.confirmed_cases),
-        ("total_cases", extraction.epidemiology.total_cases),
-        ("deaths", extraction.epidemiology.deaths),
-        ("new_cases", extraction.epidemiology.new_cases),
-        ("new_deaths", extraction.epidemiology.new_deaths),
-    ):
-        if count is None:
-            continue
-        _check_span(count.source_span, flat_bodies, count.source_index, label)
-        # The span must state this number, not merely sit near it. Without this,
-        # any true sentence in the article would support any number at all.
-        if str(count.value) not in count.source_span:
-            raise Rejected(RejectionReason.UNGROUNDED, f"{label} not stated by its span")
-
-    if extraction.transmission is not None:
-        for label, flag in (
-            ("local_transmission", extraction.transmission.local_transmission),
-            ("imported", extraction.transmission.imported),
-        ):
-            if flag is not None:
-                _check_span(flag.source_span, flat_bodies, flag.source_index, label)
 
 
 def validate_extraction(
     content: str,
-    raw_text: str | Sequence[str],
+    raw_text: str | Sequence[str] = "",
     *,
-    min_confidence: float = MIN_CONFIDENCE_DEFAULT,
+    title: str | Sequence[str] | None = None,
+    min_confidence: float = 0.0,
 ) -> Extraction:
-    """Every check, in the design's order. The first failure raises."""
-    bodies = (raw_text,) if isinstance(raw_text, str) else raw_text
-    extraction = parse_extraction(content)
+    """Validate only the exact identity schema.
 
-    check_grounding(extraction, bodies)
-
-    if extraction.transmission is not None and extraction.transmission.is_empty():
-        # An object with no flags is not a finding. Stored as absence rather
-        # than rejected, because saying nothing about transmission is a normal
-        # thing for an article to do.
-        extraction = extraction.model_copy(update={"transmission": None})
-
-    check_privacy(extraction)
-
-    if extraction.confidence < min_confidence:
-        raise Rejected(RejectionReason.LOW_CONFIDENCE, f"{extraction.confidence}")
-
-    return extraction
-
-
-def validate_classification(content: str, sent: Sequence[UUID]) -> ClassificationResponse:
-    """Accept a batch answer only if it answers exactly the batch that was sent.
-
-    Whole-response rejection is deliberate. A model that returns an id nobody
-    sent has lost track of which document it is describing, and there is no
-    reason to believe the entries that happen to carry the right ids describe
-    the right documents either.
+    Extra arguments remain for source compatibility with old callers. Active
+    extraction contains no confidence, counts, spans, or prose claims.
     """
+    del raw_text, title, min_confidence
     payload = _loads(content)
+    if not isinstance(payload, dict) or set(payload) != _ACTIVE_EXTRACTION_KEYS:
+        raise Rejected(RejectionReason.SHAPE, "extraction must contain only disease and locations")
+    return parse_extraction(content)
+
+
+def validate_classification(content: str) -> ClassificationVerdict:
     try:
-        response = ClassificationResponse.model_validate(payload)
+        return ClassificationVerdict.model_validate(_loads(content))
     except ValidationError as error:
         raise Rejected(RejectionReason.SHAPE, error.title) from error
 
-    returned = [result.id for result in response.results]
-    if len(returned) != len(set(returned)):
-        raise Rejected(RejectionReason.BATCH_IDENTITY, "repeated id")
-    if set(returned) != set(sent):
-        raise Rejected(RejectionReason.BATCH_IDENTITY, "id set does not match the batch")
 
-    return response
+# Historical benchmark helpers remain importable but do no active work because
+# current extraction contains none of their former fields.
+def check_arithmetic(epidemiology: Epidemiology) -> None:
+    del epidemiology
+
+
+def check_grounding(extraction: Extraction, bodies: Sequence[str]) -> None:
+    del extraction, bodies
+
+
+def check_privacy(extraction: Extraction) -> None:
+    del extraction

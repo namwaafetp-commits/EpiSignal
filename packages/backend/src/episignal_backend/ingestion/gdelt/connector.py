@@ -10,6 +10,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from episignal_backend.db.types import ProcessingStatus
+from episignal_backend.diagnostics import FailureCategory
 from episignal_backend.ingestion.documents import (
     DiscoveredArticle,
     DiscoveredSignal,
@@ -18,7 +19,7 @@ from episignal_backend.ingestion.documents import (
     TimeWindow,
 )
 from episignal_backend.ingestion.fingerprint import content_hash
-from episignal_backend.ingestion.gdelt.api import GdeltDocClient
+from episignal_backend.ingestion.gdelt.api import GdeltDocClient, GdeltRunSummary
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher, Disallowed, Unfetchable
 from episignal_backend.ingestion.gdelt.extract import extract_page
 from episignal_backend.ingestion.protocol import RetrievalFailed
@@ -49,18 +50,29 @@ class GdeltConnector:
     def discover(self, rule: QueryRule, window: TimeWindow) -> Sequence[DiscoveredArticle]:
         return self._search.search(rule, window)
 
+    def begin_discovery_run(self) -> None:
+        self._search.begin_run()
+
+    def finish_discovery_run(self, rules_total: int) -> GdeltRunSummary:
+        return self._search.finish_run(rules_total)
+
     def retrieve(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:
         try:
             html = self._fetcher.fetch(article.url)
         except (Unfetchable, Disallowed) as reason:
-            raise RetrievalFailed(str(reason)) from reason
+            raise RetrievalFailed(
+                str(reason), category=getattr(reason, "category", None)
+            ) from reason
 
         page = extract_page(html)
         # A page whose prose is shorter than a paragraph is a paywall notice or
         # a consent wall, not an article. Storing it would give sub-project C
         # nothing to read and would overstate what we hold.
         if len(page.body) < self._minimum_body_characters:
-            raise RetrievalFailed(f"{article.domain} returned no article body")
+            raise RetrievalFailed(
+                f"{article.domain} returned no article body",
+                category=FailureCategory.INVALID_CONTENT.value,
+            )
 
         title = page.title or article.title
         return DiscoveredSignal(

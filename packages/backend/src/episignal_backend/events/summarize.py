@@ -1,11 +1,9 @@
-"""Event summarization: when and how an event's narrative is regenerated.
+"""Event summarization: versioned, event-level EpiSignal flash briefs.
 
-Runs only when a material change since the last summary warrants it. The
-summary pass reads the event — disease, place, latest observation, and up to
-``max_sources`` representative sources — and writes a versioned headline,
-summary, status, and latest development onto the event. The versioned history
-lives in ``event_summaries``; ``events.headline``/``summary`` denormalize the
-newest accepted version for the public surface.
+Runs only for a new event or a material change in its consolidated observations.
+The model returns the structured brief; the renderer writes the exact public
+flash-brief format. The versioned history lives in ``event_summaries`` and the
+rendered text is denormalized onto ``events.summary``.
 
 The pass is pure: ``run_summary`` imports neither SQLAlchemy nor httpx.
 ``configure_summary`` is the one wiring function, and it is the only import of
@@ -15,7 +13,7 @@ the routing layer here.
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -23,33 +21,58 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from episignal_backend.ai.documents import ChatRequest, ModelSpec, TokenUsage
 from episignal_backend.ai.ladder import Attempt, cost_usd
-from episignal_backend.ai.protocol import ChatModel, ModelUnavailable
+from episignal_backend.ai.protocol import ChatModel, ModelUnavailable, NoModelsConfigured
+from episignal_backend.ai.registry import model_for_purpose
 from episignal_backend.ai.validate import Rejected, RejectionReason
 from episignal_backend.config import Settings
-from episignal_backend.db.types import AiOutcome, AiPurpose, EventStatus
+from episignal_backend.db.types import AiOutcome, AiPurpose
 from episignal_backend.events.documents import EventForSummary, SummarySource
 
 SUMMARY_SCHEMA_NAME = "event_summary"
 SUMMARY_TEMPERATURE = 0.0
 
 SUMMARY_SYSTEM = (
-    "You write one epidemiological event summary from the sources and figures you are given.\n"
+    "You write one EpiSignal epidemiological event flash brief from all linked "
+    "clean article sources.\n"
     "Rules:\n"
-    "- Summarize the EVENT, not one article. The latest observation is the most\n"
-    "  recent reported state.\n"
-    "- Every number you state must come from the sources or figures given.\n"
-    "  Never invent a count, date, or place.\n"
-    '- Distinguish reported facts from inference: say "officials reported" rather\n'
-    '  than "it is confirmed".\n'
-    "- If sources disagree, say so. Never silently pick one number as the truth.\n"
-    "- status is one of: monitoring, ongoing, expanding, stable, declining,\n"
-    "  resolved, unknown.\n"
-    "- uncertainties lists what remains genuinely unknown or conflicting.\n"
-    "- headline is a short, specific, information-dense line. summary is a few\n"
-    "  sentences.\n"
-    "- latest_development names the newest reported change, or says there is none.\n\n"
+    "- Summarize the EVENT, never an individual article. Use the supplied article "
+    "title, publication time, source, and clean article text as the evidence.\n"
+    "- The linked article sources are authoritative for narrative facts. Do not "
+    "expect or invent deprecated extraction fields such as cases, deaths, CFR, "
+    "pathogen, transmission, dates, or response actions.\n"
+    "- Preserve confirmed, suspected, and probable distinctions.\n"
+    "- Every number, disease, location, response, and risk claim must be supported "
+    "by the supplied article evidence. Never invent or silently "
+    "resolve conflicting evidence.\n"
+    "- Use trajectory exactly as one of: Emerging, Increasing, Stable, Declining, "
+    "Contained, Resolved, Unclear. Use Unclear when unsupported.\n"
+    "- Use `Not yet established.` for an unsupported key driver, `No specific "
+    "response reported.` when no response is evidenced, and `Insufficient evidence "
+    "for a broader risk assessment.` when risk cannot be assessed.\n"
+    "- The headline must follow: [Pathogen/Disease] Outbreak: [Location] — "
+    "[Trajectory]. The application canonicalizes the disease, location, and "
+    "trajectory from the grouped event.\n"
+    "- The rendered brief uses these exact labels: The Snapshot:, Key Driver:, "
+    "Response:, and Public/Global Risk:.\n"
+    "- Choose 1 to 3 concise, evidence-grounded snapshot facts that are most\n"
+    "  decision-relevant for this event. Cases, deaths, and CFR are optional;\n"
+    "  never force a metric that is unsupported or less informative.\n"
+    "- If linked sources disagree, state the disagreement explicitly.\n\n"
     "The object must match this JSON Schema exactly:\n"
 )
+
+
+class SummaryTrajectory(StrEnum):
+    EMERGING = "Emerging"
+    INCREASING = "Increasing"
+    STABLE = "Stable"
+    DECLINING = "Declining"
+    CONTAINED = "Contained"
+    RESOLVED = "Resolved"
+    UNCLEAR = "Unclear"
+
+
+SummarySnapshot = tuple[str, ...]
 
 
 class EventSummaryVerdict(BaseModel):
@@ -58,18 +81,27 @@ class EventSummaryVerdict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     headline: str = Field(min_length=1)
-    summary: str = Field(min_length=1)
-    status: EventStatus
-    latest_development: str = Field(min_length=1)
-    uncertainties: list[str] = Field(default_factory=list)
+    trajectory: SummaryTrajectory
+    snapshot: SummarySnapshot = Field(min_length=1, max_length=3)
+    key_driver: str = Field(min_length=1)
+    response: str = Field(min_length=1)
+    risk: str = Field(min_length=1)
 
-    @field_validator("headline", "summary", "latest_development")
+    @field_validator("headline", "key_driver", "response", "risk")
     @classmethod
     def text_is_not_blank(cls, value: str) -> str:
         collapsed = " ".join(value.split())
         if not collapsed:
             raise ValueError("summary text must say something")
         return collapsed
+
+    @field_validator("snapshot")
+    @classmethod
+    def snapshot_facts_are_not_blank(cls, value: SummarySnapshot) -> SummarySnapshot:
+        facts = tuple(" ".join(fact.split()) for fact in value)
+        if any(not fact for fact in facts):
+            raise ValueError("snapshot facts must say something")
+        return facts
 
 
 class SummaryOutcome(StrEnum):
@@ -99,15 +131,40 @@ def unique_summary_candidates(
     return tuple(unique)
 
 
-def _accept(content: str) -> EventSummaryVerdict:
+def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict:
     try:
         payload = json.loads(content)
     except ValueError as error:
         raise Rejected(RejectionReason.NOT_JSON) from error
     try:
-        return EventSummaryVerdict.model_validate(payload)
+        verdict = EventSummaryVerdict.model_validate(payload)
     except ValidationError as error:
         raise Rejected(RejectionReason.SHAPE) from error
+
+    # Disease and location are already validated event metadata. Rebuild the
+    # heading from those fields so a model cannot move an event to a place or
+    # disease merely by writing a plausible headline.
+    disease = event.disease.strip() or "Unspecified pathogen/disease"
+    disease = disease[:1].upper() + disease[1:]
+    location = event.location.strip() or "Unresolved location"
+    return verdict.model_copy(
+        update={
+            "headline": f"{disease} Outbreak: {location} — {verdict.trajectory.value}",
+        }
+    )
+
+
+def render_event_flash_brief(verdict: EventSummaryVerdict) -> str:
+    """Render the only public event-summary narrative format."""
+    return "\n\n".join(
+        (
+            verdict.headline,
+            "The Snapshot:\n" + " | ".join(verdict.snapshot),
+            f"Key Driver:\n{verdict.key_driver}",
+            f"Response:\n{verdict.response}",
+            f"Public/Global Risk:\n{verdict.risk}",
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -147,6 +204,7 @@ def run_summary(
                     "previous_summary": event.summary,
                 },
                 "latest_observation": event.latest_observation,
+                "observations": list(event.observations),
                 "sources": [
                     {
                         "title": source.title,
@@ -155,7 +213,7 @@ def run_summary(
                         "published_at": source.published_at.isoformat()
                         if source.published_at is not None
                         else None,
-                        "brief": [point.model_dump(mode="json") for point in source.brief],
+                        "article_text": source.article_text,
                     }
                     for source in sources
                 ],
@@ -184,7 +242,7 @@ def run_summary(
         )
 
     try:
-        verdict = _accept(response.content)
+        verdict = _accept(response.content, event=event)
     except Rejected as rejection:
         return SummaryResult(
             outcome=SummaryOutcome.REJECTED,
@@ -215,17 +273,17 @@ def run_summary(
 
 
 def configure_summary(settings: Settings, specs: list[ModelSpec]) -> SummaryWiring:
-    """Resolve the summarizer model: the DeepSeek ``event_summary`` rung."""
+    """Resolve Mistral Small 3.2 through the purpose registry."""
     from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 
     try:
         model = routed_from_settings(settings, specs)
     except NoProviderKey:
         return SummaryWiring(model=None, spec=None)
-    spec = next(
-        (candidate for candidate in specs if candidate.purpose is AiPurpose.EVENT_SUMMARY),
-        None,
-    )
+    try:
+        spec = model_for_purpose(specs, AiPurpose.EVENT_SUMMARY)
+    except NoModelsConfigured:
+        return SummaryWiring(model=None, spec=None)
     return SummaryWiring(model=model, spec=spec)
 
 
@@ -246,12 +304,12 @@ def pick_representative_sources(
         key=lambda source: (
             0 if source.is_official else 1,
             datetime.max.replace(tzinfo=UTC) - publication_timestamp(source),
-            -len(source.brief),
+            -len(source.article_text),
             source.title,
         ),
     )
     selected = list(ordered[:max_sources])
-    useful = [source for source in sources if source.brief]
+    useful = [source for source in sources if source.article_text.strip()]
     if selected and useful:
         newest_useful = max(useful, key=publication_timestamp)
         if newest_useful not in selected:
@@ -261,11 +319,40 @@ def pick_representative_sources(
     return tuple(selected)
 
 
+_MATERIAL_OBSERVATION_FIELDS = (
+    "confirmed_cases",
+    "probable_cases",
+    "suspected_cases",
+    "total_cases",
+    "deaths",
+    "new_cases",
+    "new_deaths",
+    "cfr",
+    "affected_admin_areas",
+    "geographic_extent",
+    "material_facts",
+)
+
+
 def _counts_equals(left: dict[str, object] | None, right: dict[str, object] | None) -> bool:
     if left is None or right is None:
         return left is right
-    keys = ("data_as_of", "confirmed_cases", "total_cases", "deaths", "new_cases", "new_deaths")
-    return all(left.get(key) == right.get(key) for key in keys)
+
+    def comparable(value: object) -> object:
+        if isinstance(value, dict):
+            return {
+                key: comparable(item)
+                for key, item in value.items()
+                if key not in {"source_span", "source_index"}
+            }
+        if isinstance(value, list):
+            return [comparable(item) for item in value]
+        return value
+
+    return all(
+        comparable(left.get(key)) == comparable(right.get(key))
+        for key in _MATERIAL_OBSERVATION_FIELDS
+    )
 
 
 def should_resummarize(
@@ -273,25 +360,13 @@ def should_resummarize(
     last_summarized_at: datetime | None,
     latest_observation: dict[str, object] | None,
     previous_counts: dict[str, object] | None,
-    unsummarized_articles: int,
+    unsummarized_articles: int = 0,
     now: datetime | None = None,
     max_age_hours: int = 24,
     new_article_count: int = 3,
 ) -> bool:
-    """Decide whether an event needs a new summary.
-
-    A summary is due when: it has never been written, the latest reported
-    counts differ from the counts the previous summary was written against,
-    enough new articles arrived since the last summary, or the summary is
-    simply too old to trust. Anything else is not a material change, and the
-    event keeps its current narrative.
-    """
-    reference = now or datetime.now(UTC)
-
+    """Regenerate once for a new linked source or a never-summarized event."""
     if last_summarized_at is None:
         return True
-    if not _counts_equals(latest_observation, previous_counts):
-        return True
-    if unsummarized_articles >= new_article_count:
-        return True
-    return reference - last_summarized_at > timedelta(hours=max_age_hours)
+    del latest_observation, previous_counts, now, max_age_hours, new_article_count
+    return unsummarized_articles > 0

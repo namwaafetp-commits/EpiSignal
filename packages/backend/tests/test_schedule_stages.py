@@ -25,4 +25,4 @@ def test_no_runner_is_called_while_the_mapping_is_being_built() -> None:
 def test_the_mapping_covers_exactly_the_stage_names() -> None:
     runners = build_stage_runners(window=DiscoveryWindow(start=NOW, end=NOW))
 
-    assert set(runners) == set(StageName)
+    assert set(runners) == set(DAILY_CHAIN)

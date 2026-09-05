@@ -15,7 +15,7 @@ from episignal_backend.ai.extract import DEFAULT_MAX_INPUT_CHARACTERS, EXTRACTIO
 from episignal_backend.ai.prompts import extraction_prompt, triage_prompt
 from episignal_backend.ai.protocol import ModelUnavailable
 from episignal_backend.ai.schema import extraction_json_schema, triage_json_schema
-from episignal_backend.ai.triage import TRIAGE_SNIPPET_CHARACTERS
+from episignal_backend.ai.triage import TRIAGE_CONTENT_CHARACTERS
 from episignal_backend.db.types import AiProvider
 from episignal_backend.model_check import (
     FIXTURE_ROOT,
@@ -25,7 +25,6 @@ from episignal_backend.model_check import (
     load_cases,
     run_model_check,
     save_result,
-    score_extraction,
     score_triage,
 )
 
@@ -40,6 +39,23 @@ def _spec(model_id: str = "test/model") -> ModelSpec:
         prompt_price_per_million=Decimal("1"),
         completion_price_per_million=Decimal("2"),
     )
+
+
+class FakeModel:
+    def __init__(self, content: str, *, unavailable: bool = False) -> None:
+        self.content = content
+        self.unavailable = unavailable
+        self.requests = []
+
+    def complete(self, request):
+        self.requests.append(request)
+        if self.unavailable:
+            raise ModelUnavailable("test unavailable")
+        return ChatResponse(
+            content=self.content,
+            usage=TokenUsage(prompt_tokens=10, completion_tokens=5),
+            latency_ms=7,
+        )
 
 
 def test_lite_fixtures_have_twenty_stable_cases_per_purpose() -> None:
@@ -89,14 +105,14 @@ def test_model_check_uses_production_prompt_seams_and_request_contract() -> None
     triage_signal = TriageableSignal(
         id=_fixture_id(triage_case.case_id),
         title=triage_case.input["title"],
-        excerpt=triage_case.input["excerpt"],
+        article_content=triage_case.input["excerpt"],
         source_name=FIXTURE_SOURCE_NAME,
         url=f"{FIXTURE_URL_BASE}{triage_case.case_id}",
         language="en",
     )
     triage_request = triage_model.requests[0]
     expected_system, expected_user = triage_prompt(
-        triage_signal, max_characters=TRIAGE_SNIPPET_CHARACTERS
+        triage_signal, max_characters=TRIAGE_CONTENT_CHARACTERS
     )
     assert (triage_request.system, triage_request.user) == (expected_system, expected_user)
     assert triage_request.response_schema == triage_json_schema()
@@ -146,50 +162,6 @@ def test_triage_schema_failure_is_not_a_false_negative() -> None:
 
     assert score["schema_valid"] is False
     assert score["fn"] == 0
-
-
-def test_extraction_counts_expected_null_as_correct_and_invention_as_failure() -> None:
-    case = load_cases("extraction")[1]
-    actual = dict(case.expected)
-    actual["epidemiology"] = {
-        "deaths": {"value": 3, "source_span": "3 deaths", "source_index": 0},
-        "total_cases": {"value": 99, "source_span": "3 deaths", "source_index": 0},
-    }
-
-    score = score_extraction(case.expected, actual, case.input["raw_text"])
-
-    assert score["schema_valid"] is True
-    assert score["unsupported_numeric_claims"] == 1
-    assert score["null_correct"] < score["null_slots"]
-
-
-def test_extraction_grounding_failure_is_visible() -> None:
-    case = load_cases("extraction")[0]
-    actual = json.loads(json.dumps(case.expected))
-    actual["epidemiology"]["confirmed_cases"]["source_span"] = "999 cases"
-
-    score = score_extraction(case.expected, actual, case.input["raw_text"])
-
-    assert score["schema_valid"] is True
-    assert score["grounded"] is False
-    assert score["grounding_failures"] == 1
-
-
-class FakeModel:
-    def __init__(self, content: str, *, unavailable: bool = False) -> None:
-        self.content = content
-        self.unavailable = unavailable
-        self.requests = []
-
-    def complete(self, request):
-        self.requests.append(request)
-        if self.unavailable:
-            raise ModelUnavailable("test unavailable")
-        return ChatResponse(
-            content=self.content,
-            usage=TokenUsage(prompt_tokens=10, completion_tokens=5),
-            latency_ms=7,
-        )
 
 
 def test_runner_uses_identical_inputs_and_stops_at_request_cap() -> None:

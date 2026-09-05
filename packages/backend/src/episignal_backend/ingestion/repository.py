@@ -90,9 +90,9 @@ def build_comparable(signal: Signal) -> ComparableSignal:
         id=signal.id,
         canonical_url=signal.canonical_url or signal.url,
         title=signal.title,
-        # Callers only ever select rows where this is not null; the assertion
-        # documents that rather than silently substituting an empty string.
-        raw_text=signal.raw_text or "",
+        # Pre-fetch dedupe carries an empty body; body-aware passes select only
+        # rows with content before asking for body similarity.
+        raw_text=signal.raw_text or signal.title,
         content_hash=signal.content_hash,
         first_seen_at=signal.first_seen_at,
         published_at=signal.published_at,
@@ -115,9 +115,11 @@ class SqlAlchemySignalRepository:
         ).first()
         return found is not None
 
-    def add(self, signal: NormalizedSignal, source_id: UUID) -> None:
-        self._session.add(build_signal(signal, source_id))
+    def add(self, signal: NormalizedSignal, source_id: UUID) -> UUID:
+        db_signal = build_signal(signal, source_id)
+        self._session.add(db_signal)
         self._session.flush()
+        return db_signal.id
 
     def activate(self, source_id: UUID) -> None:
         self._session.execute(update(Source).where(Source.id == source_id).values(active=True))
@@ -211,13 +213,20 @@ class SqlAlchemyDiscoveryRepository:
                 )
         return tuple(rules)
 
-    def gated_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
-        """Discoveries stored without a body, waiting for the gate.
+    def gated_awaiting_retrieval(
+        self, *, max_attempts: int, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[StubRetrieval]:
+        """Classified relevant discoveries stored without a body.
 
         Distinct from `stubs_awaiting_retrieval`, which serves articles whose
         page already failed. These have never been asked for.
         """
-        return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
+        return self._retrievals(
+            ProcessingStatus.CLASSIFIED,
+            max_attempts=max_attempts,
+            limit=limit,
+            signal_ids=signal_ids,
+        )
 
     def record_filtered(self, signal_id: UUID) -> None:
         self._session.execute(
@@ -319,30 +328,53 @@ class SqlAlchemyDiscoveryRepository:
             ).scalar_one()
         return source.id
 
-    def add(self, signal: DiscoveredSignal, source_id: UUID) -> None:
+    def add(self, signal: DiscoveredSignal, source_id: UUID) -> UUID:
         db_signal = build_discovered_signal(signal, source_id)
         self._session.add(db_signal)
         self._session.flush()
+        return db_signal.id
 
-    def stubs_awaiting_retrieval(self, *, max_attempts: int, limit: int) -> Sequence[StubRetrieval]:
-        return self._retrievals(ProcessingStatus.FETCHED, max_attempts=max_attempts, limit=limit)
+    def stubs_awaiting_retrieval(
+        self,
+        *,
+        max_attempts: int,
+        limit: int,
+        signal_ids: Sequence[UUID] | None = None,
+    ) -> Sequence[StubRetrieval]:
+        return self._retrievals(
+            ProcessingStatus.FETCHED,
+            max_attempts=max_attempts,
+            limit=limit,
+            signal_ids=signal_ids,
+        )
 
     def _retrievals(
-        self, status: ProcessingStatus, *, max_attempts: int, limit: int
+        self,
+        status: ProcessingStatus | Sequence[ProcessingStatus],
+        *,
+        max_attempts: int,
+        limit: int,
+        signal_ids: Sequence[UUID] | None = None,
     ) -> Sequence[StubRetrieval]:
+        status_filter = (
+            Signal.processing_status.in_(tuple(status))
+            if not isinstance(status, ProcessingStatus)
+            else Signal.processing_status == status
+        )
+        conditions = [
+            status_filter,
+            Signal.discovered_via == DiscoveryMethod.GDELT,
+            Signal.raw_text.is_(None),
+            Signal.public_health_relevant.is_(True),
+            Signal.retrieval_attempts < max_attempts,
+            Source.domain.is_not(None),
+        ]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
         rows = self._session.execute(
             select(Signal, Source.domain, Source.country_code)
             .join(Source, Signal.source_id == Source.id)
-            .where(
-                # The status filter is load-bearing: without it this query
-                # returns every bodyless signal, including the ones the gate
-                # has not seen and the ones it filtered.
-                Signal.processing_status == status,
-                Signal.discovered_via == DiscoveryMethod.GDELT,
-                Signal.raw_text.is_(None),
-                Signal.retrieval_attempts < max_attempts,
-                Source.domain.is_not(None),
-            )
+            .where(*conditions)
             .order_by(Signal.retrieval_attempts, Signal.first_seen_at)
             .limit(limit)
         ).all()
@@ -366,6 +398,7 @@ class SqlAlchemyDiscoveryRepository:
                     ),
                     first_seen_at=signal.first_seen_at,
                     attempts=signal.retrieval_attempts,
+                    public_health_relevant=signal.public_health_relevant,
                 )
             )
         return tuple(stubs)
@@ -414,27 +447,25 @@ class SqlAlchemyDiscoveryRepository:
 
 
 class SqlAlchemyDedupeRepository:
-    """Storage for Stage 0's second gate.
+    """Storage for the pre-fetch duplicate gate.
 
     Deliberately unable to discover or fetch: this pass reads stored signals and
-    writes their status, and nothing else.
+    writes their status. Bodyless discovery rows are represented with a title
+    placeholder at the pure dedupe seam; the scheduled pass uses metadata-only
+    matching.
     """
 
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def pending(self, *, limit: int) -> Sequence[ComparableSignal]:
+    def pending(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ComparableSignal]:
+        conditions = [Signal.processing_status == ProcessingStatus.FETCHED]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
         rows = self._session.execute(
-            select(Signal)
-            .where(
-                Signal.processing_status == ProcessingStatus.FETCHED,
-                # Stubs stay in the retry path: a document with no body cannot
-                # be compared on one, and comparing on the title alone is the
-                # merge this design refuses.
-                Signal.raw_text.is_not(None),
-            )
-            .order_by(Signal.first_seen_at)
-            .limit(limit)
+            select(Signal).where(*conditions).order_by(Signal.first_seen_at).limit(limit)
         ).scalars()
         return tuple(build_comparable(row) for row in rows)
 
@@ -446,7 +477,9 @@ class SqlAlchemyDedupeRepository:
             select(Signal)
             .where(
                 Signal.id != signal.id,
-                Signal.raw_text.is_not(None),
+                Signal.processing_status.in_(
+                    (ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED)
+                ),
                 or_(
                     # An identical hash is compared regardless of age, so a late
                     # republication of unchanged text is still caught.

@@ -22,9 +22,9 @@ def test_daily_runtime_is_lean_mvp_chain() -> None:
     assert DAILY_CHAIN == (
         StageName.INGEST_WHO,
         StageName.DISCOVER,
-        StageName.RETRIEVE,
         StageName.DEDUPE,
-        StageName.TRIAGE,
+        StageName.CLASSIFY,
+        StageName.RETRIEVE,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,
@@ -48,7 +48,7 @@ def test_direct_country_location_needs_no_coordinates() -> None:
     assert location.longitude is None
 
 
-def test_match_repository_reads_triage_country_without_signal_locations() -> None:
+def test_match_repository_does_not_read_triage_country_without_extraction() -> None:
     signal_id = uuid4()
     disease_id = uuid4()
     signal = SimpleNamespace(
@@ -70,9 +70,8 @@ def test_match_repository_reads_triage_country_without_signal_locations() -> Non
 
     result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
 
-    assert result[0].locations[0].country_code == "TH"
-    assert result[0].locations[0].precision is Precision.COUNTRY
-    assert result[0].locations[0].latitude is None
+    assert result[0].locations == ()
+    assert result[0].disease_id is None
 
 
 @pytest.mark.parametrize(
@@ -104,10 +103,13 @@ def test_match_repository_resolves_extraction_country_aliases(
 
     result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
 
-    assert result[0].locations[0].country_code == expected
+    if expected is None:
+        assert result[0].locations == ()
+    else:
+        assert result[0].locations[0].country_code == expected
 
 
-def test_triage_iso2_country_takes_priority_over_extraction_alias() -> None:
+def test_extraction_country_takes_priority_over_triage_country() -> None:
     extraction = _valid_extraction()
     extraction["locations"] = [{"role": "primary", "country": "Thailand"}]
     signal = SimpleNamespace(
@@ -129,7 +131,7 @@ def test_triage_iso2_country_takes_priority_over_extraction_alias() -> None:
 
     result = SqlAlchemyEventRepository(session).signals_to_match(limit=1)
 
-    assert result[0].locations[0].country_code == "UG"
+    assert result[0].locations[0].country_code == "TH"
 
 
 def test_same_disease_and_country_can_attach_without_admin1() -> None:
@@ -233,10 +235,11 @@ def test_null_disease_event_uses_attached_extraction_text_as_candidate_identity(
         title="Dengue event",
     )
     extraction = _valid_extraction()
-    extraction["disease"] = {"name": "Dengue", "confidence": 0.9}
+    extraction["disease"] = "Dengue"
     results = [
         SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [event])),
         SimpleNamespace(all=lambda: [(event.id, True, extraction)]),
+        SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [])),
     ]
 
     class Session:
@@ -398,7 +401,7 @@ def test_ambiguous_match_creates_new_event_without_judge_or_review() -> None:
     )
     repo = _AssemblyRepository(signal, candidate)
 
-    result = run_event_assembly(repo, match_threshold=0.75, review_threshold=0.55)
+    result = run_event_assembly(repo, match_threshold=0.95, review_threshold=0.80)
 
     assert result.events_created == 1
     assert result.signals_attached == 1
@@ -435,18 +438,10 @@ class _RequeueSession:
 
 
 def _valid_extraction() -> dict:
-    absence = {"reported": False, "text": "Not reported"}
     return {
-        "signal_type": "outbreak_report",
-        "title_english": "Unknown disease report",
-        "brief": [
-            {"slot": "what_where", **absence},
-            {"slot": "counts", **absence},
-            {"slot": "timing", **absence},
-            {"slot": "spread", **absence},
-            {"slot": "reporting", **absence},
-        ],
-        "confidence": 0.8,
+        "extraction_schema_version": 5,
+        "disease": "dengue",
+        "locations": [{"town": None, "country": "TH"}],
     }
 
 
@@ -466,7 +461,7 @@ def test_requeue_selects_only_valid_nonduplicate_nonirrelevant_rows() -> None:
         raw_text="body",
     )
     invalid = SimpleNamespace(
-        ai_extraction={"not": "an extraction"},
+        ai_extraction={"locations": [{"town": 123, "country": None}]},
         processing_status=ProcessingStatus.NEEDS_REVIEW,
         duplicate_of_signal_id=None,
         public_health_relevant=True,

@@ -35,7 +35,9 @@ class NoEventsToMatch(Exception):
 class EventRepository(Protocol):
     """The storage contract for event matching, observation recording, and scoring."""
 
-    def signals_to_match(self, limit: int, *, stale: bool = False) -> Sequence[SignalForMatching]:
+    def signals_to_match(
+        self, limit: int, *, stale: bool = False, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[SignalForMatching]:
         """Select signals at processing_status = 'extracted' (or matched when stale)."""
         ...
 
@@ -105,7 +107,7 @@ class EventRepository(Protocol):
         ...
 
     def events_awaiting_summary(
-        self, *, limit: int, max_age_hours: int
+        self, *, limit: int, max_age_hours: int, event_ids: Sequence[UUID] | None = None
     ) -> Sequence[EventForSummary]:
         """Events that may need a new summary, with the sources to summarize from."""
         ...
@@ -116,9 +118,11 @@ class EventRepository(Protocol):
         event_id: UUID,
         headline: str,
         summary: str,
-        status: str,
-        latest_development: str,
-        uncertainties: list[str],
+        trajectory: str,
+        snapshot: Sequence[str],
+        key_driver: str,
+        response: str,
+        risk: str,
         model_id: str,
         source_signal_ids: list[UUID],
         counts: dict[str, object] | None,

@@ -23,6 +23,8 @@
     "db:migrate": "uv run --package episignal-api alembic -c database/alembic.ini upgrade head",
     "db:rollback": "uv run --package episignal-api alembic -c database/alembic.ini downgrade -1",
     "db:seed": "uv run --package episignal-backend python -m episignal_backend.seed_runner",
+    "repair:historical-diseases": "uv run --package episignal-backend python -m episignal_backend.historical_disease_repair",
+    "repair:historical-event-diseases": "uv run --package episignal-backend python -m episignal_backend.historical_event_disease_repair",
     "discover:gdelt": "uv run --package episignal-backend python -m episignal_backend.discover_runner",
     "retrieve:gdelt": "uv run --package episignal-backend python -m episignal_backend.retrieve_runner",
     "dedupe:signals": "uv run --package episignal-backend python -m episignal_backend.dedupe_runner",
@@ -32,11 +34,13 @@
     "spend:report": "uv run --package episignal-backend python -m episignal_backend.spend_runner",
     "extract:signals": "uv run --package episignal-backend python -m episignal_backend.extract_runner",
     "extract:backfill": "uv run --package episignal-backend python -m episignal_backend.backfill_runner",
+    "metadata:repair-ai": "uv run --package episignal-backend python -m episignal_backend.metadata_repair_ai_runner",
     "geocode:signals": "uv run --package episignal-backend python -m episignal_backend.geocode_runner",
     "match:events": "uv run --package episignal-backend python -m episignal_backend.event_runner",
     "summarize:events": "uv run --package episignal-backend python -m episignal_backend.summarize_runner",
-    "test:pipeline": "uv run pytest packages/backend/tests/test_pipeline_fixture.py packages/backend/tests/test_dedupe.py -v",
+    "test:pipeline": "uv run pytest packages/backend/tests/test_pipeline_fixture.py packages/backend/tests/test_dedupe.py packages/backend/tests/test_pipeline_order_contract.py -v",
     "pipeline:run": "uv run --package episignal-backend python -m episignal_backend.pipeline_runner",
+    "monitor:health": "uv run --package episignal-backend python -m episignal_backend.monitoring_runner",
     "ingest:who": "uv run --package episignal-backend python -m episignal_backend.ingest_runner who-don",
 
 

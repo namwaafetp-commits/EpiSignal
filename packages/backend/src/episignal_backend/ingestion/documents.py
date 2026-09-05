@@ -239,6 +239,7 @@ class StubRetrieval(BaseModel):
     article: DiscoveredArticle
     first_seen_at: datetime
     attempts: int = Field(ge=0)
+    public_health_relevant: bool | None = None
 
     @property
     def normalized_title(self) -> str:
@@ -298,9 +299,9 @@ class Rejection(BaseModel):
 class ComparableSignal(BaseModel):
     """A stored signal with enough of itself to be compared to another.
 
-    Used both for the queue awaiting a decision and for the candidates it is
-    submitted against: the two carry the same fields and differ only in the query
-    that produced them.
+    A pre-fetch comparison may have no body yet; its repository adapter supplies
+    a non-empty metadata placeholder. Body-aware callers still require actual
+    article content before using body similarity.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -314,13 +315,6 @@ class ComparableSignal(BaseModel):
     published_at: datetime | None = None
     duplicate_of_signal_id: UUID | None = None
 
-    @field_validator("raw_text")
-    @classmethod
-    def raw_text_is_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("raw_text must not be blank")
-        return value
-
     @field_validator("first_seen_at")
     @classmethod
     def first_seen_at_is_aware(cls, value: datetime) -> datetime:
@@ -330,3 +324,10 @@ class ComparableSignal(BaseModel):
     @classmethod
     def published_at_is_aware(cls, value: datetime | None) -> datetime | None:
         return None if value is None else _require_aware(value)
+
+    @field_validator("raw_text")
+    @classmethod
+    def raw_text_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("raw_text must not be blank")
+        return value

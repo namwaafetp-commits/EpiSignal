@@ -9,10 +9,11 @@ behalf of the passes above it.
 import logging
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Select, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, Select, exists, func, or_, select, update
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from episignal_backend.ai.documents import (
     AiRequestRecord,
@@ -57,6 +58,13 @@ EXCERPT_CHARACTERS = 1200
 # The candidate list rides in one classification prompt, so it is capped: a
 # vocabulary too large for one request is also too large for one-shot choice.
 MAX_DISEASE_CANDIDATES = 400
+
+
+def _normalized_disease_text(
+    expression: ColumnElement[str] | InstrumentedAttribute[str],
+) -> ColumnElement[str]:
+    """Normalize reviewed vocabulary text using PostgreSQL string semantics."""
+    return func.lower(func.regexp_replace(func.trim(expression), r"[[:space:]]+", " ", "g"))
 
 
 class SqlAlchemyAiRepository:
@@ -114,31 +122,32 @@ class SqlAlchemyAiRepository:
             for row in rows
         )
 
-    def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]:
-        """Signals a relevance pass would read.
-
-        No stage calls this any more: the keyword gate decides relevance in the
-        retrieve stage for zero model requests. The query is kept honest rather
-        than stubbed out, so restoring the pass is one line in `stages.py` and
-        this method never lies to a caller about what is waiting.
-        """
+    def awaiting_classification(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ClassifiableSignal]:
+        """Discovery metadata waiting for the cheap relevance decision."""
+        conditions = [
+            Signal.processing_status.in_((ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED)),
+            Signal.public_health_relevant.is_(None),
+        ]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
         stmt = (
-            select(Signal)
-            .where(
-                Signal.processing_status == ProcessingStatus.NORMALIZED,
-                Signal.raw_text.is_not(None),
-                ~_deferred_by_open_group(),
-            )
+            select(Signal, Source.name)
+            .join(Source, Source.id == Signal.source_id)
+            .where(*conditions)
             .order_by(Signal.first_seen_at)
         )
-        rows = self._scan_valid_signals(stmt, limit, "classification")
+        rows = self._session.execute(stmt.limit(limit)).all()
         return tuple(
             ClassifiableSignal(
                 id=row.id,
                 title=row.title,
-                excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
+                excerpt=(row.raw_text or row.title)[:EXCERPT_CHARACTERS],
+                source_name=source_name,
+                published_at=row.published_at,
             )
-            for row in rows
+            for row, source_name in rows
         )
 
     def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]:
@@ -173,7 +182,7 @@ class SqlAlchemyAiRepository:
                     TriageableSignal(
                         id=row.id,
                         title=row.title,
-                        excerpt=(row.raw_text or "")[:EXCERPT_CHARACTERS],
+                        article_content=(row.raw_text or "")[:EXCERPT_CHARACTERS],
                         source_name=source_name,
                         url=row.url,
                         published_at=row.published_at,
@@ -206,17 +215,19 @@ class SqlAlchemyAiRepository:
             for row in rows
         )
 
-    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
-        stmt = (
-            select(Signal)
-            .where(
-                Signal.processing_status == ProcessingStatus.NORMALIZED,
-                Signal.triage_status == TriageStatus.DONE,
-                Signal.public_health_relevant.is_(True),
-                Signal.raw_text.is_not(None),
-            )
-            .order_by(Signal.first_seen_at)
-        )
+    def awaiting_extraction(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ExtractableSignal]:
+        conditions = [
+            Signal.processing_status.in_(
+                (ProcessingStatus.FETCHED, ProcessingStatus.NORMALIZED, ProcessingStatus.CLASSIFIED)
+            ),
+            Signal.public_health_relevant.is_(True),
+            Signal.raw_text.is_not(None),
+        ]
+        if signal_ids is not None:
+            conditions.append(Signal.id.in_(tuple(signal_ids)))
+        stmt = select(Signal).where(*conditions).order_by(Signal.first_seen_at)
         rows = self._scan_valid_signals(stmt, limit, "extraction")
         return tuple(
             ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
@@ -259,12 +270,13 @@ class SqlAlchemyAiRepository:
         # synonyms. No fuzzy matching: guessing which disease was meant is how a
         # measles report becomes a cholera event.
         needle = " ".join(name.split()).lower()
+        synonym = func.unnest(Disease.synonyms).column_valued("synonym")
         return self._session.execute(
             select(Disease.id).where(
                 or_(
-                    func.lower(Disease.canonical_name) == needle,
-                    func.lower(Disease.slug) == needle,
-                    Disease.synonyms.any(needle),  # type: ignore[arg-type]
+                    _normalized_disease_text(Disease.canonical_name) == needle,
+                    _normalized_disease_text(Disease.slug) == needle,
+                    exists(select(1).where(_normalized_disease_text(synonym) == needle)),
                 )
             )
         ).scalar_one_or_none()
@@ -316,11 +328,16 @@ class SqlAlchemyAiRepository:
         )
 
     def record_classification(self, signal_id: UUID, verdict: Verdict) -> None:
+        status = (
+            ProcessingStatus.CLASSIFIED
+            if verdict.is_public_health_relevant
+            else ProcessingStatus.FILTERED
+        )
         self._session.execute(
             update(Signal)
             .where(Signal.id == signal_id)
             .values(
-                processing_status=ProcessingStatus.CLASSIFIED,
+                processing_status=status,
                 public_health_relevant=verdict.is_public_health_relevant,
                 relevance_score=verdict.relevance,
                 signal_type=verdict.signal_type,
@@ -368,7 +385,12 @@ class SqlAlchemyAiRepository:
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         # The version is stamped here and never by the model: a version a model
         # can choose is a version that lies the moment the model is confused.
-        payload = stored.extraction.model_dump(mode="json")
+        payload: dict[str, Any] = {
+            "disease_text": stored.extraction.disease,
+            "locations": [
+                location.model_dump(mode="json") for location in stored.extraction.locations
+            ],
+        }
         payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
 
         self._session.execute(
@@ -380,8 +402,8 @@ class SqlAlchemyAiRepository:
                 ai_model=stored.model_id,
                 ai_processed_at=stored.processed_at,
                 disease_id=stored.disease_id,
-                signal_type=stored.extraction.signal_type,
-                summary="\n".join(point.text for point in stored.extraction.brief),
+                signal_type=SignalType.UNKNOWN,
+                summary=None,
             )
         )
 
@@ -462,7 +484,12 @@ class SqlAlchemyAiRepository:
     def record_cluster_extraction(
         self, *, representative_id: UUID, member_ids: Sequence[UUID], stored: StoredExtraction
     ) -> None:
-        payload = stored.extraction.model_dump(mode="json")
+        payload: dict[str, Any] = {
+            "disease_text": stored.extraction.disease,
+            "locations": [
+                location.model_dump(mode="json") for location in stored.extraction.locations
+            ],
+        }
         payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
 
         # Update the representative signal
@@ -475,8 +502,8 @@ class SqlAlchemyAiRepository:
                 ai_model=stored.model_id,
                 ai_processed_at=stored.processed_at,
                 disease_id=stored.disease_id,
-                signal_type=stored.extraction.signal_type,
-                summary="\n".join(point.text for point in stored.extraction.brief),
+                signal_type=SignalType.UNKNOWN,
+                summary=None,
             )
         )
 

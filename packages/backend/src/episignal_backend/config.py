@@ -3,7 +3,14 @@ from functools import lru_cache
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BeforeValidator,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -41,10 +48,16 @@ class Settings(BaseSettings):
         env_prefix="EPISIGNAL_",
         env_file="apps/api/.env",
         extra="ignore",
+        populate_by_name=True,
     )
 
     env: Literal["development", "test", "production"] = "development"
-    api_host: str = "127.0.0.1"
+    api_host: str = Field(
+        default="127.0.0.1",
+        # EPISIGNAL_API_HOST is a legacy compatibility alias; Compose routing
+        # requires EPISIGNAL_API_PUBLIC_HOST and never reads this alias.
+        validation_alias=AliasChoices("EPISIGNAL_API_BIND_HOST", "EPISIGNAL_API_HOST"),
+    )
     api_port: int = Field(default=8000, ge=1, le=65535)
     database_url: SecretStr
     # NoDecode stops pydantic-settings from JSON-decoding this sequence field

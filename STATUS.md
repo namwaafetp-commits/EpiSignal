@@ -4,15 +4,15 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-02
 
 ## Position
 
 | Field | Value |
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
-| Item | Real-data end-to-end surveillance validation |
-| Status | `verified` |
+| Item | Final simplified three-model surveillance pipeline |
+| Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [Lean MVP real-data validation design](docs/superpowers/specs/2026-08-31-real-data-mvp-validation-design.md) |
 | Plan | [Lean MVP real-data validation plan](docs/superpowers/plans/2026-08-31-real-data-mvp-validation.md) |
@@ -148,6 +148,13 @@ Lean MVP real-data validation: COMPLETE
 
 MVP verdict: MVP READY WITH MINOR FIXES
 
+## Verified baseline — Lean MVP branch reconciliation
+
+The branch baseline reconciliation was verified at commit `ad26140` with
+`corepack pnpm verify`: 1,222 Python tests and 105 frontend tests passed, with
+two existing dependency deprecation warnings. The completion report is
+[the Lean MVP test reconciliation report](docs/reports/2026-08-31-lean-mvp-test-reconciliation-report.md).
+
 Post-MVP follow-up only: one GDELT rule may intermittently return
 `GdeltUnavailable`, triage precision can improve later, and extraction
 benchmarking remains deferred. Model benchmarking, extraction benchmarking,
@@ -166,11 +173,23 @@ reopened.
 
 ## Next action
 
-Validation complete on branch `codex/real-data-mvp-validation`. The MVP is
-ready with minor fixes; residual provider availability and summary attribution
-risks are recorded in the validation report.
+Review and push the focused test-migration commit on
+`codex/final-three-model-pipeline`; production model-roster updates remain a
+separate authorized operation.
 
 ## Blockers
 
-Residual risks are recorded in
-[the real-data validation report](docs/reports/2026-08-31-real-data-mvp-validation.md).
+The implementation still needs planner handoff before the roadmap item is
+marked `verified`; the full gate is now green. See [the final pipeline
+report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
+
+## Task ledger — final simplified three-model pipeline
+
+- [x] DeepSeek V4 Flash relevance classification over discovery metadata only.
+- [x] Gemini 3.1 Flash-Lite identity extraction with one same-model repair.
+- [x] Deterministic disease/location normalization and exact multi-location grouping.
+- [x] Mistral Small 3.2 summary wiring over linked clean article sources.
+- [x] API/dashboard observation and multi-location surface updated; legacy rows retained.
+- [x] Focused acceptance, lint, type, contract generation, and web build checks passed.
+- [x] Full `corepack pnpm verify` gate: 1,188 Python tests passed, 1 skipped,
+  107 web tests passed, and 2 existing deprecation warnings.

@@ -11,15 +11,14 @@ This module imports neither SQLAlchemy nor httpx.
 from datetime import date
 from enum import StrEnum
 from typing import Any
-from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from episignal_backend.db.types import LocationRole, SignalType
 
 # Bumped when the shape of a stored extraction changes. Version 1 is every row
 # written before the brief existed: it has a `summary` and no `brief`.
-EXTRACTION_SCHEMA_VERSION = 3
+EXTRACTION_SCHEMA_VERSION = 5
 BACKFILL_MIN_SCHEMA_VERSION = 2
 EXTRACTION_VERSION_KEY = "extraction_schema_version"
 
@@ -343,11 +342,40 @@ class GroundedFlag(BaseModel):
         return _require_span(value)
 
 
+class GroundedEvidence(BaseModel):
+    """One evidence primitive, with the exact source that supports it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str = Field(min_length=1, max_length=SPAN_MAX_CHARACTERS)
+    source_span: str = Field(max_length=SPAN_MAX_CHARACTERS)
+    source_index: int = Field(default=0, ge=0)
+
+    @field_validator("text", "source_span")
+    @classmethod
+    def text_is_not_blank(cls, value: str) -> str:
+        return _require_span(value)
+
+
 class NamedEntity(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class DiseaseIdentity(str):
+    """String disease identity with read-only legacy ``name`` compatibility."""
+
+    @property
+    def name(self) -> str:
+        return str(self)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
+        from pydantic_core import core_schema
+
+        return core_schema.no_info_after_validator_function(cls, core_schema.str_schema())
 
 
 class ExtractedLocation(BaseModel):
@@ -396,72 +424,112 @@ class Transmission(BaseModel):
         return self.local_transmission is None and self.imported is None
 
 
-class Extraction(BaseModel):
+class ExtractionLocation(BaseModel):
+    """One event location exactly as the extraction model reports it."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    signal_type: SignalType
-    source_language: str | None = None
-    title_english: str = Field(min_length=1, max_length=TITLE_MAX_CHARACTERS)
-    brief: tuple[BriefPoint, ...]
-    disease: NamedEntity | None = None
-    pathogen: NamedEntity | None = None
-    locations: tuple[ExtractedLocation, ...] = ()
-    epidemiology: Epidemiology = Epidemiology()
-    dates: ExtractedDates = ExtractedDates()
-    transmission: Transmission | None = None
-    confidence: float = Field(ge=0.0, le=1.0)
+    town: str | None = Field(max_length=200)
+    country: str | None = Field(max_length=100)
 
-    @field_validator("source_language")
+    @field_validator("town", "country", mode="before")
     @classmethod
-    def language_is_a_code(cls, value: str | None) -> str | None:
-        # Null means the model was unsure, which is recorded rather than guessed.
-        if value is None:
-            return None
-        code = value.strip().lower()
-        if code not in ISO_639_1_CODES:
-            raise ValueError("source_language must be an ISO 639-1 two-letter code or null")
-        return code
-
-    @field_validator("title_english")
-    @classmethod
-    def collapse_title(cls, value: str) -> str:
+    def collapse_optional_text(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         collapsed = " ".join(value.split())
-        if not collapsed:
-            raise ValueError("title_english must not be blank")
-        return collapsed
-
-    @field_validator("brief")
-    @classmethod
-    def brief_fills_every_slot_in_order(
-        cls, value: tuple[BriefPoint, ...]
-    ) -> tuple[BriefPoint, ...]:
-        # Rejected, never re-ordered. A model that returned the slots in its own
-        # order did not follow the contract, and quietly sorting its answer
-        # teaches the next reader that the order was never load-bearing.
-        if tuple(point.slot for point in value) != BRIEF_SLOTS:
-            raise ValueError("brief must carry exactly one point per slot, in slot order")
-        return value
+        return collapsed or None
 
 
-class StoredExtractionPayload(Extraction):
-    """A stored extraction, read back out of `signals.ai_extraction`.
-
-    Strict on the way in, tolerant on the way back. The strict model is the
-    contract with a model and must keep rejecting a missing brief; this one
-    reads rows this system wrote itself, including rows written before the
-    brief existed and rows carrying the version key that `Extraction` forbids.
-
-    A version 1 row read this way has an empty brief and no English title. That
-    is the honest answer — it has neither — and the backfill is what changes it.
-    """
+class Extraction(BaseModel):
+    """The complete active model contract: event identity only."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    # Widening the parent's types is what makes an old row readable; mypy is
-    # right that this is not substitutable in general, and wrong that it matters
-    # here, because nothing writes through this model.
-    title_english: str | None = None  # type: ignore[assignment]
+    disease: DiseaseIdentity | None = Field(default=None, max_length=200)
+    # Deprecated fields remain readable for historical benchmark rows. The
+    # active wire parser below rejects them and storage omits them.
+    signal_type: SignalType = SignalType.UNKNOWN
+    source_language: str | None = None
+    title_english: str | None = None
     brief: tuple[BriefPoint, ...] = ()
+    pathogen: NamedEntity | None = None
+    epidemiology: Epidemiology = Epidemiology()
+    dates: ExtractedDates = ExtractedDates()
+    transmission: Transmission | None = None
+    response_actions: tuple[GroundedEvidence, ...] = ()
+    driver_or_barrier_evidence: tuple[GroundedEvidence, ...] = ()
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    locations: tuple[ExtractionLocation, ...] = ()
+
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Expose only the active identity contract on model-facing schemas."""
+        if cls is Extraction:
+            return extraction_json_schema()
+        return super().model_json_schema(*args, **kwargs)
+
+    @field_validator("disease", mode="before")
+    @classmethod
+    def collapse_disease(cls, value: object) -> object:
+        if isinstance(value, dict):
+            value = value.get("name")
+        if not isinstance(value, str):
+            return value
+        collapsed = " ".join(value.split())
+        return DiseaseIdentity(collapsed) if collapsed else None
+
+    @field_validator("locations")
+    @classmethod
+    def remove_exact_duplicates(
+        cls, value: tuple[ExtractionLocation, ...]
+    ) -> tuple[ExtractionLocation, ...]:
+        seen: set[tuple[str | None, str | None]] = set()
+        unique: list[ExtractionLocation] = []
+        for location in value:
+            key = (
+                location.town.casefold() if location.town else None,
+                location.country.casefold() if location.country else None,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(location)
+        return tuple(unique)
+
+
+class StoredExtractionPayload(Extraction):
+    """Read both current identity-only rows and historical extraction rows."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def translate_historical_shape(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        disease = payload.get("disease_text", payload.get("disease"))
+        if isinstance(disease, dict):
+            disease = disease.get("name")
+        locations: list[dict[str, object]] = []
+        raw_locations = payload.get("locations")
+        if isinstance(raw_locations, (list, tuple)):
+            for raw in raw_locations:
+                if not isinstance(raw, dict):
+                    continue
+                town = raw.get("town")
+                if town is None:
+                    town = raw.get("place_name") or raw.get("admin2") or raw.get("admin1")
+                locations.append(
+                    {
+                        "town": town,
+                        "country": raw.get("country")
+                        or raw.get("country_code")
+                        or raw.get("country_name"),
+                    }
+                )
+        return {"disease": disease, "locations": locations}
 
 
 def extraction_json_schema() -> dict[str, Any]:
@@ -470,18 +538,36 @@ def extraction_json_schema() -> dict[str, Any]:
     One source of truth: a prompt that describes a different shape from the
     validator is a prompt that produces rejections nobody can explain.
     """
-    return Extraction.model_json_schema()
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["disease", "locations"],
+        "properties": {
+            "disease": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "locations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["town", "country"],
+                    "properties": {
+                        "town": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                        "country": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    },
+                },
+            },
+        },
+    }
 
 
 class ClassificationVerdict(BaseModel):
-    """One signal's relevance decision, addressed by the id it was sent with."""
+    """One signal's relevance decision from discovery metadata only."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: UUID
-    is_public_health_relevant: bool
-    signal_type: SignalType
-    relevance: float = Field(ge=0.0, le=1.0)
+    relevant: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason_code: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ClassificationResponse(BaseModel):
@@ -494,4 +580,4 @@ class ClassificationResponse(BaseModel):
 
 
 def classification_json_schema() -> dict[str, Any]:
-    return ClassificationResponse.model_json_schema()
+    return ClassificationVerdict.model_json_schema()

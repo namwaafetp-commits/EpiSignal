@@ -390,6 +390,8 @@ export interface components {
              * Format: date-time
              */
             latest_report_at: string;
+            /** Locations */
+            locations: components["schemas"]["EventLocationResponse"][];
             /** Observations */
             observations: components["schemas"]["EventObservationResponse"][];
             /** Public Id */
@@ -446,32 +448,42 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** EventLocationResponse */
+        EventLocationResponse: {
+            /** Admin1 */
+            admin1: string | null;
+            /** Admin2 */
+            admin2: string | null;
+            /** Country Code */
+            country_code: string | null;
+            /** Latitude */
+            latitude: number | null;
+            /** Location Role */
+            location_role: string;
+            /** Longitude */
+            longitude: number | null;
+            /** Place Name */
+            place_name: string | null;
+            /** Precision */
+            precision: string;
+        };
         /** EventObservationResponse */
         EventObservationResponse: {
-            /** Confirmed Cases */
-            confirmed_cases: number | null;
-            /** Deaths */
-            deaths: number | null;
-            /** Extraction Confidence */
-            extraction_confidence: number | null;
-            /** Hospitalizations */
-            hospitalizations: number | null;
-            /** New Cases */
-            new_cases: number | null;
-            /** New Deaths */
-            new_deaths: number | null;
+            /** Material Facts */
+            material_facts: {
+                [key: string]: unknown;
+            } | null;
             /** Notes */
             notes: string | null;
             /** Observation Date */
             observation_date: string | null;
-            /** Probable Cases */
-            probable_cases: number | null;
             /** Reported At */
             reported_at: string | null;
-            /** Suspected Cases */
-            suspected_cases: number | null;
-            /** Total Cases */
-            total_cases: number | null;
+            /**
+             * Signal Id
+             * Format: uuid
+             */
+            signal_id: string;
         };
         /** EventSourceResponse */
         EventSourceResponse: {
@@ -516,15 +528,20 @@ export interface components {
             created_at: string;
             /** Headline */
             headline: string;
-            /** Latest Development */
-            latest_development: string | null;
+            /** Key Driver */
+            key_driver: string | null;
             /** Model Id */
             model_id: string;
-            status: components["schemas"]["EventStatus"];
+            /** Response */
+            response: string | null;
+            /** Risk */
+            risk: string | null;
+            /** Snapshot */
+            snapshot: string[] | null;
             /** Summary */
             summary: string;
-            /** Uncertainties */
-            uncertainties: string[] | null;
+            /** Trajectory */
+            trajectory: string;
             /** Version */
             version: number;
         };
@@ -971,7 +988,7 @@ export interface components {
          * @description One step of the pipeline. Never a rung of the model ladder: that is a tier.
          * @enum {string}
          */
-        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
+        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "classify" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
         /** ValidationError */
         ValidationError: {
             /** Context */

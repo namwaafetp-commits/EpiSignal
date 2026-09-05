@@ -215,7 +215,7 @@ function EventDetailPanel({
   detailLoading: boolean;
   onClose: () => void;
 }) {
-  const latestDevelopment = detail?.summaries[0]?.latest_development;
+  const publicRisk = detail?.summaries[0]?.risk;
 
   return (
     <aside
@@ -244,11 +244,12 @@ function EventDetailPanel({
       <p className="event-detail-panel__location">{eventLocation(event)}</p>
       <p className="event-detail-panel__summary">{event.summary}</p>
       <div className="event-detail-panel__development">
-        <span>Latest development</span>
+        <span>Public/global risk</span>
         <p className="line-clamp-2">
           {detailLoading
-            ? "Loading latest development…"
-            : (latestDevelopment ?? "No latest development recorded.")}
+            ? "Loading public/global risk…"
+            : (publicRisk ??
+              "Insufficient evidence for a broader risk assessment.")}
         </p>
       </div>
       <div className="event-detail-panel__sources">

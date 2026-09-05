@@ -88,21 +88,27 @@ class EventSourceResponse(BaseModel):
     is_primary: bool
 
 
+class EventLocationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    location_role: str
+    precision: str
+    country_code: str | None
+    admin1: str | None
+    admin2: str | None
+    place_name: str | None
+    latitude: float | None
+    longitude: float | None
+
+
 class EventObservationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    signal_id: UUID
     observation_date: date | None
     reported_at: datetime | None
-    suspected_cases: int | None
-    probable_cases: int | None
-    confirmed_cases: int | None
-    total_cases: int | None
-    new_cases: int | None
-    deaths: int | None
-    new_deaths: int | None
-    hospitalizations: int | None
     notes: str | None
-    extraction_confidence: float | None
+    material_facts: dict[str, object] | None
 
 
 class EventSummaryResponse(BaseModel):
@@ -111,9 +117,11 @@ class EventSummaryResponse(BaseModel):
     version: int
     headline: str
     summary: str
-    status: EventStatus
-    latest_development: str | None
-    uncertainties: list[str] | None
+    trajectory: str
+    snapshot: list[str] | None
+    key_driver: str | None
+    response: str | None
+    risk: str | None
     model_id: str
     created_at: datetime
 
@@ -137,6 +145,7 @@ class EventDetailResponse(BaseModel):
     last_summarized_at: datetime | None
     early_signal_score: float | None
     evidence_score: float | None
+    locations: list[EventLocationResponse]
     sources: list[EventSourceResponse]
     observations: list[EventObservationResponse]
     summaries: list[EventSummaryResponse]

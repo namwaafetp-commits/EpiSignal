@@ -16,12 +16,14 @@ def test_defaults_come_from_configuration() -> None:
     assert arguments.max_articles is None
 
 
-def test_retry_runs_before_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
-    from episignal_backend.ingestion.discovery import DiscoveryResult, RetryResult
+def test_a_discovery_run_with_rules_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from episignal_backend.ingestion.discovery import DiscoveryResult
 
     monkeypatch.setattr(
         "episignal_backend.discover_runner._run",
-        lambda _: (RetryResult(attempted=2, promoted=1), DiscoveryResult(rules_run=3)),
+        lambda _: DiscoveryResult(rules_run=3),
     )
     assert main([]) == 0
 

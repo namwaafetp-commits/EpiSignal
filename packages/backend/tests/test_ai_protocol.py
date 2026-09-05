@@ -78,6 +78,9 @@ class StubRepository:
     def record_extraction(self, signal_id: UUID, stored: StoredExtraction) -> None:
         return None
 
+    def record_extraction_failure(self, signal_id: UUID) -> None:
+        return None
+
     def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]:
         return ()
 

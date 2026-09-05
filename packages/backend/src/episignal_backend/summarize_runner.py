@@ -22,7 +22,7 @@ from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     configure_summary,
-    pick_representative_sources,
+    render_event_flash_brief,
     run_summary,
     should_resummarize,
     unique_summary_candidates,
@@ -91,10 +91,9 @@ def _run(arguments: Arguments) -> dict[str, int]:
                 skipped += 1
                 continue
 
-            sources = pick_representative_sources(
-                event.sources,
-                max_sources=settings.summary_max_sources,
-            )
+            # The contract requires consolidated evidence from every linked
+            # source; representative-source caps belong to the old summary.
+            sources = event.sources
             result = run_summary(
                 wiring.model,
                 wiring.spec,
@@ -115,10 +114,12 @@ def _run(arguments: Arguments) -> dict[str, int]:
                 repository.store_summary(
                     event_id=event.event_id,
                     headline=result.verdict.headline,
-                    summary=result.verdict.summary,
-                    status=result.verdict.status.value,
-                    latest_development=result.verdict.latest_development,
-                    uncertainties=list(result.verdict.uncertainties),
+                    summary=render_event_flash_brief(result.verdict),
+                    trajectory=result.verdict.trajectory.value,
+                    snapshot=list(result.verdict.snapshot),
+                    key_driver=result.verdict.key_driver,
+                    response=result.verdict.response,
+                    risk=result.verdict.risk,
                     model_id=wiring.spec.model_id,
                     source_signal_ids=[source.signal_id for source in sources],
                     counts=event.latest_observation,

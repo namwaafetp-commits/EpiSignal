@@ -8,19 +8,17 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
-from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from episignal_backend.ai.documents import ModelSpec
-from episignal_backend.ai.ladder import cost_row
 from episignal_backend.ai.protocol import ChatModel
 from episignal_backend.ai.schema import BriefPoint
-from episignal_backend.db.types import AiPurpose, RelationshipType
+from episignal_backend.db.types import RelationshipType
 from episignal_backend.events.cluster import build_clusters
-from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
 from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
 from episignal_backend.events.finalize import (
     finalize_event_creation,
@@ -53,6 +51,7 @@ class AssemblySummary(BaseModel):
     deltas_applied: int = 0
     ambiguous_judged: int = 0
     ambiguous_attached: int = 0
+    touched_event_ids: tuple[UUID, ...] = ()
 
 
 def _maybe_run_delta(
@@ -67,44 +66,9 @@ def _maybe_run_delta(
     cluster: StoryCluster,
     now: datetime | None,
 ) -> int:
-    """Run the delta pass when this attach followed a recent report.
-
-    Returns 1 when a delta landed, 0 otherwise. Every early return is a
-    no-op: the attach has already happened and must stand whether or not the
-    pass runs, succeeds, or fails.
-    """
-    if delta_model is None or delta_spec is None or followup_window_days is None:
-        return 0
-    if chosen is None or previous_brief is None:
-        return 0
-    reference = now or datetime.now(UTC)
-    if reference - chosen.last_updated_at > timedelta(days=followup_window_days):
-        return 0
-    briefed = [
-        sig for sig in cluster.signals if sig.extraction is not None and sig.extraction.brief
-    ]
-    if not briefed:
-        return 0
-
-    # The delta lands on this attach's newest report, so a reader comparing
-    # the row with its neighbours sees the change where the change was
-    # reported, not on an arbitrary member of the cluster.
-    target = max(briefed, key=lambda sig: sig.published_at or sig.first_seen_at)
-    target_brief = target.extraction.brief if target.extraction is not None else ()
-    result = run_delta(delta_model, delta_spec, previous=previous_brief, new=target_brief)
-    if result.attempt is not None:
-        repo.record_ai_request(
-            cost_row(
-                result.attempt,
-                purpose=AiPurpose.FOLLOW_UP,
-                signal_id=target.signal_id,
-                batch_size=1,
-                at=reference,
-            )
-        )
-    if result.outcome is DeltaOutcome.ACCEPTED and result.delta is not None:
-        repo.apply_delta(event_id, target.signal_id, delta_payload(result.delta))
-        return 1
+    """Legacy delta seam retained for historical callers; never active."""
+    del repo, delta_model, delta_spec, followup_window_days, event_id, chosen
+    del previous_brief, cluster, now
     return 0
 
 
@@ -128,6 +92,7 @@ def run_event_assembly(
     delta_model: ChatModel | None = None,
     delta_spec: ModelSpec | None = None,
     followup_window_days: float | None = None,
+    signal_ids: Sequence[UUID] | None = None,
 ) -> AssemblySummary:
     """Run the end-to-end event assembly pass.
 
@@ -139,7 +104,10 @@ def run_event_assembly(
     Ambiguous, refused, and incomplete matches create new events. Matching
     never waits for a model or a human decision.
     """
-    signals = repo.signals_to_match(limit=limit, stale=stale)
+    if signal_ids is None:
+        signals = repo.signals_to_match(limit=limit, stale=stale)
+    else:
+        signals = repo.signals_to_match(limit=limit, stale=stale, signal_ids=signal_ids)
     if not signals:
         repo.commit()
         return AssemblySummary(
@@ -149,6 +117,7 @@ def run_event_assembly(
             signals_attached=0,
             signals_refused=0,
             unclusterable=0,
+            touched_event_ids=(),
         )
 
     clusters, unclusterable = build_clusters(
@@ -163,6 +132,7 @@ def run_event_assembly(
     deltas_applied = 0
     ambiguous_judged = 0
     ambiguous_attached = 0
+    touched_event_ids: list[UUID] = []
 
     for cluster in clusters:
         candidates = repo.candidate_events(
@@ -193,6 +163,8 @@ def run_event_assembly(
         if decision.action is MatchAction.ATTACH:
             assert decision.event_id is not None
             event_id = decision.event_id
+            if event_id not in touched_event_ids:
+                touched_event_ids.append(event_id)
             match_score = decision.match_score if decision.match_score is not None else 1.0
             chosen = next((cand for cand in candidates if cand.event_id == event_id), None)
             previous_brief = repo.latest_brief(event_id)
@@ -244,6 +216,7 @@ def run_event_assembly(
             )
             logger.info("ambiguous match; created new event event_id=%s", created.event_id)
             events_created += 1
+            touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.CREATE:
@@ -256,6 +229,7 @@ def run_event_assembly(
             )
             logger.info("created event event_id=%s", created.event_id)
             events_created += 1
+            touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
         elif decision.action is MatchAction.REFUSE:
@@ -268,6 +242,7 @@ def run_event_assembly(
             )
             logger.info("multiple matches; created new event event_id=%s", created.event_id)
             events_created += 1
+            touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
     for sig in unclusterable:
@@ -280,6 +255,7 @@ def run_event_assembly(
         )
         logger.info("uncertain event fields; created new event event_id=%s", created.event_id)
         events_created += 1
+        touched_event_ids.append(created.event_id)
         signals_attached += 1
 
     repo.commit()
@@ -294,4 +270,5 @@ def run_event_assembly(
         deltas_applied=deltas_applied,
         ambiguous_judged=ambiguous_judged,
         ambiguous_attached=ambiguous_attached,
+        touched_event_ids=tuple(dict.fromkeys(touched_event_ids)),
     )

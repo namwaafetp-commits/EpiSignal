@@ -40,7 +40,7 @@ class SignalRepository(Protocol):
 
     def exists(self, url: str, content_hash: str) -> bool: ...
 
-    def add(self, signal: NormalizedSignal, source_id: UUID) -> None: ...
+    def add(self, signal: NormalizedSignal, source_id: UUID) -> UUID: ...
 
     def activate(self, source_id: UUID) -> None: ...
 
@@ -86,14 +86,18 @@ class DiscoveryRepository(Protocol):
 
     def publisher_source_id(self, publisher: Publisher) -> UUID: ...
 
-    def add(self, signal: DiscoveredSignal, source_id: UUID) -> None: ...
+    def add(self, signal: DiscoveredSignal, source_id: UUID) -> UUID: ...
 
     def stubs_awaiting_retrieval(
-        self, *, max_attempts: int, limit: int
+        self, *, max_attempts: int, limit: int, signal_ids: Sequence[UUID] | None = None
     ) -> Sequence[StubRetrieval]: ...
 
     def gated_awaiting_retrieval(
-        self, *, max_attempts: int, limit: int
+        self,
+        *,
+        max_attempts: int,
+        limit: int,
+        signal_ids: Sequence[UUID] | None = None,
     ) -> Sequence[StubRetrieval]: ...
 
     def record_filtered(self, signal_id: UUID) -> None: ...
@@ -121,7 +125,9 @@ class DedupeRepository(Protocol):
     GDELT query.
     """
 
-    def pending(self, *, limit: int) -> Sequence[ComparableSignal]: ...
+    def pending(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ComparableSignal]: ...
 
     def candidates(
         self, signal: ComparableSignal, *, window_hours: int
@@ -154,3 +160,7 @@ class RetrievalFailed(Exception):
     Distinct from `UnsupportedDocument`: the article is wanted, and the
     discovery is kept as a stub for retry, rather than rejected outright.
     """
+
+    def __init__(self, detail: str = "", *, category: str | None = None) -> None:
+        super().__init__(detail)
+        self.category = category

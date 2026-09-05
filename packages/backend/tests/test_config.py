@@ -96,6 +96,29 @@ def test_settings_parse_comma_separated_cors_origins_from_the_environment(monkey
     )
 
 
+def test_api_bind_host_prefers_new_name_and_accepts_legacy_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:secret@host/db")
+    monkeypatch.setenv("EPISIGNAL_API_HOST", "legacy.example.com")
+
+    legacy_settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert legacy_settings.api_host == "legacy.example.com"
+
+    monkeypatch.setenv("EPISIGNAL_API_BIND_HOST", "0.0.0.0")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.api_host == "0.0.0.0"
+
+    programmatic_settings = Settings(
+        api_host="10.0.0.1",
+        database_url="postgresql+psycopg://user:secret@host/db",
+        _env_file=None,
+    )
+    assert programmatic_settings.api_host == "10.0.0.1"
+
+
 def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/database"
@@ -249,7 +272,7 @@ def test_event_matching_defaults_are_set() -> None:
     settings = build_settings()
     assert settings.event_cluster_window_days == 7
     assert settings.event_cluster_distance_km == 50.0
-    assert settings.event_match_threshold == 0.75
+    assert settings.event_match_threshold == 0.60
     assert settings.event_match_recency_days == 90.0
     assert settings.event_match_distance_km == 50.0
     assert settings.event_match_batch_size == 100
