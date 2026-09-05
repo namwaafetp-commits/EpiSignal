@@ -96,6 +96,7 @@ class PipelineHealthRecord:
     # Derived from pipeline_runs.stage_counts; intentionally not persisted as
     # columns so this observability expansion requires no migration.
     stage_observability: Mapping[str, Any] = field(default_factory=dict)
+    recent_failures: Mapping[str, tuple[Mapping[str, Any], ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -139,28 +140,29 @@ class HealthSummary:
     quality_watch: Mapping[str, HealthMetric]
     unavailable_metrics: Mapping[str, str]
     stage_observability: Mapping[str, Any] = field(default_factory=dict)
+    recent_failures: Mapping[str, tuple[Mapping[str, Any], ...]] = field(default_factory=dict)
 
 
-def _stage_counts(outcome: ChainOutcome, stage: StageName) -> Mapping[str, int] | None:
+def _stage_counts(outcome: ChainOutcome, stage: StageName) -> Mapping[str, Any] | None:
     for item in outcome.outcomes:
         if item.stage is stage:
             return item.counts if item.ok else None
     return None
 
 
-def _count(counts: Mapping[str, int] | None, key: str) -> int | None:
+def _count(counts: Mapping[str, Any] | None, key: str) -> int | None:
     value = counts.get(key) if counts is not None else None
     return value if isinstance(value, int) else None
 
 
-def _sum_counts(counts: Mapping[str, int] | None, keys: Sequence[str]) -> int | None:
+def _sum_counts(counts: Mapping[str, Any] | None, keys: Sequence[str]) -> int | None:
     if counts is None or not all(key in counts for key in keys):
         return None
     values = [counts[key] for key in keys]
     return sum(value for value in values if isinstance(value, int))
 
 
-def _known_counts(counts: Mapping[str, int] | None, keys: Sequence[str]) -> dict[str, int]:
+def _known_counts(counts: Mapping[str, Any] | None, keys: Sequence[str]) -> dict[str, int]:
     if counts is None:
         return {}
     return {
@@ -170,7 +172,7 @@ def _known_counts(counts: Mapping[str, int] | None, keys: Sequence[str]) -> dict
     }
 
 
-def _failure_categories(counts: Mapping[str, int] | None) -> dict[str, int]:
+def _failure_categories(counts: Mapping[str, Any] | None) -> dict[str, int]:
     if counts is None:
         return {}
     prefix = "failure_"
@@ -184,7 +186,7 @@ def _failure_categories(counts: Mapping[str, int] | None) -> dict[str, int]:
     }
 
 
-def _failure_domains(counts: Mapping[str, int] | None) -> dict[str, int]:
+def _failure_domains(counts: Mapping[str, Any] | None) -> dict[str, int]:
     if counts is None:
         return {}
     prefix = "failure_domain:"
@@ -195,11 +197,31 @@ def _failure_domains(counts: Mapping[str, int] | None) -> dict[str, int]:
     }
 
 
+def _recent_failure_items(counts: Mapping[str, Any] | None) -> tuple[Mapping[str, Any], ...]:
+    if counts is None:
+        return ()
+    raw = counts.get("recent_failures")
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return ()
+    return tuple(item for item in raw if isinstance(item, Mapping))[-10:]
+
+
+def _recent_failures_by_stage(
+    *, mistral: Mapping[str, Any] | None, retrieval: Mapping[str, Any] | None
+) -> dict[str, tuple[Mapping[str, Any], ...]]:
+    result: dict[str, tuple[Mapping[str, Any], ...]] = {}
+    for stage, counts in (("mistral", mistral), ("retrieval", retrieval)):
+        items = _recent_failure_items(counts)
+        if items:
+            result[stage] = items
+    return result
+
+
 def _stage_observability(
     *,
-    gemini: Mapping[str, int] | None,
-    mistral: Mapping[str, int] | None,
-    retrieval: Mapping[str, int] | None,
+    gemini: Mapping[str, Any] | None,
+    mistral: Mapping[str, Any] | None,
+    retrieval: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     gemini_counts = _known_counts(
@@ -348,6 +370,7 @@ def build_health_record(
             mistral=mistral,
             retrieval=retrieval,
         ),
+        recent_failures=_recent_failures_by_stage(mistral=mistral, retrieval=retrieval),
         new_event_rate=_rate(new_events, event_total),
         matched_existing_event_rate=_rate(updated_events, event_total),
         duplicate_article_rate=_rate(
@@ -563,6 +586,23 @@ def _aggregate_stage_observability(
     return aggregate
 
 
+def _aggregate_recent_failures(
+    records: Sequence[PipelineHealthRecord],
+) -> dict[str, tuple[Mapping[str, Any], ...]]:
+    collected: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for record in records:
+        for stage, items in record.recent_failures.items():
+            collected[stage].extend(item for item in items if isinstance(item, Mapping))
+    result: dict[str, tuple[Mapping[str, Any], ...]] = {}
+    for stage, failure_items in collected.items():
+        ordered = sorted(
+            failure_items, key=lambda item: str(item.get("timestamp", "")), reverse=True
+        )
+        if ordered:
+            result[stage] = tuple(ordered[:10])
+    return result
+
+
 def _optional_mean(records: Sequence[PipelineHealthRecord], field_name: str) -> float | None:
     values = [getattr(record, field_name) for record in records]
     known = [value for value in values if isinstance(value, (int, float))]
@@ -748,4 +788,5 @@ def summarize_health(
         quality_watch=quality,
         unavailable_metrics=unavailable,
         stage_observability=_aggregate_stage_observability(completed),
+        recent_failures=_aggregate_recent_failures(completed),
     )

@@ -31,7 +31,14 @@ class SqlAlchemyPipelineHealthRepository:
         values = {
             field.name: getattr(record, field.name)
             for field in fields(PipelineHealthRecord)
-            if field.name not in {"run_id", "trigger", "stage_durations_sec", "stage_observability"}
+            if field.name
+            not in {
+                "run_id",
+                "trigger",
+                "stage_durations_sec",
+                "stage_observability",
+                "recent_failures",
+            }
         }
         values["pipeline_run_id"] = record.run_id
         self._session.merge(PipelineHealthRun(**values))
@@ -107,6 +114,7 @@ class SqlAlchemyPipelineHealthRepository:
                 mistral=_raw_stage_counts(stage_counts, "summarize"),
                 retrieval=_raw_stage_counts(stage_counts, "retrieve"),
             ),
+            recent_failures=_recent_failures(stage_counts),
             discovered=row.discovered,
             dedup_primary=row.dedup_primary,
             deepseek_requested=row.deepseek_requested,
@@ -151,11 +159,28 @@ def _stage_durations(raw: Any) -> dict[str, float]:
     return durations
 
 
-def _raw_stage_counts(raw: Any, stage: str) -> Mapping[str, int] | None:
+def _raw_stage_counts(raw: Any, stage: str) -> Mapping[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     counts = raw.get(stage)
     return counts if isinstance(counts, dict) else None
+
+
+def _recent_failures(raw: Any) -> dict[str, tuple[Mapping[str, Any], ...]]:
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, tuple[Mapping[str, Any], ...]] = {}
+    for stage_name, stage_key in (("mistral", "summarize"), ("retrieval", "retrieve")):
+        counts = raw.get(stage_key)
+        if not isinstance(counts, dict):
+            continue
+        failures = counts.get("recent_failures")
+        if not isinstance(failures, list):
+            continue
+        items = tuple(item for item in failures if isinstance(item, Mapping))[-10:]
+        if items:
+            result[stage_name] = items
+    return result
 
 
 def persist_pipeline_health_best_effort(record: PipelineHealthRecord) -> None:

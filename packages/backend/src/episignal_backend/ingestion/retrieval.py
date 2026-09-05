@@ -13,6 +13,8 @@ import logging
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from episignal_backend.diagnostics import FailureCategory, classify_retrieval_failure
@@ -41,6 +43,13 @@ class RetrievalResult:
     failed: int = 0
     failure_categories: dict[str, int] = field(default_factory=dict)
     failure_domains: dict[str, int] = field(default_factory=dict)
+    recent_failures: tuple[dict[str, Any], ...] = ()
+
+
+def _configured_timeout_seconds(connector: DiscoveryConnector) -> float | None:
+    fetcher = getattr(connector, "_fetcher", None)
+    timeout = getattr(fetcher, "_timeout_seconds", None)
+    return float(timeout) if isinstance(timeout, (int, float)) else None
 
 
 def run_retrieval(
@@ -67,6 +76,8 @@ def run_retrieval(
     unclassified = 0
     failure_categories: Counter[str] = Counter()
     failure_domains: Counter[str] = Counter()
+    recent_failures: list[dict[str, Any]] = []
+    timeout_seconds = _configured_timeout_seconds(connector)
 
     for item in waiting:
         if item.public_health_relevant is None:
@@ -136,6 +147,18 @@ def run_retrieval(
                     str(reason), category=getattr(reason, "category", None)
                 )
                 failure_categories[category.value] += 1
+                recent_failures.append(
+                    {
+                        "signal_id": str(item.signal_id),
+                        "domain": item.article.domain,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "category": category.value,
+                        "attempt": item.attempts + 1,
+                        "retry_count": item.attempts,
+                        "timeout_seconds": timeout_seconds,
+                    }
+                )
+                del recent_failures[:-10]
                 logger.info(
                     "Retrieval of %s failed (%s)",
                     item.article.canonical_url,
@@ -173,4 +196,5 @@ def run_retrieval(
         failed=failed,
         failure_categories=dict(failure_categories),
         failure_domains=dict(failure_domains),
+        recent_failures=tuple(recent_failures),
     )

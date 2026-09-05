@@ -26,6 +26,11 @@ from episignal_backend.ai.registry import model_for_purpose
 from episignal_backend.ai.validate import Rejected, RejectionReason
 from episignal_backend.config import Settings
 from episignal_backend.db.types import AiOutcome, AiPurpose
+from episignal_backend.diagnostics import (
+    classify_ai_failure,
+    http_status_class,
+    sanitize_failure_message,
+)
 from episignal_backend.events.documents import EventForSummary, SummarySource
 
 SUMMARY_SCHEMA_NAME = "event_summary"
@@ -115,6 +120,9 @@ class SummaryResult:
     outcome: SummaryOutcome
     verdict: EventSummaryVerdict | None = None
     attempt: Attempt | None = None
+    failure_reason: str | None = None
+    failure_exception_class: str | None = None
+    retry_count: int = 0
 
 
 def unique_summary_candidates(
@@ -227,18 +235,21 @@ def run_summary(
 
     try:
         response = model.complete(request)
-    except ModelUnavailable:
+    except ModelUnavailable as error:
         return SummaryResult(
             outcome=SummaryOutcome.UNAVAILABLE,
             attempt=Attempt(
                 spec=spec,
                 usage=TokenUsage(),
-                http_status=None,
+                http_status=getattr(error, "http_status", None),
                 latency_ms=0,
                 outcome=AiOutcome.UNAVAILABLE,
                 reason=None,
                 cost=cost_usd(TokenUsage(), spec),
             ),
+            failure_reason=str(error) or None,
+            failure_exception_class=type(error).__name__,
+            retry_count=max(0, getattr(error, "attempts", 1) - 1),
         )
 
     try:
@@ -255,6 +266,8 @@ def run_summary(
                 reason=rejection.reason.value,
                 cost=cost_usd(response.usage, spec),
             ),
+            failure_reason=rejection.reason.value,
+            failure_exception_class=type(rejection).__name__,
         )
 
     return SummaryResult(
@@ -270,6 +283,30 @@ def run_summary(
             cost=cost_usd(response.usage, spec),
         ),
     )
+
+
+def build_summary_failure_diagnostic(
+    event: EventForSummary, result: SummaryResult, *, at: datetime
+) -> dict[str, object] | None:
+    """Build bounded case-level telemetry for a non-successful summary."""
+    if result.outcome is SummaryOutcome.ACCEPTED or result.attempt is None:
+        return None
+    attempt = result.attempt
+    return {
+        "event_id": event.public_id,
+        "timestamp": at.isoformat(),
+        "provider": attempt.spec.provider.value,
+        "model": attempt.spec.model_id,
+        "category": classify_ai_failure(
+            result.failure_reason,
+            http_status=attempt.http_status,
+            rejected=result.outcome is SummaryOutcome.REJECTED,
+        ).value,
+        "retry_count": result.retry_count,
+        "provider_status_class": http_status_class(attempt.http_status),
+        "exception_class": result.failure_exception_class,
+        "message": sanitize_failure_message(result.failure_reason),
+    }
 
 
 def configure_summary(settings: Settings, specs: list[ModelSpec]) -> SummaryWiring:

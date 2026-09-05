@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 
@@ -58,7 +59,7 @@ class StageOutcome:
 
     stage: StageName
     ok: bool
-    counts: Mapping[str, int] = field(default_factory=dict)
+    counts: Mapping[str, Any] = field(default_factory=dict)
     # The exception's type name only. Never its payload: an exception raised
     # near the session can carry the connection string.
     error: str | None = None

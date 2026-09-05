@@ -204,10 +204,52 @@ def test_malformed_or_unavailable_summary_is_not_accepted() -> None:
 
             raise ModelUnavailable("429")
 
-    assert (
-        run_summary(Unavailable(), spec(), event=event(), sources=(source("Report"),)).outcome
-        is SummaryOutcome.UNAVAILABLE
-    )
+    unavailable = run_summary(Unavailable(), spec(), event=event(), sources=(source("Report"),))
+    assert unavailable.outcome is SummaryOutcome.UNAVAILABLE
+    assert unavailable.failure_exception_class == "ModelUnavailable"
+    assert unavailable.failure_reason == "429"
+
+
+def test_unavailable_summary_diagnostic_is_case_identifiable_and_sanitized() -> None:
+    class Unavailable:
+        def complete(self, request):
+            from episignal_backend.ai.protocol import ModelUnavailable
+
+            raise ModelUnavailable("api_key=secret full provider response should not persist")
+
+    from episignal_backend.events.summarize import build_summary_failure_diagnostic
+
+    current_event = event()
+    result = run_summary(Unavailable(), spec(), event=current_event, sources=(source("Report"),))
+    diagnostic = build_summary_failure_diagnostic(current_event, result, at=NOW)
+
+    assert diagnostic is not None
+    assert diagnostic["event_id"] == current_event.public_id
+    assert diagnostic["category"] == "provider_unavailable"
+    assert diagnostic["exception_class"] == "ModelUnavailable"
+    assert diagnostic["provider"] == "openrouter"
+    assert diagnostic["model"] == spec().model_id
+    assert "secret" not in str(diagnostic)
+    assert "provider response" in diagnostic["message"]
+
+
+def test_unavailable_summary_diagnostic_keeps_provider_retry_metadata() -> None:
+    class Unavailable:
+        def complete(self, request):
+            from episignal_backend.ai.protocol import ModelUnavailable
+
+            raise ModelUnavailable("429", attempts=2, http_status=429)
+
+    from episignal_backend.events.summarize import build_summary_failure_diagnostic
+
+    current_event = event()
+    result = run_summary(Unavailable(), spec(), event=current_event, sources=(source("Report"),))
+    diagnostic = build_summary_failure_diagnostic(current_event, result, at=NOW)
+
+    assert diagnostic is not None
+    assert diagnostic["category"] == "http_429"
+    assert diagnostic["retry_count"] == 1
+    assert diagnostic["provider_status_class"] == "4xx"
 
 
 def test_summary_verdict_keeps_one_to_three_article_facts() -> None:

@@ -217,6 +217,19 @@ def test_retrieval_failure_category_is_recorded_without_changing_retry_behavior(
     assert repository.failed_attempts == [MEASLES_STORY.signal_id]
 
 
+def test_retrieval_failure_diagnostic_records_signal_domain_and_attempts() -> None:
+    repository = FakeRetrievalRepository(waiting=(MEASLES_STORY,), rules=(OUTBREAK,))
+    connector = CountingConnector(failing=True)
+
+    result = run_retrieval(repository, connector, max_attempts=3, batch_size=10)  # type: ignore[arg-type]
+
+    assert result.recent_failures[0]["signal_id"] == str(MEASLES_STORY.signal_id)
+    assert result.recent_failures[0]["domain"] == "example.vn"
+    assert result.recent_failures[0]["category"] == "other"
+    assert result.recent_failures[0]["attempt"] == 1
+    assert "article" not in result.recent_failures[0]
+
+
 def test_intentional_filter_duplicate_and_redundant_outcomes_are_not_failures() -> None:
     irrelevant = STADIUM.model_copy(update={"public_health_relevant": False})
     redundant = make_stub("Fresh malaria report", "https://example.vn/malaria")
@@ -233,6 +246,7 @@ def test_intentional_filter_duplicate_and_redundant_outcomes_are_not_failures() 
     assert result.duplicates == 1
     assert result.redundant == 1
     assert result.failure_categories == {}
+    assert result.recent_failures == ()
 
 
 def test_a_redundant_promotion_is_counted_not_failed() -> None:

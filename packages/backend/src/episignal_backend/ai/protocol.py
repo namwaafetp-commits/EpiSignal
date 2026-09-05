@@ -103,6 +103,13 @@ class ModelUnavailable(Exception):
     about the signal, so the signal must stay exactly as it was.
     """
 
+    def __init__(
+        self, detail: str = "", *, attempts: int = 1, http_status: int | None = None
+    ) -> None:
+        super().__init__(detail)
+        self.attempts = attempts
+        self.http_status = http_status
+
 
 class NoModelsConfigured(Exception):
     """The roster holds no active row, so there is no ladder to climb."""

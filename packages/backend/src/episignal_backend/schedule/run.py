@@ -11,11 +11,12 @@ and the failure policy testable without a database.
 
 from collections.abc import Callable, Mapping, Sequence
 from time import perf_counter
+from typing import Any
 
 from episignal_backend.diagnostics import classify_exception
 from episignal_backend.schedule.documents import ChainOutcome, StageName, StageOutcome
 
-StageRunner = Callable[[], Mapping[str, int]]
+StageRunner = Callable[[], Mapping[str, Any]]
 
 
 def run_chain(

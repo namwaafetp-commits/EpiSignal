@@ -285,6 +285,57 @@ def test_retrieval_observability_preserves_terminal_states_and_failures() -> Non
     }
 
 
+def test_recent_failure_output_is_bounded_and_does_not_change_stage_health() -> None:
+    failures = [
+        {
+            "event_id": f"EVT-{index}",
+            "category": "provider_unavailable",
+            "timestamp": f"2026-09-04T{index:02d}:00:00+00:00",
+        }
+        for index in range(12)
+    ]
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.SUMMARIZE,
+                True,
+                {
+                    "examined": 1,
+                    "summarized": 0,
+                    "failed": 0,
+                    "unavailable": 1,
+                    "recent_failures": failures,
+                },
+            ),
+        )
+    )
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+    summary = summarize_health([record], now=NOW)
+
+    assert summary.stage_success_rates["mistral"].value == 0.0
+    assert len(summary.recent_failures["mistral"]) == 10
+    assert summary.recent_failures["mistral"][0]["event_id"] == "EVT-11"
+
+
+def test_zero_failures_keep_recent_failure_output_clean() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.SUMMARIZE,
+                True,
+                {"examined": 1, "summarized": 1, "failed": 0, "unavailable": 0},
+            ),
+        )
+    )
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+
+    assert summarize_health([record], now=NOW).recent_failures == {}
+
+
 def test_build_health_record_exposes_stage_durations_and_failure_categories() -> None:
     outcome = ChainOutcome(
         outcomes=(

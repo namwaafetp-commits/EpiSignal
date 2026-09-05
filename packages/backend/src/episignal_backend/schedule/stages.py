@@ -12,6 +12,7 @@ on a different connection for the whole run.
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
+from typing import Any
 
 from episignal_backend.ai.classify import run_classification
 from episignal_backend.ai.extract import run_extraction
@@ -28,6 +29,7 @@ from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     SummaryResult,
+    build_summary_failure_diagnostic,
     configure_summary,
     render_event_flash_brief,
     run_summary,
@@ -106,7 +108,7 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, i
     }
 
 
-def _retrieve(cohort: PipelineCohort) -> Mapping[str, int]:
+def _retrieve(cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
     connector = GdeltConnector(
         search=GdeltDocClient(),
@@ -134,6 +136,7 @@ def _retrieve(cohort: PipelineCohort) -> Mapping[str, int]:
         "redundant": result.redundant,
         "still_failing": result.still_failing,
         "failed": result.failed,
+        "recent_failures": list(result.recent_failures),
         **{f"failure_domain:{key}": value for key, value in result.failure_domains.items()},
         **{f"failure_{key}": value for key, value in result.failure_categories.items()},
     }
@@ -292,7 +295,7 @@ def _match(cohort: PipelineCohort) -> Mapping[str, int]:
     }
 
 
-def _summarize(cohort: PipelineCohort) -> Mapping[str, int]:
+def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
     now = datetime.now(UTC)
     with session_scope() as session:
@@ -310,6 +313,7 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, int]:
         summarized = 0
         failed = 0
         unavailable = 0
+        recent_failures: list[dict[str, object]] = []
 
         pending: list[tuple[EventForSummary, tuple[SummarySource, ...]]] = []
         for event in unique_summary_candidates(awaiting):
@@ -381,6 +385,10 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, int]:
                         unavailable += 1
                     else:
                         failed += 1
+                    diagnostic = build_summary_failure_diagnostic(event, result, at=now)
+                    if diagnostic is not None:
+                        recent_failures.append(diagnostic)
+                        del recent_failures[:-10]
                     event_repository.commit()
 
         event_repository.commit()
@@ -391,6 +399,7 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, int]:
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,
+        "recent_failures": recent_failures,
     }
 
 

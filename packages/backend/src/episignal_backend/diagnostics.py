@@ -30,6 +30,23 @@ class FailureCategory(StrEnum):
 
 
 _STATUS_PATTERN = re.compile(r"\b([1-5][0-9]{2})\b")
+_SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|token|authorization|bearer)\s*[:=]\s*[^\s,;]+")
+
+
+def sanitize_failure_message(reason: str | None, *, limit: int = 160) -> str | None:
+    """Keep a short diagnostic reason without persisting obvious credentials."""
+    if not reason:
+        return None
+    collapsed = " ".join(reason.split())
+    collapsed = _SECRET_PATTERN.sub(r"\1=<redacted>", collapsed)
+    return collapsed[:limit] or None
+
+
+def http_status_class(status: int | None) -> str | None:
+    """Return a bounded HTTP class for telemetry, never a response payload."""
+    if not isinstance(status, int) or isinstance(status, bool):
+        return None
+    return f"{status // 100}xx"
 
 
 def _status_category(status: Any) -> FailureCategory | None:
