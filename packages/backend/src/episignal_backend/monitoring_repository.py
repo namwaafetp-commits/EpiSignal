@@ -1,6 +1,7 @@
 """Best-effort storage boundary for operational pipeline health telemetry."""
 
 import logging
+from collections.abc import Mapping
 from dataclasses import fields
 from datetime import datetime, timedelta
 from typing import Any
@@ -14,6 +15,7 @@ from episignal_backend.models import PipelineHealthRun, PipelineRun
 from episignal_backend.operational_monitoring import (
     PipelineHealthRecord,
     PipelineRunCoverageRecord,
+    _stage_observability,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ class SqlAlchemyPipelineHealthRepository:
         values = {
             field.name: getattr(record, field.name)
             for field in fields(PipelineHealthRecord)
-            if field.name not in {"run_id", "trigger", "stage_durations_sec"}
+            if field.name not in {"run_id", "trigger", "stage_durations_sec", "stage_observability"}
         }
         values["pipeline_run_id"] = record.run_id
         self._session.merge(PipelineHealthRun(**values))
@@ -100,6 +102,11 @@ class SqlAlchemyPipelineHealthRepository:
             trigger=trigger,
             duration_sec=row.duration_sec,
             stage_durations_sec=_stage_durations(stage_counts),
+            stage_observability=_stage_observability(
+                gemini=_raw_stage_counts(stage_counts, "extract"),
+                mistral=_raw_stage_counts(stage_counts, "summarize"),
+                retrieval=_raw_stage_counts(stage_counts, "retrieve"),
+            ),
             discovered=row.discovered,
             dedup_primary=row.dedup_primary,
             deepseek_requested=row.deepseek_requested,
@@ -142,6 +149,13 @@ def _stage_durations(raw: Any) -> dict[str, float]:
         if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0:
             durations[stage] = float(duration)
     return durations
+
+
+def _raw_stage_counts(raw: Any, stage: str) -> Mapping[str, int] | None:
+    if not isinstance(raw, dict):
+        return None
+    counts = raw.get(stage)
+    return counts if isinstance(counts, dict) else None
 
 
 def persist_pipeline_health_best_effort(record: PipelineHealthRecord) -> None:

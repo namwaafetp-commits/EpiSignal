@@ -134,6 +134,7 @@ def _retrieve(cohort: PipelineCohort) -> Mapping[str, int]:
         "redundant": result.redundant,
         "still_failing": result.still_failing,
         "failed": result.failed,
+        **{f"failure_domain:{key}": value for key, value in result.failure_domains.items()},
         **{f"failure_{key}": value for key, value in result.failure_categories.items()},
     }
 

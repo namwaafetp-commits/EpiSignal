@@ -39,6 +39,7 @@ def test_health_summary_serializes_to_structured_json() -> None:
         volume_anomaly=VolumeAnomaly.INSUFFICIENT_DATA,
         quality_watch={"unknown_disease_rate": HealthMetric(None, HealthStatus.NEUTRAL)},
         unavailable_metrics={"endpoint_latency_ms": "not instrumented"},
+        stage_observability={"gemini": {"examined": 1, "extracted": 1}},
     )
 
     decoded = json.loads(json.dumps(health_summary_to_dict(summary)))
@@ -50,3 +51,4 @@ def test_health_summary_serializes_to_structured_json() -> None:
         "status": "healthy",
     }
     assert decoded["quality_watch"]["unknown_disease_rate"]["value"] is None
+    assert decoded["stage_observability"]["gemini"] == {"examined": 1, "extracted": 1}

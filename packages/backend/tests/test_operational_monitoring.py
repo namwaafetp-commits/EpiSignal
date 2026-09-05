@@ -138,6 +138,153 @@ def test_build_health_record_maps_existing_stage_counts_without_changing_stages(
     assert record.fatal_error_count == 0
 
 
+def test_gemini_health_uses_signal_count_when_retries_increase_provider_requests() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.EXTRACT,
+                True,
+                {
+                    "examined": 1,
+                    "extracted": 1,
+                    "rejected": 0,
+                    "unavailable": 0,
+                    "requests": 2,
+                    "expanded_retries": 1,
+                },
+            ),
+        )
+    )
+
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+    summary = summarize_health([record], now=NOW)
+
+    assert summary.stage_success_rates["gemini"].value == 1.0
+    assert summary.stage_observability["gemini"] == {
+        "examined": 1,
+        "extracted": 1,
+        "failed": 0,
+        "unavailable": 0,
+        "provider_requests": 2,
+        "expanded_retries": 1,
+    }
+
+
+def test_gemini_health_reports_one_signal_and_one_provider_request_as_one_of_one() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.EXTRACT,
+                True,
+                {"examined": 1, "extracted": 1, "requests": 1, "expanded_retries": 0},
+            ),
+        )
+    )
+
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+
+    assert summarize_health([record], now=NOW).stage_success_rates["gemini"].value == 1.0
+
+
+def test_gemini_health_counts_signal_level_partial_failure_not_provider_attempts() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.EXTRACT,
+                True,
+                {
+                    "examined": 2,
+                    "extracted": 1,
+                    "rejected": 0,
+                    "unavailable": 1,
+                    "requests": 3,
+                    "expanded_retries": 1,
+                },
+            ),
+        )
+    )
+
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+    summary = summarize_health([record], now=NOW)
+
+    assert summary.stage_success_rates["gemini"].value == 0.5
+    assert summary.stage_observability["gemini"]["provider_requests"] == 3
+
+
+def test_mistral_observability_keeps_skips_out_of_failure_denominator() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.SUMMARIZE,
+                True,
+                {"examined": 4, "summarized": 1, "skipped": 1, "failed": 1, "unavailable": 1},
+            ),
+        )
+    )
+
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+    summary = summarize_health([record], now=NOW)
+
+    assert summary.stage_success_rates["mistral"].value == pytest.approx(1 / 3)
+    assert summary.stage_observability["mistral"] == {
+        "examined": 4,
+        "summarized": 1,
+        "skipped": 1,
+        "failed": 1,
+        "unavailable": 1,
+    }
+
+
+def test_retrieval_observability_preserves_terminal_states_and_failures() -> None:
+    outcome = ChainOutcome(
+        outcomes=(
+            StageOutcome(
+                StageName.RETRIEVE,
+                True,
+                {
+                    "examined": 6,
+                    "retrieved": 1,
+                    "filtered": 1,
+                    "duplicates": 1,
+                    "redundant": 1,
+                    "failed": 1,
+                    "still_failing": 1,
+                    "unclassified": 0,
+                    "failure_http_429": 1,
+                    "failure_domain:example.vn": 1,
+                },
+            ),
+        )
+    )
+
+    record = build_health_record(
+        run_id=uuid4(), started_at=NOW - timedelta(minutes=1), finished_at=NOW, outcome=outcome
+    )
+    summary = summarize_health([record], now=NOW)
+
+    assert summary.stage_success_rates["retrieval"].value == pytest.approx(4 / 6)
+    assert summary.stage_observability["retrieval"] == {
+        "examined": 6,
+        "retrieved": 1,
+        "filtered": 1,
+        "duplicates": 1,
+        "redundant": 1,
+        "failed": 1,
+        "still_failing": 1,
+        "unclassified": 0,
+        "failure_categories": {"http_429": 1},
+        "failure_domains": {"example.vn": 1},
+    }
+
+
 def test_build_health_record_exposes_stage_durations_and_failure_categories() -> None:
     outcome = ChainOutcome(
         outcomes=(

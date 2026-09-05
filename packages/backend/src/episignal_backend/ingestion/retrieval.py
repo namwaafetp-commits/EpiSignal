@@ -40,6 +40,7 @@ class RetrievalResult:
     still_failing: int = 0
     failed: int = 0
     failure_categories: dict[str, int] = field(default_factory=dict)
+    failure_domains: dict[str, int] = field(default_factory=dict)
 
 
 def run_retrieval(
@@ -65,6 +66,7 @@ def run_retrieval(
     failed = 0
     unclassified = 0
     failure_categories: Counter[str] = Counter()
+    failure_domains: Counter[str] = Counter()
 
     for item in waiting:
         if item.public_health_relevant is None:
@@ -80,6 +82,7 @@ def run_retrieval(
                 repository.rollback()
                 failed += 1
                 failure_categories[FailureCategory.STORAGE_FAILURE.value] += 1
+                failure_domains[item.article.domain] += 1
                 logger.error(
                     "Could not record the filtering of %s (%s)",
                     item.article.canonical_url,
@@ -100,6 +103,7 @@ def run_retrieval(
                 repository.rollback()
                 failed += 1
                 failure_categories[FailureCategory.STORAGE_FAILURE.value] += 1
+                failure_domains[item.article.domain] += 1
                 logger.error(
                     "Could not record title duplicate %s (%s)",
                     item.article.canonical_url,
@@ -119,6 +123,7 @@ def run_retrieval(
                 repository.rollback()
                 failed += 1
                 failure_categories[FailureCategory.STORAGE_FAILURE.value] += 1
+                failure_domains[item.article.domain] += 1
                 logger.error(
                     "Could not record a failed attempt for %s (%s)",
                     item.article.canonical_url,
@@ -126,6 +131,7 @@ def run_retrieval(
                 )
             else:
                 still_failing += 1
+                failure_domains[item.article.domain] += 1
                 category = classify_retrieval_failure(
                     str(reason), category=getattr(reason, "category", None)
                 )
@@ -149,6 +155,7 @@ def run_retrieval(
         except Exception as error:
             repository.rollback()
             failed += 1
+            failure_domains[item.article.domain] += 1
             logger.error(
                 "Could not store the body of %s (%s)",
                 item.article.canonical_url,
@@ -165,4 +172,5 @@ def run_retrieval(
         still_failing=still_failing,
         failed=failed,
         failure_categories=dict(failure_categories),
+        failure_domains=dict(failure_domains),
     )

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from statistics import mean
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -92,6 +93,9 @@ class PipelineHealthRecord:
     endpoint_latency_ms: float | None = None
     db_query_duration_ms: float | None = None
     unavailable_metrics: Mapping[str, str] = field(default_factory=dict)
+    # Derived from pipeline_runs.stage_counts; intentionally not persisted as
+    # columns so this observability expansion requires no migration.
+    stage_observability: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -134,6 +138,7 @@ class HealthSummary:
     volume_anomaly: VolumeAnomaly
     quality_watch: Mapping[str, HealthMetric]
     unavailable_metrics: Mapping[str, str]
+    stage_observability: Mapping[str, Any] = field(default_factory=dict)
 
 
 def _stage_counts(outcome: ChainOutcome, stage: StageName) -> Mapping[str, int] | None:
@@ -153,6 +158,95 @@ def _sum_counts(counts: Mapping[str, int] | None, keys: Sequence[str]) -> int | 
         return None
     values = [counts[key] for key in keys]
     return sum(value for value in values if isinstance(value, int))
+
+
+def _known_counts(counts: Mapping[str, int] | None, keys: Sequence[str]) -> dict[str, int]:
+    if counts is None:
+        return {}
+    return {
+        key: value
+        for key in keys
+        if isinstance(value := counts.get(key), int) and not isinstance(value, bool)
+    }
+
+
+def _failure_categories(counts: Mapping[str, int] | None) -> dict[str, int]:
+    if counts is None:
+        return {}
+    prefix = "failure_"
+    return {
+        key.removeprefix(prefix): value
+        for key, value in counts.items()
+        if key.startswith(prefix)
+        and not key.startswith("failure_domain:")
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+    }
+
+
+def _failure_domains(counts: Mapping[str, int] | None) -> dict[str, int]:
+    if counts is None:
+        return {}
+    prefix = "failure_domain:"
+    return {
+        key.removeprefix(prefix): value
+        for key, value in counts.items()
+        if key.startswith(prefix) and isinstance(value, int) and not isinstance(value, bool)
+    }
+
+
+def _stage_observability(
+    *,
+    gemini: Mapping[str, int] | None,
+    mistral: Mapping[str, int] | None,
+    retrieval: Mapping[str, int] | None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    gemini_counts = _known_counts(
+        gemini,
+        ("examined", "extracted", "rejected", "unavailable", "requests", "expanded_retries"),
+    )
+    if gemini_counts:
+        result["gemini"] = {
+            "examined": gemini_counts.get("examined"),
+            "extracted": gemini_counts.get("extracted"),
+            "failed": gemini_counts.get("rejected"),
+            "unavailable": gemini_counts.get("unavailable"),
+            "provider_requests": gemini_counts.get("requests"),
+            "expanded_retries": gemini_counts.get("expanded_retries"),
+        }
+        result["gemini"] = {
+            key: value for key, value in result["gemini"].items() if value is not None
+        }
+
+    mistral_counts = _known_counts(
+        mistral, ("examined", "summarized", "skipped", "failed", "unavailable")
+    )
+    if mistral_counts:
+        result["mistral"] = mistral_counts
+
+    retrieval_counts = _known_counts(
+        retrieval,
+        (
+            "examined",
+            "retrieved",
+            "filtered",
+            "duplicates",
+            "redundant",
+            "failed",
+            "still_failing",
+            "unclassified",
+        ),
+    )
+    if retrieval_counts:
+        result["retrieval"] = retrieval_counts
+        categories = _failure_categories(retrieval)
+        domains = _failure_domains(retrieval)
+        if categories:
+            result["retrieval"]["failure_categories"] = categories
+        if domains:
+            result["retrieval"]["failure_domains"] = domains
+    return result
 
 
 def _rate(numerator: int | None, denominator: int | None) -> float | None:
@@ -197,6 +291,7 @@ def build_health_record(
         for key, value in item.counts.items():
             if (
                 key.startswith("failure_")
+                and not key.startswith("failure_domain:")
                 and isinstance(value, int)
                 and not isinstance(value, bool)
             ):
@@ -248,6 +343,11 @@ def build_health_record(
         summarized_events=_count(mistral, "summarized"),
         fatal_error_count=fatal_error_count,
         error_categories=dict(errors),
+        stage_observability=_stage_observability(
+            gemini=gemini,
+            mistral=mistral,
+            retrieval=retrieval,
+        ),
         new_event_rate=_rate(new_events, event_total),
         matched_existing_event_rate=_rate(updated_events, event_total),
         duplicate_article_rate=_rate(
@@ -426,6 +526,43 @@ def _optional_sum(records: Sequence[PipelineHealthRecord], field_name: str) -> i
     return sum(known) if known else None
 
 
+def _optional_observation_sum(
+    records: Sequence[PipelineHealthRecord],
+    stage: str,
+    key: str,
+    fallback_field: str,
+) -> int | None:
+    values: list[int] = []
+    for record in records:
+        stage_values = record.stage_observability.get(stage, {})
+        value = stage_values.get(key) if isinstance(stage_values, Mapping) else None
+        if not isinstance(value, int):
+            value = getattr(record, fallback_field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            values.append(value)
+    return sum(values) if values else None
+
+
+def _aggregate_stage_observability(
+    records: Sequence[PipelineHealthRecord],
+) -> dict[str, Any]:
+    aggregate: dict[str, Any] = {}
+    for record in records:
+        for stage, raw_values in record.stage_observability.items():
+            if not isinstance(raw_values, Mapping):
+                continue
+            stage_values = aggregate.setdefault(stage, {})
+            for key, value in raw_values.items():
+                if isinstance(value, Mapping):
+                    nested = stage_values.setdefault(key, {})
+                    for nested_key, nested_value in value.items():
+                        if isinstance(nested_value, int) and not isinstance(nested_value, bool):
+                            nested[nested_key] = nested.get(nested_key, 0) + nested_value
+                elif isinstance(value, int) and not isinstance(value, bool):
+                    stage_values[key] = stage_values.get(key, 0) + value
+    return aggregate
+
+
 def _optional_mean(records: Sequence[PipelineHealthRecord], field_name: str) -> float | None:
     values = [getattr(record, field_name) for record in records]
     known = [value for value in values if isinstance(value, (int, float))]
@@ -532,8 +669,8 @@ def summarize_health(
             STAGE_TARGETS["retrieval"],
         ),
         "gemini": _stage_metric(
-            _optional_sum(completed, "gemini_requested"),
-            _optional_sum(completed, "gemini_success"),
+            _optional_observation_sum(completed, "gemini", "examined", "gemini_requested"),
+            _optional_observation_sum(completed, "gemini", "extracted", "gemini_success"),
             STAGE_TARGETS["gemini"],
         ),
         "grouping": _stage_metric(
@@ -610,4 +747,5 @@ def summarize_health(
         volume_anomaly=volume_anomaly,
         quality_watch=quality,
         unavailable_metrics=unavailable,
+        stage_observability=_aggregate_stage_observability(completed),
     )

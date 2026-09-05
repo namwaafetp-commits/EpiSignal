@@ -213,6 +213,7 @@ def test_retrieval_failure_category_is_recorded_without_changing_retry_behavior(
 
     assert result.still_failing == 1
     assert result.failure_categories == {"other": 1}
+    assert result.failure_domains == {"example.vn": 1}
     assert repository.failed_attempts == [MEASLES_STORY.signal_id]
 
 
