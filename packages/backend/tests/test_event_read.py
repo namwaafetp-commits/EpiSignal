@@ -361,10 +361,7 @@ def test_dashboard_prefers_canonical_and_preserves_fallback_signal_selection() -
 
 
 def test_dashboard_bulk_fallback_stays_bounded_for_many_events() -> None:
-    events = [
-        (_dashboard_event(uuid4(), f"EVT-{index:03d}"), None)
-        for index in range(25)
-    ]
+    events = [(_dashboard_event(uuid4(), f"EVT-{index:03d}"), None) for index in range(25)]
     session = FakeSession([FakeResult(events), FakeResult([])])
 
     page = query_dashboard_events(session)
