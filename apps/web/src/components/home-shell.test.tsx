@@ -203,6 +203,9 @@ describe("HomeShell", () => {
 
   it("selects a map marker and opens a floating detail panel", async () => {
     vi.useRealTimers();
+    // Keep waitFor's timers real while pinning the date used by event filters.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
     getEventDetail.mockResolvedValue(detail);
     render(<HomeShell apiStatus="ready" eventFeed={ready} />);
 

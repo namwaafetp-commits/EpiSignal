@@ -1,5 +1,9 @@
 # EpiSignal
 
+Deterministic Telegram daily health reports and abnormal/recovery alerts:
+[configuration, commands, and proposed scheduling](docs/telegram-monitoring.md).
+Deployment is a separate review step.
+
 Open global outbreak intelligence. EpiSignal turns public health reporting into
 traceable events: every claim keeps the source that made it, the time it was
 made, and the observation history that followed.
@@ -138,4 +142,3 @@ Nothing is overwritten in place: new reporting arrives as new observations.
 
 Place names are resolved against a GeoNames extract. See
 `database/seeds/gazetteer/ATTRIBUTION.md` for the CC BY 4.0 attribution.
-

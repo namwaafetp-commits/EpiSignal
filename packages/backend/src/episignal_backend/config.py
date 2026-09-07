@@ -1,5 +1,6 @@
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
@@ -66,6 +67,23 @@ class Settings(BaseSettings):
         "http://localhost:3000",
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    telegram_bot_token: SecretStr = SecretStr("")
+    telegram_chat_id: SecretStr = SecretStr("")
+    # Required for notifications: choose a file on a persistent local mount.
+    telegram_state_path: Path | None = None
+
+    @field_validator("telegram_state_path", mode="before")
+    @classmethod
+    def blank_telegram_state_path(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("telegram_state_path")
+    @classmethod
+    def telegram_state_path_is_absolute(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_absolute():
+            raise ValueError("EPISIGNAL_TELEGRAM_STATE_PATH must be an absolute path")
+        return value
 
     gdelt_poll_interval_minutes: int = Field(default=15, ge=1, le=1440)
     gdelt_query_window_minutes: int = Field(default=20, ge=1, le=10080)

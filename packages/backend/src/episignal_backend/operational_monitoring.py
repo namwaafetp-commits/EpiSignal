@@ -26,6 +26,12 @@ HEALTHY_COVERAGE = 0.98
 WARNING_COVERAGE = 0.95
 HEALTHY_SUCCESS = 0.99
 WARNING_SUCCESS = 0.95
+HEALTHY_FRESHNESS_MINUTES = 30
+WARNING_FRESHNESS_MINUTES = 60
+HEALTHY_RUNTIME_SECONDS = 15 * 60
+WARNING_RUNTIME_SECONDS = 30 * 60
+HEALTHY_FATAL_ERRORS = 0
+WARNING_FATAL_ERRORS = 1
 STAGE_TARGETS = {
     "deepseek": 0.99,
     "retrieval": 0.95,
@@ -497,9 +503,9 @@ def _coverage_status(coverage: float | None) -> HealthStatus:
 def _freshness_status(minutes: float | None) -> HealthStatus:
     if minutes is None:
         return HealthStatus.CRITICAL
-    if minutes < 30:
+    if minutes < HEALTHY_FRESHNESS_MINUTES:
         return HealthStatus.HEALTHY
-    if minutes <= 60:
+    if minutes <= WARNING_FRESHNESS_MINUTES:
         return HealthStatus.WARNING
     return HealthStatus.CRITICAL
 
@@ -507,9 +513,9 @@ def _freshness_status(minutes: float | None) -> HealthStatus:
 def _runtime_status(seconds: float | None) -> HealthStatus:
     if seconds is None:
         return HealthStatus.NEUTRAL
-    if seconds < 900:
+    if seconds < HEALTHY_RUNTIME_SECONDS:
         return HealthStatus.HEALTHY
-    if seconds <= 1800:
+    if seconds <= WARNING_RUNTIME_SECONDS:
         return HealthStatus.WARNING
     return HealthStatus.CRITICAL
 
@@ -517,9 +523,9 @@ def _runtime_status(seconds: float | None) -> HealthStatus:
 def _fatal_status(errors: int | None) -> HealthStatus:
     if errors is None:
         return HealthStatus.NEUTRAL
-    if errors == 0:
+    if errors == HEALTHY_FATAL_ERRORS:
         return HealthStatus.HEALTHY
-    if errors == 1:
+    if errors == WARNING_FATAL_ERRORS:
         return HealthStatus.WARNING
     return HealthStatus.CRITICAL
 
