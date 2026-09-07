@@ -193,3 +193,25 @@ report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
 - [x] Focused acceptance, lint, type, contract generation, and web build checks passed.
 - [x] Full `corepack pnpm verify` gate: 1,188 Python tests passed, 1 skipped,
   107 web tests passed, and 2 existing deprecation warnings.
+
+## Task ledger — deterministic Telegram monitoring (2026-09-07)
+
+- [x] Reuse the existing read-only HealthSummary evaluation and preserve its semantics.
+- [x] Add deterministic daily, abnormal, and recovery formatters plus safe Telegram transport.
+- [x] Persist observed state and delivery checkpoints; suppress duplicates and retry failed sends.
+- [x] Integrate monitoring-only CLI modes; document proposed UTC/ICT cron and durable mount.
+- [x] Resolve independent standards/specification review findings with regression tests.
+- [x] Full repository gate passed: 107 web tests; 1,418 Python tests passed, 2 skipped.
+- [x] Focused monitoring/notification suites: 138 passed; lint, format, types, contracts, build passed.
+
+The tested implementation tree is committed as
+`a053e19af26440df819e447a0297e601ea20d1fb`. The current expected Alembic head
+remains `20260904_0022`; no production migrations or deployment were performed.
+Two PostgreSQL tests remain skipped without `EPISIGNAL_TEST_DATABASE_URL`.
+The existing web marker test received a test-only clock correction; map code
+and all monitoring health semantics are unchanged.
+
+Completion evidence and review points:
+[Telegram monitoring report](docs/reports/2026-09-07-telegram-monitoring-report.md).
+Next action: review the commits and proposed notification configuration/schedule.
+**NOT DEPLOYED.** Final push confirmation is recorded in the task response.
