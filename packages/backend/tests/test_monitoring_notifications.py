@@ -273,3 +273,48 @@ def test_failed_new_condition_does_not_hide_return_to_previous_condition(config,
             settings=config,
         )
     assert send.call_count == 3
+
+
+@pytest.mark.parametrize("outer_daily", [False, True])
+def test_daily_alert_lock_contention_leaves_loser_eligible_for_retry(
+    config, monkeypatch, caplog, outer_daily
+):
+    from episignal_backend import monitoring_notifications as notifications
+
+    snapshot = summary(HealthStatus.CRITICAL)
+    messages = []
+    blocked_results = []
+
+    def send(text, *, settings):
+        messages.append(text)
+        if len(messages) == 1:
+            # The first real notification transaction is still holding the file lock.
+            blocked_results.append(
+                notifications.notify_health(
+                    snapshot, now=NOW, settings=config, daily=not outer_daily
+                )
+            )
+        return DeliveryResult.DELIVERED
+
+    monkeypatch.setattr(notifications, "send_telegram_message", send)
+    assert (
+        notifications.notify_health(snapshot, now=NOW, settings=config, daily=outer_daily)
+        is DeliveryResult.DELIVERED
+    )
+    assert blocked_results == [DeliveryResult.FAILED]
+    assert len(messages) == 1
+    assert "notification_failed reason=state_or_format" in caplog.text
+    assert (
+        notifications.notify_health(
+            snapshot, now=NOW + timedelta(minutes=1), settings=config, daily=not outer_daily
+        )
+        is DeliveryResult.DELIVERED
+    )
+    for daily in (False, True):
+        assert (
+            notifications.notify_health(
+                snapshot, now=NOW + timedelta(minutes=2), settings=config, daily=daily
+            )
+            is None
+        )
+    assert len(messages) == 2

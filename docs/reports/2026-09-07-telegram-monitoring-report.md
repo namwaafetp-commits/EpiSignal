@@ -1,5 +1,7 @@
 # Telegram monitoring implementation report
 
+> Scheduling proposal superseded by the [local cadence correction report](2026-09-07-telegram-cadence-correction-report.md) and current [deployment proposal](../telegram-monitoring.md). The original implementation evidence below is historical; do not install its five-minute polling proposal.
+
 ## 1. Summary
 
 Implemented deterministic daily health reports, WARNING/CRITICAL transition

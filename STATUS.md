@@ -215,3 +215,21 @@ Completion evidence and review points:
 [Telegram monitoring report](docs/reports/2026-09-07-telegram-monitoring-report.md).
 Next action: review the commits and proposed notification configuration/schedule.
 **NOT DEPLOYED.** Final push confirmation is recorded in the task response.
+
+## Task ledger — local Telegram cadence correction (2026-09-07)
+
+- [x] Reproduce routine hourly freshness WARNING/recovery cycles with five-minute polling.
+- [x] Document post-run evaluation plus independent :16/:26 watchdog proposal.
+- [x] Separate daily primary/retry at 08:20/08:21 ICT (01:20/01:21 UTC).
+- [x] Keep SQLite implementation and one-second timeout; test contention in both modes.
+- [x] Label production assumptions and all scheduler entries as unverified proposals.
+- [x] Independent standards and specification reviews: no actionable findings.
+- [x] Local gate: 1,432 Python tests passed, 2 skipped, 2 warnings; 107 web tests passed.
+- [x] Backend suite: 1,360 passed, 2 skipped; monitoring/notification suites: 150 passed.
+
+No runtime source, monitoring semantics, thresholds, AI, surveillance behavior,
+production configuration, or migrations changed. Alembic head: `20260904_0022`.
+Evidence: [cadence correction report](docs/reports/2026-09-07-telegram-cadence-correction-report.md).
+Next action: separate deployment-time verification of actual scheduler phase,
+runtime, wrapper, container, timezone, environment, and persistent mount.
+**NOT DEPLOYED. VPS NOT ACCESSED. COOLIFY NOT ACCESSED. PRODUCTION CRON NOT MODIFIED.**
