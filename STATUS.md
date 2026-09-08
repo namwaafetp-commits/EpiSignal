@@ -233,3 +233,14 @@ Evidence: [cadence correction report](docs/reports/2026-09-07-telegram-cadence-c
 Next action: separate deployment-time verification of actual scheduler phase,
 runtime, wrapper, container, timezone, environment, and persistent mount.
 **NOT DEPLOYED. VPS NOT ACCESSED. COOLIFY NOT ACCESSED. PRODUCTION CRON NOT MODIFIED.**
+
+## Task ledger — additive surveillance dimensions and flexible summaries (2026-09-08)
+
+- [x] Map all 30 seeded diseases to the explicit additive disease-group taxonomy with unknown fallback.
+- [x] Add nullable DeepSeek host-sector classification, deterministic event derivation, persistence, filters, and UI labels.
+- [x] Add strict flexible Mistral summaries with 3–5 bullets while preserving legacy summary rendering.
+- [x] Expose additive API/contracts and persist flexible summary payloads in event and summary history.
+- [x] Run the full repository gate: 117 web tests, 1,458 Python tests, 2 skipped, lint, format, types, contracts, and build passed.
+
+Completion evidence: [surveillance dimensions and flexible summaries report](docs/reports/2026-09-08-surveillance-dimensions-and-flexible-summaries-report.md).
+Commit: `bb7aaeb`. Local only; no production migration or deployment was performed.
