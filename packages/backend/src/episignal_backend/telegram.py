@@ -48,10 +48,28 @@ def send_telegram_message(text: str, *, settings: Settings | None = None) -> Del
             headers={"Content-Type": "application/json"},
         )
         response = connection.getresponse()
+        try:
+            payload = json.loads(response.read(65537))
+        except (TypeError, UnicodeDecodeError, ValueError):
+            payload = None
+        if response.status == 429:
+            retry_after = None
+            if isinstance(payload, dict):
+                parameters = payload.get("parameters")
+                if isinstance(parameters, dict):
+                    candidate = parameters.get("retry_after")
+                    if isinstance(candidate, int) and not isinstance(candidate, bool):
+                        retry_after = candidate if candidate >= 0 else None
+            if retry_after is None:
+                logger.warning("telegram_delivery_failed reason=rate_limited")
+            else:
+                logger.warning(
+                    "telegram_delivery_failed reason=rate_limited retry_after=%d", retry_after
+                )
+            return DeliveryResult.FAILED
         if response.status != 200:
             logger.warning("telegram_delivery_failed reason=http status=%d", response.status)
             return DeliveryResult.FAILED
-        payload = json.loads(response.read(65537))
         if not isinstance(payload, dict) or payload.get("ok") is not True:
             logger.warning("telegram_delivery_failed reason=api")
             return DeliveryResult.FAILED

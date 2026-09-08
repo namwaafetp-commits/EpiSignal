@@ -42,7 +42,30 @@ def test_send_telegram_message_uses_bounded_plain_text_https(
         "link_preview_options": {"is_disabled": True},
     }
     assert "parse_mode" not in body
+    response.read.assert_called_once_with(65537)
     connection.close.assert_called_once()
+
+
+def test_rate_limited_response_logs_retry_after_without_sensitive_data(monkeypatch, caplog):
+    from episignal_backend import telegram
+
+    connection = Mock()
+    connection.getresponse.return_value.status = 429
+    connection.getresponse.return_value.read.return_value = (
+        b'{"ok":false,"description":"secret description","parameters":{"retry_after":123}}'
+    )
+    monkeypatch.setattr(telegram, "HTTPSConnection", Mock(return_value=connection))
+
+    with caplog.at_level(logging.DEBUG):
+        result = telegram.send_telegram_message("payload-secret", settings=settings())
+
+    assert result is telegram.DeliveryResult.FAILED
+    assert caplog.messages == ["telegram_delivery_failed reason=rate_limited retry_after=123"]
+    assert "secret-token" not in caplog.text
+    assert "-10042" not in caplog.text
+    assert "payload-secret" not in caplog.text
+    assert "secret description" not in caplog.text
+    connection.getresponse.return_value.read.assert_called_once_with(65537)
 
 
 @pytest.mark.parametrize(
@@ -74,6 +97,69 @@ def test_http_and_api_failures_are_sanitized(monkeypatch, caplog, status, payloa
     assert "-10042" not in caplog.text
     assert "/bot" not in caplog.text
     connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b'{"ok":false}', b'{"parameters":{"retry_after":"123"}}', b"not JSON"],
+    ids=["absent", "malformed_retry_after", "malformed_json"],
+)
+def test_rate_limited_response_without_valid_retry_after_is_sanitized(monkeypatch, caplog, payload):
+    from episignal_backend import telegram
+
+    connection = Mock()
+    connection.getresponse.return_value.status = 429
+    connection.getresponse.return_value.read.return_value = payload
+    monkeypatch.setattr(telegram, "HTTPSConnection", Mock(return_value=connection))
+
+    with caplog.at_level(logging.DEBUG):
+        result = telegram.send_telegram_message("payload-secret", settings=settings())
+
+    assert result is telegram.DeliveryResult.FAILED
+    assert caplog.messages == ["telegram_delivery_failed reason=rate_limited"]
+    assert "secret-token" not in caplog.text
+    assert "-10042" not in caplog.text
+    assert "payload-secret" not in caplog.text
+    connection.getresponse.return_value.read.assert_called_once_with(65537)
+
+
+def test_other_non_200_response_logs_status_without_response_data(monkeypatch, caplog):
+    from episignal_backend import telegram
+
+    connection = Mock()
+    connection.getresponse.return_value.status = 503
+    connection.getresponse.return_value.read.return_value = b'{"description":"secret description"}'
+    monkeypatch.setattr(telegram, "HTTPSConnection", Mock(return_value=connection))
+
+    with caplog.at_level(logging.DEBUG):
+        result = telegram.send_telegram_message("payload-secret", settings=settings())
+
+    assert result is telegram.DeliveryResult.FAILED
+    assert caplog.messages == ["telegram_delivery_failed reason=http status=503"]
+    assert "secret description" not in caplog.text
+    assert "secret-token" not in caplog.text
+    assert "-10042" not in caplog.text
+    assert "payload-secret" not in caplog.text
+
+
+def test_response_read_failure_is_transport_failure_and_sanitized(monkeypatch, caplog):
+    from episignal_backend import telegram
+
+    connection = Mock()
+    connection.getresponse.return_value.status = 429
+    connection.getresponse.return_value.read.side_effect = OSError(
+        "https://api.telegram.org/bot12345:secret-token/sendMessage"
+    )
+    monkeypatch.setattr(telegram, "HTTPSConnection", Mock(return_value=connection))
+
+    with caplog.at_level(logging.DEBUG):
+        result = telegram.send_telegram_message("payload-secret", settings=settings())
+
+    assert result is telegram.DeliveryResult.FAILED
+    assert caplog.messages == ["telegram_delivery_failed reason=transport"]
+    assert "secret-token" not in caplog.text
+    assert "-10042" not in caplog.text
+    assert "payload-secret" not in caplog.text
 
 
 @pytest.mark.parametrize(
