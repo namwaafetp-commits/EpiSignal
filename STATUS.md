@@ -244,3 +244,14 @@ runtime, wrapper, container, timezone, environment, and persistent mount.
 
 Completion evidence: [surveillance dimensions and flexible summaries report](docs/reports/2026-09-08-surveillance-dimensions-and-flexible-summaries-report.md).
 Commit: `bb7aaeb`. Local only; no production migration or deployment was performed.
+
+## Review corrections — surveillance dimensions (2026-09-08)
+
+- [x] Unknown filters include unmapped canonical disease slugs.
+- [x] `/events` filter links preserve combined query parameters and clear only the active filter.
+- [x] New Mistral responses require only the flexible 3–5 bullet contract; legacy rows remain readable.
+- [x] Flexible homepage summaries omit the legacy risk block while historical summaries retain compatibility.
+- [x] Review correction gate passed: 125 web tests, 1,460 Python tests, 2 skipped, contracts, and build passed.
+
+Evidence: [surveillance review corrections report](docs/reports/2026-09-08-surveillance-review-corrections-report.md).
+Fix commit: `bc51db3`; migration head remains `20260908_0023`.
