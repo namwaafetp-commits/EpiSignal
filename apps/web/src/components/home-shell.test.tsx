@@ -256,6 +256,48 @@ describe("HomeShell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("does not add the legacy risk section to a flexible summary", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+    getEventDetail.mockResolvedValue(detail);
+    const flexibleReady: DashboardFeedState = {
+      status: "ready",
+      data: {
+        items: [
+          {
+            ...EVENTS[0],
+            summary_payload: {
+              title: "Cholera activity is being monitored",
+              bullets: [
+                "Cases were reported in Cacuaco.",
+                "Local response teams are investigating.",
+                "Further reporting is expected.",
+              ],
+              takeaway: "Watch for evidence of wider transmission.",
+            },
+          },
+          EVENTS[1],
+        ],
+        total: 2,
+      },
+    };
+
+    render(<HomeShell apiStatus="ready" eventFeed={flexibleReady} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open marker" }));
+
+    const dialog = screen.getByRole("dialog", { name: /event details/i });
+    expect(
+      within(dialog).getByText("Cholera activity is being monitored"),
+    ).toBeVisible();
+    expect(
+      within(dialog).queryByText("Public/global risk"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Risk remains regional."),
+    ).not.toBeInTheDocument();
+  });
+
   it("combines region, disease, and time filters and preserves them in Calendar", () => {
     render(<HomeShell apiStatus="ready" eventFeed={ready} />);
 

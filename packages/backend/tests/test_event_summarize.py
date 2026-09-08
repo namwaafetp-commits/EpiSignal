@@ -52,12 +52,9 @@ def source(text: str, *, title: str = "Dengue report") -> SummarySource:
 def valid_answer() -> str:
     return json.dumps(
         {
-            "headline": "ignored by canonicalizer",
-            "trajectory": "Increasing",
-            "snapshot": ["Three cases", "Two deaths"],
-            "key_driver": "Rainfall",
-            "response": "Case investigation",
-            "risk": "Regional risk",
+            "title": "Dengue activity in Cebu",
+            "bullets": ["Three cases", "Two deaths", "Case investigation"],
+            "takeaway": "Reports indicate continued activity.",
         }
     )
 
@@ -88,16 +85,14 @@ class EvidenceAwareModel:
         return ChatResponse(
             content=json.dumps(
                 {
-                    "headline": "ignored",
-                    "trajectory": "Increasing",
-                    "snapshot": [
+                    "title": "Dengue activity in Cebu",
+                    "bullets": [
                         "42 confirmed cases on 20 August 2026",
                         "2 deaths",
                         "Mosquito transmission reported",
+                        "Response teams were deployed.",
                     ],
-                    "key_driver": "Mosquito transmission",
-                    "response": "Response teams were deployed.",
-                    "risk": "Regional risk",
+                    "takeaway": "Mosquito transmission remains the key reported concern.",
                 }
             ),
             latency_ms=1,
@@ -124,20 +119,23 @@ def test_summary_evidence_is_article_grounded_for_counts_transmission_response_a
     )
     result = run_summary(model, spec(), event=event(), sources=(source(article),))
     assert result.outcome is SummaryOutcome.ACCEPTED
-    assert result.verdict is not None
-    assert "42 confirmed cases on 20 August 2026" in result.verdict.snapshot
-    assert result.verdict.response == "Response teams were deployed."
+    assert isinstance(result.verdict, FlexibleEventSummary)
+    assert "42 confirmed cases on 20 August 2026" in result.verdict.bullets
+    assert "Response teams were deployed." in result.verdict.bullets
 
 
-def test_summary_canonicalizes_event_heading_and_renders_contract() -> None:
-    result = run_summary(Model(), spec(), event=event(), sources=(source("Report"),))
-    assert result.verdict is not None
-    assert result.verdict.headline == "Dengue Outbreak: Cebu — Increasing"
+def test_new_summary_uses_existing_event_heading_and_renders_flexible_contract() -> None:
+    current = event().model_copy(update={"headline": "Canonical event title"})
+    result = run_summary(Model(), spec(), event=current, sources=(source("Report"),))
+    assert isinstance(result.verdict, FlexibleEventSummary)
+    assert result.verdict.title == "Canonical event title"
     rendered = render_event_flash_brief(result.verdict)
-    assert "The Snapshot:" in rendered and "Key Driver:" in rendered
+    assert "• Three cases" in rendered
+    assert "Takeaway:" in rendered
+    assert "Key Driver:" not in rendered
 
 
-def test_summary_uses_fixed_fallbacks_from_model_output() -> None:
+def test_legacy_shaped_model_output_is_rejected_for_new_summary_requests() -> None:
     answer = json.dumps(
         {
             "headline": "x",
@@ -149,8 +147,25 @@ def test_summary_uses_fixed_fallbacks_from_model_output() -> None:
         }
     )
     result = run_summary(Model(answer), spec(), event=event(), sources=(source("No count."),))
-    assert result.outcome is SummaryOutcome.ACCEPTED
-    assert result.verdict is not None and result.verdict.key_driver == "Not yet established."
+    assert result.outcome is SummaryOutcome.REJECTED
+    assert result.verdict is None
+
+
+def test_historical_legacy_summary_still_renders_with_legacy_headings() -> None:
+    verdict = EventSummaryVerdict(
+        headline="Dengue Outbreak: Cebu — Increasing",
+        trajectory="Increasing",
+        snapshot=("Three cases", "Two deaths"),
+        key_driver="Rainfall",
+        response="Case investigation",
+        risk="Regional risk",
+    )
+
+    rendered = render_event_flash_brief(verdict)
+
+    assert "The Snapshot:" in rendered
+    assert "Key Driver:" in rendered
+    assert "Public/Global Risk:" in rendered
 
 
 def test_no_unsummarized_linked_article_does_not_trigger_resummary() -> None:

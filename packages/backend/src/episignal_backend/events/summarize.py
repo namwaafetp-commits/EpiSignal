@@ -166,20 +166,8 @@ def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict | Fl
         raise Rejected(RejectionReason.NOT_JSON) from error
     try:
         flexible = FlexibleEventSummary.model_validate(payload)
-    except ValidationError:
-        try:
-            verdict = EventSummaryVerdict.model_validate(payload)
-        except ValidationError as error:
-            raise Rejected(RejectionReason.SHAPE) from error
-
-        disease = event.disease.strip() or "Unspecified pathogen/disease"
-        disease = disease[:1].upper() + disease[1:]
-        location = event.location.strip() or "Unresolved location"
-        return verdict.model_copy(
-            update={
-                "headline": f"{disease} Outbreak: {location} — {verdict.trajectory.value}",
-            }
-        )
+    except ValidationError as error:
+        raise Rejected(RejectionReason.SHAPE) from error
 
     return flexible.model_copy(update={"title": event.headline or flexible.title})
 

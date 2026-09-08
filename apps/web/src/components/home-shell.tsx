@@ -9,6 +9,11 @@ import {
 } from "../lib/api-events";
 import type { DashboardEvent, DashboardFeedState } from "../lib/api-dashboard";
 import { formatCountryLocation } from "../lib/country";
+import {
+  DISEASE_GROUP_OPTIONS,
+  diseaseGroupLabel,
+  hostSectorLabel,
+} from "../lib/surveillance-labels";
 import { EventMap, type EventMapRegion } from "./event-map";
 
 export type ApiShellStatus = "loading" | "ready" | "unavailable";
@@ -93,20 +98,6 @@ const ACTIVE_STATUSES = new Set([
   "declining",
 ]);
 
-const DISEASE_GROUPS = [
-  ["", "All disease groups"],
-  ["respiratory", "Respiratory"],
-  ["enteric_food_waterborne", "Enteric / Food / Waterborne"],
-  ["vector_borne", "Vector-borne"],
-  ["vaccine_preventable", "Vaccine-preventable"],
-  ["viral_hemorrhagic_fever", "Viral hemorrhagic fever"],
-  ["neurologic_invasive", "Neurologic / Invasive"],
-  ["blood_borne_sti", "Blood-borne / STI"],
-  ["healthcare_associated_amr", "Healthcare-associated / AMR"],
-  ["other_infectious", "Other"],
-  ["unknown", "Unknown"],
-] as const;
-
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
 }
@@ -137,13 +128,6 @@ function isMapped(event: DashboardEvent) {
 
 function eventDate(event: DashboardEvent) {
   return event.latest_report_at || event.last_summarized_at;
-}
-
-function hostLabel(value: DashboardEvent["host_sector"]) {
-  if (value === "both") return "Human + Animal";
-  if (value === "animal") return "Animal";
-  if (value === "human") return "Human";
-  return "Unknown";
 }
 
 function SummaryBlock({
@@ -230,8 +214,8 @@ function CalendarCard({ event }: { event: DashboardEvent }) {
           {formatLabel(event.status)}
         </span>
         <span>{event.disease ?? "Unknown disease"}</span>
-        <span>{event.disease_group_label ?? "Unknown / unclassified"}</span>
-        <span>{hostLabel(event.host_sector)}</span>
+        <span>{diseaseGroupLabel(event.disease_group)}</span>
+        <span>{hostSectorLabel(event.host_sector)}</span>
         <time dateTime={eventDate(event)}>
           {relativeTimeLabel(eventDate(event))}
         </time>
@@ -263,6 +247,7 @@ function EventDetailPanel({
   onClose: () => void;
 }) {
   const publicRisk = detail?.summaries[0]?.risk;
+  const hasFlexibleSummary = event.summary_payload != null;
 
   return (
     <aside
@@ -277,8 +262,8 @@ function EventDetailPanel({
           </span>
           <span aria-hidden="true">·</span>
           <span>{event.disease ?? "Unknown disease"}</span>
-          <span>{event.disease_group_label ?? "Unknown / unclassified"}</span>
-          <span>{hostLabel(event.host_sector)}</span>
+          <span>{diseaseGroupLabel(event.disease_group)}</span>
+          <span>{hostSectorLabel(event.host_sector)}</span>
         </div>
         <button
           type="button"
@@ -292,15 +277,17 @@ function EventDetailPanel({
       <h2>{event.headline}</h2>
       <p className="event-detail-panel__location">{eventLocation(event)}</p>
       <SummaryBlock event={event} className="event-detail-panel__summary" />
-      <div className="event-detail-panel__development">
-        <span>Public/global risk</span>
-        <p className="line-clamp-2">
-          {detailLoading
-            ? "Loading public/global risk…"
-            : (publicRisk ??
-              "Insufficient evidence for a broader risk assessment.")}
-        </p>
-      </div>
+      {!hasFlexibleSummary && (
+        <div className="event-detail-panel__development">
+          <span>Public/global risk</span>
+          <p className="line-clamp-2">
+            {detailLoading
+              ? "Loading public/global risk…"
+              : (publicRisk ??
+                "Insufficient evidence for a broader risk assessment.")}
+          </p>
+        </div>
+      )}
       <div className="event-detail-panel__sources">
         <span>Sources</span>
         {detailLoading ? (
@@ -445,8 +432,8 @@ function FilterBar({
             value={diseaseGroup}
             onChange={(event) => onDiseaseGroup(event.target.value)}
           >
-            {DISEASE_GROUPS.map(([value, label]) => (
-              <option key={value} value={value}>
+            {DISEASE_GROUP_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value === "all" ? "" : value}>
                 {label}
               </option>
             ))}
@@ -642,7 +629,7 @@ export function HomeShell({
           event.summary,
           event.disease,
           event.disease_group_label,
-          hostLabel(event.host_sector),
+          hostSectorLabel(event.host_sector),
           event.country_code,
           event.admin1,
         ]

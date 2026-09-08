@@ -1,5 +1,10 @@
 import { getEventList } from "@/lib/api-events";
 import { formatCountryLocation } from "@/lib/country";
+import {
+  DISEASE_GROUP_OPTIONS,
+  diseaseGroupLabel,
+  hostSectorLabel,
+} from "@/lib/surveillance-labels";
 import Link from "next/link";
 
 const DISEASES = [
@@ -14,19 +19,7 @@ const DISEASES = [
 ] as const;
 
 const COUNTRIES = ["all", "TH", "CD", "YE", "AO", "PH"] as const;
-const DISEASE_GROUPS = [
-  "all",
-  "respiratory",
-  "enteric_food_waterborne",
-  "vector_borne",
-  "vaccine_preventable",
-  "viral_hemorrhagic_fever",
-  "neurologic_invasive",
-  "blood_borne_sti",
-  "healthcare_associated_amr",
-  "other_infectious",
-  "unknown",
-] as const;
+const DISEASE_GROUPS = DISEASE_GROUP_OPTIONS.map(({ value }) => value);
 
 export default async function EventsPage({
   searchParams,
@@ -77,30 +70,37 @@ export default async function EventsPage({
             current={disease}
             values={DISEASES}
             label="Disease"
+            searchParams={params}
           />
           <FilterGroup
             param="country"
             current={country}
             values={COUNTRIES}
             label="Country"
+            searchParams={params}
           />
           <FilterGroup
             param="status"
             current={status}
             values={["all", "monitoring", "ongoing", "resolved", "unknown"]}
             label="Status"
+            searchParams={params}
           />
           <FilterGroup
             param="host_sector"
             current={hostSector}
             values={["all", "human", "animal"]}
             label="Host"
+            formatValue={hostSectorLabel}
+            searchParams={params}
           />
           <FilterGroup
             param="disease_group"
             current={diseaseGroup}
             values={DISEASE_GROUPS}
             label="Disease group"
+            formatValue={diseaseGroupLabel}
+            searchParams={params}
           />
         </div>
 
@@ -126,12 +126,10 @@ export default async function EventsPage({
                       </span>
                     )}
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-800 border border-cyan-200">
-                      {event.disease_group_label}
+                      {diseaseGroupLabel(event.disease_group)}
                     </span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-50 text-violet-800 border border-violet-200">
-                      {event.host_sector === "both"
-                        ? "Human + Animal"
-                        : event.host_sector}
+                      {hostSectorLabel(event.host_sector)}
                     </span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
                       {event.status}
@@ -194,11 +192,15 @@ function FilterGroup({
   current,
   values,
   label,
+  formatValue,
+  searchParams,
 }: {
   param: "disease" | "country" | "status" | "host_sector" | "disease_group";
   current: string | undefined;
   values: readonly string[];
   label: string;
+  formatValue?: (value: string) => string;
+  searchParams: Record<string, string | undefined>;
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -214,9 +216,13 @@ function FilterGroup({
                   ? "bg-slate-900 text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
-              href={hrefWithParam(param, value, current)}
+              href={hrefWithParam(param, value, current, searchParams)}
             >
-              {value}
+              {formatValue
+                ? formatValue(value)
+                : value === "all"
+                  ? "All"
+                  : value}
             </a>
           );
         })}
@@ -225,20 +231,22 @@ function FilterGroup({
   );
 }
 
-function hrefWithParam(
+export function hrefWithParam(
   param: string,
   value: string,
   current: string | undefined,
+  searchParams: Record<string, string | undefined>,
 ): string {
   const next = new URLSearchParams();
-  if (current && value === current) {
+  for (const [key, entry] of Object.entries(searchParams)) {
+    if (entry !== undefined) next.set(key, entry);
+  }
+  if (value === "all" || (current && value === current)) {
     // Clicking active deselects.
     next.delete(param);
-  } else if (value !== "all") {
+  } else {
     next.set(param, value);
   }
-  // Strip the current filter from the href since we only know one; the server
-  // will rebuild from searchParams. This page doesn't carry other filters in href.
   const query = next.toString();
   return query ? `/events?${query}` : "/events";
 }

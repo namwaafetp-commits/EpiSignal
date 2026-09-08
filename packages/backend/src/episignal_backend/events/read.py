@@ -465,7 +465,14 @@ def query_event_list(
             slug for slug, group in CANONICAL_DISEASE_GROUPS.items() if group.value == disease_group
         ]
         if disease_group == "unknown":
-            conditions.append(or_(Disease.id.is_(None), Disease.slug.in_(group_slugs)))
+            mapped_non_unknown_slugs = [
+                slug
+                for slug, group in CANONICAL_DISEASE_GROUPS.items()
+                if group.value != disease_group
+            ]
+            conditions.append(
+                or_(Disease.id.is_(None), Disease.slug.not_in(mapped_non_unknown_slugs))
+            )
         else:
             conditions.append(Disease.slug.in_(group_slugs))
 

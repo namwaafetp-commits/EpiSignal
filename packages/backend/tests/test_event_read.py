@@ -15,6 +15,7 @@ from episignal_backend.events.read import (
     normalize_summary_snapshot,
     query_dashboard_events,
     query_event_detail,
+    query_event_list,
 )
 
 
@@ -27,6 +28,9 @@ class FakeResult:
 
     def all(self) -> Any:
         return self.value or []
+
+    def scalar_one(self) -> Any:
+        return self.value
 
     def scalars(self) -> "FakeResult":
         return self
@@ -396,3 +400,39 @@ def test_dashboard_reads_new_disease_slug_and_host_sector_filters() -> None:
     assert page.items[0].disease_group == "vector_borne"
     assert page.items[0].host_sector is HostSector.BOTH
     assert page.items[0].summary_payload == event.summary_payload
+
+
+def test_unknown_group_filter_includes_unmapped_canonical_disease() -> None:
+    event_id = uuid4()
+    now = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    event = SimpleNamespace(
+        id=event_id,
+        public_id="EVT-UNREVIEWED-DISEASE",
+        headline="Unreviewed disease event",
+        summary="A disease slug not yet in the taxonomy.",
+        event_type=EventType.OUTBREAK,
+        status=EventStatus.MONITORING,
+        verification_status=VerificationStatus.SIGNAL,
+        country_code=None,
+        admin1=None,
+        admin2=None,
+        first_signal_at=now,
+        last_updated_at=now,
+        article_count=1,
+        last_summarized_at=now,
+    )
+    session = FakeSession(
+        [
+            FakeResult(1),
+            FakeResult([(event, "Unreviewed disease", "future_unreviewed_slug")]),
+            FakeResult([]),
+        ]
+    )
+
+    page = query_event_list(session, disease_group="unknown")
+
+    assert page.total == 1
+    assert page.items[0].disease_group == "unknown"
+    statement = session.executed[0]
+    rendered = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "diseases.slug NOT IN" in rendered

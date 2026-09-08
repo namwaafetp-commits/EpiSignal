@@ -274,12 +274,13 @@ def test_summary_sends_linked_article_text_and_not_legacy_brief() -> None:
             return ChatResponse(
                 content=json.dumps(
                     {
-                        "headline": "Dengue Outbreak: Cebu — Increasing",
-                        "trajectory": "Increasing",
-                        "snapshot": ["Three cases reported"],
-                        "key_driver": "Not yet established.",
-                        "response": "No specific response reported.",
-                        "risk": "Insufficient evidence for a broader risk assessment.",
+                        "title": "Dengue activity in Cebu",
+                        "bullets": [
+                            "Three cases reported",
+                            "Cebu is the affected location",
+                            "Further monitoring is needed",
+                        ],
+                        "takeaway": "Evidence remains limited to the reported cases.",
                     }
                 ),
                 latency_ms=1,
