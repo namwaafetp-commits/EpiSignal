@@ -13,6 +13,9 @@ const detail = {
   headline: "Cholera activity increasing in Cacuaco",
   summary: "Health officials are monitoring a cholera outbreak.",
   disease: "Cholera",
+  disease_group: "enteric_food_waterborne",
+  disease_group_label: "Enteric / food- & water-borne infections",
+  host_sector: "human",
   event_type: "outbreak",
   status: "ongoing",
   verification_status: "signal",
@@ -118,6 +121,39 @@ describe("EventPage", () => {
     render(page);
 
     expect(screen.getByText("Legacy summary text.")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "The Snapshot" })).toBeNull();
+  });
+
+  it("renders the flexible summary payload without legacy headings", async () => {
+    vi.spyOn(apiEvents, "getEventDetail").mockResolvedValueOnce({
+      ...detail,
+      summary_payload: {
+        title: "Dengue activity is being monitored",
+        bullets: [
+          "Cases were reported in the affected area.",
+          "Local response teams are investigating.",
+          "Further reporting is expected.",
+        ],
+        takeaway: "Watch for evidence of wider transmission.",
+      },
+    });
+
+    const page = await EventPage({
+      params: Promise.resolve({ publicId: detail.public_id }),
+    });
+    render(page);
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Dengue activity is being monitored",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("Cases were reported in the affected area."),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Watch for evidence of wider transmission/),
+    ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "The Snapshot" })).toBeNull();
   });
 });

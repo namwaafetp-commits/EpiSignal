@@ -76,6 +76,7 @@ EXPECTED_SIGNAL_COLUMNS = (
     "content_hash",
     "relevance_score",
     "public_health_relevant",
+    "host_sector",
     "triage_status",
     "triage_category",
     "triage_disease_text",

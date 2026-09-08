@@ -745,6 +745,97 @@ main {
   background: var(--accent-dark);
 }
 
+.map-reset-control {
+  position: absolute;
+  top: 1rem;
+  right: 4.5rem;
+  z-index: 2;
+  min-height: var(--tap);
+  padding: 0 0.8rem;
+  border: 1px solid var(--line-dark);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-dark);
+  font:
+    0.68rem ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 18%);
+}
+
+.map-reset-control:hover {
+  background: var(--accent-soft);
+}
+
+.event-map-overlap {
+  position: absolute;
+  top: 4.5rem;
+  right: 1rem;
+  z-index: 3;
+  width: min(22rem, calc(100% - 2rem));
+  max-height: min(28rem, calc(100% - 6rem));
+  overflow: auto;
+  border: 1px solid var(--accent-dark);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-dark);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 28%);
+}
+
+.event-map-overlap__header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid var(--line-dark);
+  background: var(--surface);
+  font-size: 0.78rem;
+}
+
+.event-map-overlap__header button {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.event-map-overlap__list {
+  display: grid;
+}
+
+.event-map-overlap__list button {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.event-map-overlap__list button:last-child {
+  border-bottom: 0;
+}
+
+.event-map-overlap__list button:hover {
+  background: var(--accent-soft);
+}
+
+.event-map-overlap__list span {
+  color: var(--muted-dark);
+  font-size: 0.72rem;
+}
+
 .map-fallback {
   display: grid;
   height: 100%;

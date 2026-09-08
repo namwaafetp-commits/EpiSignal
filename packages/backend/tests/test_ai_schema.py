@@ -9,6 +9,7 @@ from episignal_backend.ai.schema import (
     classification_json_schema,
     extraction_json_schema,
 )
+from episignal_backend.db.types import HostSector
 
 
 def test_extraction_accepts_disease_and_locations_only() -> None:
@@ -41,12 +42,19 @@ def test_prompt_schema_contains_only_active_fields() -> None:
     assert set(schema["properties"]["locations"]["items"]["properties"]) == {"town", "country"}
 
 
-def test_classification_schema_is_relevance_only() -> None:
+def test_classification_schema_includes_controlled_host_sector() -> None:
     assert set(classification_json_schema()["properties"]) == {
         "relevant",
         "confidence",
         "reason_code",
+        "host_sector",
     }
+
+
+def test_classification_missing_host_sector_is_unknown_for_legacy_answers() -> None:
+    from episignal_backend.ai.schema import ClassificationVerdict
+
+    assert ClassificationVerdict(relevant=True, confidence=0.8).host_sector is HostSector.UNKNOWN
 
 
 def test_historical_payload_with_deprecated_fields_remains_readable() -> None:

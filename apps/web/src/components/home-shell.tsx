@@ -93,6 +93,20 @@ const ACTIVE_STATUSES = new Set([
   "declining",
 ]);
 
+const DISEASE_GROUPS = [
+  ["", "All disease groups"],
+  ["respiratory", "Respiratory"],
+  ["enteric_food_waterborne", "Enteric / Food / Waterborne"],
+  ["vector_borne", "Vector-borne"],
+  ["vaccine_preventable", "Vaccine-preventable"],
+  ["viral_hemorrhagic_fever", "Viral hemorrhagic fever"],
+  ["neurologic_invasive", "Neurologic / Invasive"],
+  ["blood_borne_sti", "Blood-borne / STI"],
+  ["healthcare_associated_amr", "Healthcare-associated / AMR"],
+  ["other_infectious", "Other"],
+  ["unknown", "Unknown"],
+] as const;
+
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
 }
@@ -123,6 +137,37 @@ function isMapped(event: DashboardEvent) {
 
 function eventDate(event: DashboardEvent) {
   return event.latest_report_at || event.last_summarized_at;
+}
+
+function hostLabel(value: DashboardEvent["host_sector"]) {
+  if (value === "both") return "Human + Animal";
+  if (value === "animal") return "Animal";
+  if (value === "human") return "Human";
+  return "Unknown";
+}
+
+function SummaryBlock({
+  event,
+  className = "event-card__summary",
+}: {
+  event: DashboardEvent;
+  className?: string;
+}) {
+  const payload = event.summary_payload;
+  if (!payload) return <p className={className}>{event.summary}</p>;
+  return (
+    <div className={className} data-testid="flexible-summary">
+      <strong>{payload.title}</strong>
+      <ul>
+        {payload.bullets.map((bullet) => (
+          <li key={bullet}>{bullet}</li>
+        ))}
+      </ul>
+      <p>
+        <strong>Takeaway:</strong> {payload.takeaway}
+      </p>
+    </div>
+  );
 }
 
 function isInRegion(countryCode: string | null, region: Region) {
@@ -185,13 +230,15 @@ function CalendarCard({ event }: { event: DashboardEvent }) {
           {formatLabel(event.status)}
         </span>
         <span>{event.disease ?? "Unknown disease"}</span>
+        <span>{event.disease_group_label ?? "Unknown / unclassified"}</span>
+        <span>{hostLabel(event.host_sector)}</span>
         <time dateTime={eventDate(event)}>
           {relativeTimeLabel(eventDate(event))}
         </time>
       </div>
       <h3>{event.headline}</h3>
       <p className="event-card__location">{eventLocation(event)}</p>
-      <p className="event-card__summary">{event.summary}</p>
+      <SummaryBlock event={event} />
       <div className="calendar-card__latest">
         <span>Latest development</span>
         <strong>Available on the full event page</strong>
@@ -230,6 +277,8 @@ function EventDetailPanel({
           </span>
           <span aria-hidden="true">·</span>
           <span>{event.disease ?? "Unknown disease"}</span>
+          <span>{event.disease_group_label ?? "Unknown / unclassified"}</span>
+          <span>{hostLabel(event.host_sector)}</span>
         </div>
         <button
           type="button"
@@ -242,7 +291,7 @@ function EventDetailPanel({
       </div>
       <h2>{event.headline}</h2>
       <p className="event-detail-panel__location">{eventLocation(event)}</p>
-      <p className="event-detail-panel__summary">{event.summary}</p>
+      <SummaryBlock event={event} className="event-detail-panel__summary" />
       <div className="event-detail-panel__development">
         <span>Public/global risk</span>
         <p className="line-clamp-2">
@@ -297,6 +346,8 @@ function FilterBar({
   search,
   region,
   disease,
+  diseaseGroup,
+  hostSector,
   country,
   status,
   timeRange,
@@ -304,6 +355,8 @@ function FilterBar({
   onSearch,
   onRegion,
   onDisease,
+  onDiseaseGroup,
+  onHostSector,
   onCountry,
   onStatus,
   onTimeRange,
@@ -314,6 +367,8 @@ function FilterBar({
   search: string;
   region: Region;
   disease: string;
+  diseaseGroup: string;
+  hostSector: "" | "human" | "animal";
   country: string;
   status: string;
   timeRange: TimeRange;
@@ -321,6 +376,8 @@ function FilterBar({
   onSearch: (value: string) => void;
   onRegion: (value: Region) => void;
   onDisease: (value: string) => void;
+  onDiseaseGroup: (value: string) => void;
+  onHostSector: (value: "" | "human" | "animal") => void;
   onCountry: (value: string) => void;
   onStatus: (value: string) => void;
   onTimeRange: (value: TimeRange) => void;
@@ -380,6 +437,32 @@ function FilterBar({
                 {value}
               </option>
             ))}
+          </select>
+        </label>
+        <label>
+          <span>Disease group</span>
+          <select
+            value={diseaseGroup}
+            onChange={(event) => onDiseaseGroup(event.target.value)}
+          >
+            {DISEASE_GROUPS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Host</span>
+          <select
+            value={hostSector}
+            onChange={(event) =>
+              onHostSector(event.target.value as "" | "human" | "animal")
+            }
+          >
+            <option value="">All</option>
+            <option value="human">Human</option>
+            <option value="animal">Animal</option>
           </select>
         </label>
         <label>
@@ -533,6 +616,8 @@ export function HomeShell({
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState<Region>("");
   const [disease, setDisease] = useState("");
+  const [diseaseGroup, setDiseaseGroup] = useState("");
+  const [hostSector, setHostSector] = useState<"" | "human" | "animal">("");
   const [country, setCountry] = useState("");
   const [status, setStatus] = useState("");
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
@@ -556,6 +641,8 @@ export function HomeShell({
           event.headline,
           event.summary,
           event.disease,
+          event.disease_group_label,
+          hostLabel(event.host_sector),
           event.country_code,
           event.admin1,
         ]
@@ -566,6 +653,14 @@ export function HomeShell({
           (!query || haystack.includes(query)) &&
           isInRegion(event.country_code, region) &&
           (!disease || event.disease === disease) &&
+          (!diseaseGroup || event.disease_group === diseaseGroup) &&
+          (!hostSector ||
+            (hostSector === "human" &&
+              (event.host_sector === "human" ||
+                event.host_sector === "both")) ||
+            (hostSector === "animal" &&
+              (event.host_sector === "animal" ||
+                event.host_sector === "both"))) &&
           (!country || event.country_code === country) &&
           (!status || event.status === status) &&
           isInTimeRange(event, timeRange, customRange)
@@ -577,6 +672,8 @@ export function HomeShell({
     country,
     customRange,
     disease,
+    diseaseGroup,
+    hostSector,
     region,
     search,
     status,
@@ -656,6 +753,8 @@ export function HomeShell({
           search={search}
           region={region}
           disease={disease}
+          diseaseGroup={diseaseGroup}
+          hostSector={hostSector}
           country={country}
           status={status}
           timeRange={timeRange}
@@ -663,6 +762,8 @@ export function HomeShell({
           onSearch={setSearch}
           onRegion={setRegion}
           onDisease={setDisease}
+          onDiseaseGroup={setDiseaseGroup}
+          onHostSector={setHostSector}
           onCountry={setCountry}
           onStatus={setStatus}
           onTimeRange={selectTimeRange}
@@ -686,6 +787,7 @@ export function HomeShell({
                   region={region}
                   selectedId={selectedId}
                   onSelect={selectEvent}
+                  onReset={() => setSelectedId(null)}
                 />
                 {selectedEvent && (
                   <EventDetailPanel

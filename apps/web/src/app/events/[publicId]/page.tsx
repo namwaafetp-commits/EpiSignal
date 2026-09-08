@@ -32,6 +32,12 @@ export default async function EventPage({
             </span>
             <span aria-hidden="true">·</span>
             <span>{detail.disease ?? "Unknown disease"}</span>
+            <span>{detail.disease_group_label}</span>
+            <span>
+              {detail.host_sector === "both"
+                ? "Human + Animal"
+                : detail.host_sector}
+            </span>
             <span className="event-page__verification">
               {formatVerificationStatus(detail.verification_status)}
             </span>
@@ -56,7 +62,9 @@ export default async function EventPage({
           aria-labelledby="overview-heading"
         >
           {/* What happened */}
-          {brief && hasStructuredFlashBrief(brief) ? (
+          {isFlexibleSummary(detail.summary_payload) ? (
+            <FlexibleSummary payload={detail.summary_payload} />
+          ) : brief && hasStructuredFlashBrief(brief) ? (
             <StructuredFlashBrief summary={brief} />
           ) : brief ? (
             <article className="event-page__section">
@@ -176,6 +184,38 @@ export default async function EventPage({
         </section>
       </main>
     </div>
+  );
+}
+
+function FlexibleSummary({
+  payload,
+}: {
+  payload: { title: string; bullets: string[]; takeaway: string };
+}) {
+  return (
+    <article className="event-page__section" aria-labelledby="overview-heading">
+      <h2 id="overview-heading">{payload.title}</h2>
+      <ul>
+        {payload.bullets.map((bullet) => (
+          <li key={bullet}>{bullet}</li>
+        ))}
+      </ul>
+      <p>
+        <strong>Takeaway:</strong> {payload.takeaway}
+      </p>
+    </article>
+  );
+}
+
+function isFlexibleSummary(
+  value: EventDetailResponse["summary_payload"],
+): value is { title: string; bullets: string[]; takeaway: string } {
+  if (!value || typeof value !== "object") return false;
+  return (
+    typeof value.title === "string" &&
+    Array.isArray(value.bullets) &&
+    value.bullets.every((bullet) => typeof bullet === "string") &&
+    typeof value.takeaway === "string"
   );
 }
 

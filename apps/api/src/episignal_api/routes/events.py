@@ -39,6 +39,10 @@ class EventListItemResponse(BaseModel):
     latest_report_at: datetime
     article_count: int
     last_summarized_at: datetime | None
+    disease_group: str = "unknown"
+    disease_group_label: str = "Unknown / unclassified"
+    host_sector: str = "unknown"
+    summary_payload: dict[str, object] | None = None
 
 
 class EventListResponse(BaseModel):
@@ -66,6 +70,10 @@ class DashboardEventResponse(BaseModel):
     latitude: float | None
     longitude: float | None
     map_level: DashboardMapLevel | None
+    disease_group: str = "unknown"
+    disease_group_label: str = "Unknown / unclassified"
+    host_sector: str = "unknown"
+    summary_payload: dict[str, object] | None = None
 
 
 class DashboardEventsResponse(BaseModel):
@@ -124,6 +132,7 @@ class EventSummaryResponse(BaseModel):
     risk: str | None
     model_id: str
     created_at: datetime
+    summary_payload: dict[str, object] | None = None
 
 
 class EventDetailResponse(BaseModel):
@@ -149,6 +158,10 @@ class EventDetailResponse(BaseModel):
     sources: list[EventSourceResponse]
     observations: list[EventObservationResponse]
     summaries: list[EventSummaryResponse]
+    disease_group: str = "unknown"
+    disease_group_label: str = "Unknown / unclassified"
+    host_sector: str = "unknown"
+    summary_payload: dict[str, object] | None = None
 
 
 @router.get("", response_model=EventListResponse)

@@ -22,9 +22,12 @@ from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     configure_summary,
+    legacy_summary_fields,
     render_event_flash_brief,
     run_summary,
     should_resummarize,
+    summary_payload,
+    summary_title,
     unique_summary_candidates,
 )
 
@@ -111,19 +114,23 @@ def _run(arguments: Arguments) -> dict[str, int]:
                     )
                 )
             if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
+                trajectory, snapshot, key_driver, response, risk = legacy_summary_fields(
+                    result.verdict
+                )
                 repository.store_summary(
                     event_id=event.event_id,
-                    headline=result.verdict.headline,
+                    headline=summary_title(result.verdict),
                     summary=render_event_flash_brief(result.verdict),
-                    trajectory=result.verdict.trajectory.value,
-                    snapshot=list(result.verdict.snapshot),
-                    key_driver=result.verdict.key_driver,
-                    response=result.verdict.response,
-                    risk=result.verdict.risk,
+                    trajectory=trajectory,
+                    snapshot=snapshot,
+                    key_driver=key_driver,
+                    response=response,
+                    risk=risk,
                     model_id=wiring.spec.model_id,
                     source_signal_ids=[source.signal_id for source in sources],
                     counts=event.latest_observation,
                     now=now,
+                    summary_payload=summary_payload(result.verdict),
                 )
                 summarized += 1
             elif result.outcome is SummaryOutcome.UNAVAILABLE:

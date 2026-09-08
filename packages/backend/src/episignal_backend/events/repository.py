@@ -760,15 +760,16 @@ class SqlAlchemyEventRepository:
         event_id: UUID,
         headline: str,
         summary: str,
-        trajectory: str,
+        trajectory: str | None,
         snapshot: Sequence[str],
-        key_driver: str,
-        response: str,
-        risk: str,
+        key_driver: str | None,
+        response: str | None,
+        risk: str | None,
         model_id: str,
         source_signal_ids: list[UUID],
         counts: dict[str, object] | None,
         now: datetime | None = None,
+        summary_payload: dict[str, object] | None = None,
     ) -> int:
         moment = now or datetime.now(UTC)
         version_row = self._session.execute(
@@ -790,6 +791,7 @@ class SqlAlchemyEventRepository:
             key_driver=key_driver,
             response=response,
             risk=risk,
+            summary_payload=summary_payload,
             model_id=model_id,
             # JSONB cannot encode Python UUID objects; keep provenance IDs as
             # strings in the versioned summary payload.
@@ -807,6 +809,7 @@ class SqlAlchemyEventRepository:
             .values(
                 headline=headline,
                 summary=summary,
+                summary_payload=summary_payload,
                 article_count=article_count,
                 last_summarized_at=moment,
             )

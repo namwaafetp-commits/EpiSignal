@@ -19,7 +19,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from episignal_backend.ai.schema import Extraction
-from episignal_backend.db.types import AiOutcome, AiProvider, AiPurpose, SignalType
+from episignal_backend.db.types import AiOutcome, AiProvider, AiPurpose, HostSector, SignalType
 
 LOWEST_TIER = 1
 HIGHEST_TIER = 3
@@ -118,6 +118,7 @@ class Verdict(BaseModel):
     relevance: float = Field(ge=0.0, le=1.0)
     model_id: str = Field(min_length=1)
     decided_at: datetime
+    host_sector: HostSector = HostSector.UNKNOWN
 
     @field_validator("decided_at")
     @classmethod

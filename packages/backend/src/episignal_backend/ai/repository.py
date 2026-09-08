@@ -341,6 +341,7 @@ class SqlAlchemyAiRepository:
                 public_health_relevant=verdict.is_public_health_relevant,
                 relevance_score=verdict.relevance,
                 signal_type=verdict.signal_type,
+                host_sector=verdict.host_sector,
                 ai_model=verdict.model_id,
                 ai_processed_at=verdict.decided_at,
             )

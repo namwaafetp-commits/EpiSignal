@@ -99,7 +99,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 29
+    assert len(enum_columns) == 30
 
     for column in enum_columns:
         enum_class = column.type.enum_class

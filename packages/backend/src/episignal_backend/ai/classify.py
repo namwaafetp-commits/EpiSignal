@@ -121,6 +121,7 @@ def run_classification(
                         relevance=result.value.confidence,
                         model_id=spec.model_id,
                         decided_at=at,
+                        host_sector=result.value.host_sector,
                     ),
                 )
             elif result.outcome is ClimbOutcome.REJECTED:
@@ -172,6 +173,7 @@ def _write(
             relevance=response.confidence,
             model_id=model_id,
             decided_at=at,
+            host_sector=response.host_sector,
         ),
     )
     return int(response.relevant)

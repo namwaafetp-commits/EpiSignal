@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260904_0022"]
+    assert scripts.get_heads() == ["20260908_0023"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -126,6 +126,15 @@ def test_second_revision_versions_signals_by_content_hash() -> None:
     sql = render_offline("upgrade", "head")
     assert "uq_signals_url_content_hash" in sql
     assert "drop constraint uq_signals_url" in sql
+
+
+def test_host_sector_revision_is_additive_and_nullable() -> None:
+    module = _load_revision("20260908_0023_host_sector")
+    assert module.down_revision == "20260904_0022"
+    sql = render_offline("upgrade", "head")
+    assert "add column host_sector" in sql
+    assert "ix_signals_host_sector" in sql
+    assert "host_sector_values" in sql
 
 
 def test_third_revision_adds_gdelt_discovery() -> None:

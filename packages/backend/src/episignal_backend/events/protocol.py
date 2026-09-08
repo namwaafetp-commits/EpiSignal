@@ -118,15 +118,16 @@ class EventRepository(Protocol):
         event_id: UUID,
         headline: str,
         summary: str,
-        trajectory: str,
+        trajectory: str | None,
         snapshot: Sequence[str],
-        key_driver: str,
-        response: str,
-        risk: str,
+        key_driver: str | None,
+        response: str | None,
+        risk: str | None,
         model_id: str,
         source_signal_ids: list[UUID],
         counts: dict[str, object] | None,
         now: datetime | None = None,
+        summary_payload: dict[str, object] | None = None,
     ) -> int:
         """Append one versioned summary and denormalize it onto the event.
 

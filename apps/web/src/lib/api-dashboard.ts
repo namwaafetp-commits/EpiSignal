@@ -14,6 +14,14 @@ export interface DashboardEvent {
   latitude: number | null;
   longitude: number | null;
   map_level: "admin1" | "country" | null;
+  disease_group?: string;
+  disease_group_label?: string;
+  host_sector?: "human" | "animal" | "both" | "unknown";
+  summary_payload?: {
+    title: string;
+    bullets: string[];
+    takeaway: string;
+  } | null;
 }
 
 export interface DashboardEventsResponse {
@@ -52,6 +60,27 @@ function isCoordinate(
   );
 }
 
+function isFlexibleSummaryPayload(value: unknown): value is {
+  title: string;
+  bullets: string[];
+  takeaway: string;
+} {
+  if (typeof value !== "object" || value === null) return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    typeof payload.title === "string" &&
+    payload.title.trim().length > 0 &&
+    Array.isArray(payload.bullets) &&
+    payload.bullets.length >= 3 &&
+    payload.bullets.length <= 5 &&
+    payload.bullets.every(
+      (bullet) => typeof bullet === "string" && bullet.trim().length > 0,
+    ) &&
+    typeof payload.takeaway === "string" &&
+    payload.takeaway.trim().length > 0
+  );
+}
+
 function isDashboardEvent(value: unknown): value is DashboardEvent {
   if (typeof value !== "object" || value === null) return false;
   const event = value as Record<string, unknown>;
@@ -76,7 +105,19 @@ function isDashboardEvent(value: unknown): value is DashboardEvent {
     isCoordinate(event.longitude, -180, 180) &&
     (event.map_level === null ||
       event.map_level === "admin1" ||
-      event.map_level === "country")
+      event.map_level === "country") &&
+    (event.disease_group === undefined ||
+      typeof event.disease_group === "string") &&
+    (event.disease_group_label === undefined ||
+      typeof event.disease_group_label === "string") &&
+    (event.host_sector === undefined ||
+      event.host_sector === "human" ||
+      event.host_sector === "animal" ||
+      event.host_sector === "both" ||
+      event.host_sector === "unknown") &&
+    (event.summary_payload === undefined ||
+      event.summary_payload === null ||
+      isFlexibleSummaryPayload(event.summary_payload))
   );
 }
 

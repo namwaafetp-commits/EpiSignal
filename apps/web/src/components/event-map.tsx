@@ -49,11 +49,17 @@ export const REGION_BOUNDS = {
   ],
 } satisfies Record<NamedEventMapRegion, [[number, number], [number, number]]>;
 
+export const DEFAULT_MAP_VIEWPORT = {
+  center: [15, 5] as [number, number],
+  zoom: 1.8,
+};
+
 export interface EventMapProps {
   events: DashboardEvent[];
   region: EventMapRegion;
   selectedId: string | null;
   onSelect: (publicId: string) => void;
+  onReset?: () => void;
 }
 
 const CARTO_DARK_STYLE =
@@ -69,7 +75,7 @@ function isMappedEvent(
   );
 }
 
-function toGeoJson(events: readonly DashboardEvent[]) {
+export function toGeoJson(events: readonly DashboardEvent[]) {
   return {
     type: "FeatureCollection" as const,
     features: events.filter(isMappedEvent).map((event) => ({
@@ -87,6 +93,14 @@ function toGeoJson(events: readonly DashboardEvent[]) {
   };
 }
 
+export function getMapCounts(events: readonly DashboardEvent[]) {
+  const mappedEvents = events.filter(isMappedEvent);
+  const locations = new Set(
+    mappedEvents.map((event) => `${event.longitude},${event.latitude}`),
+  );
+  return { mappedCount: mappedEvents.length, locationCount: locations.size };
+}
+
 function tooltipContent(headline: string, location: string) {
   const content = document.createElement("div");
   content.className = "map-tooltip";
@@ -101,8 +115,7 @@ function tooltipContent(headline: string, location: string) {
 function applyRegionViewport(map: maplibregl.Map, region: EventMapRegion) {
   if (!region) {
     map.easeTo({
-      center: [15, 5],
-      zoom: 1.8,
+      ...DEFAULT_MAP_VIEWPORT,
       duration: 700,
     });
     return;
@@ -120,22 +133,26 @@ export function EventMap({
   region,
   selectedId,
   onSelect,
+  onReset,
 }: EventMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onResetRef = useRef(onReset);
   const eventsRef = useRef(events);
   const selectedIdRef = useRef(selectedId);
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const mappedCount = events.filter(isMappedEvent).length;
+  const [overlapEvents, setOverlapEvents] = useState<DashboardEvent[]>([]);
+  const { mappedCount, locationCount } = getMapCounts(events);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
+    onResetRef.current = onReset;
     eventsRef.current = events;
     selectedIdRef.current = selectedId;
-  }, [events, onSelect, selectedId]);
+  }, [events, onReset, onSelect, selectedId]);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -143,8 +160,7 @@ export function EventMap({
       const map = new maplibregl.Map({
         container: mapContainerRef.current,
         style: CARTO_DARK_STYLE,
-        center: [15, 5],
-        zoom: 1.8,
+        ...DEFAULT_MAP_VIEWPORT,
         minZoom: 1,
         maxZoom: 14,
       });
@@ -154,11 +170,56 @@ export function EventMap({
         map.addSource("events", {
           type: "geojson",
           data: toGeoJson(eventsRef.current),
+          cluster: true,
+          clusterRadius: 50,
+          clusterMaxZoom: 8,
+        });
+        map.addLayer({
+          id: "events-clusters",
+          type: "circle",
+          source: "events",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": [
+              "step",
+              ["get", "point_count"],
+              "#41d5d0",
+              10,
+              "#f1b45f",
+              30,
+              "#e86d5d",
+            ],
+            "circle-radius": [
+              "step",
+              ["get", "point_count"],
+              18,
+              10,
+              24,
+              30,
+              30,
+            ],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#b8fffa",
+          },
+        });
+        map.addLayer({
+          id: "events-cluster-count",
+          type: "symbol",
+          source: "events",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-size": 12,
+          },
+          paint: {
+            "text-color": "#101b2d",
+          },
         });
         map.addLayer({
           id: "events-circles",
           type: "circle",
           source: "events",
+          filter: ["!", ["has", "point_count"]],
           paint: {
             "circle-radius": [
               "case",
@@ -178,8 +239,47 @@ export function EventMap({
           },
         });
 
+        map.on("click", "events-clusters", async (event) => {
+          const feature = event.features?.[0];
+          const clusterId = feature?.properties?.cluster_id;
+          const source = map.getSource("events") as GeoJSONSource | undefined;
+          if (typeof clusterId !== "number" || !source || !event.lngLat) {
+            return;
+          }
+          const zoom = await source.getClusterExpansionZoom(clusterId);
+          map.easeTo({
+            center: [event.lngLat.lng, event.lngLat.lat],
+            zoom,
+            duration: 700,
+          });
+        });
         map.on("click", "events-circles", (event) => {
-          const publicId = event.features?.[0]?.properties?.id;
+          const features = map.queryRenderedFeatures(event.point, {
+            layers: ["events-circles"],
+          });
+          const ids = [
+            ...new Set(
+              features
+                .map((feature) => feature.properties?.id)
+                .filter((id): id is string => typeof id === "string"),
+            ),
+          ];
+          if (ids.length === 0) {
+            const publicId = event.features?.[0]?.properties?.id;
+            if (typeof publicId === "string") ids.push(publicId);
+          }
+          const selectedEvents = ids
+            .map((id) =>
+              eventsRef.current.find((item) => item.public_id === id),
+            )
+            .filter((event): event is DashboardEvent => event !== undefined);
+          if (selectedEvents.length > 1) {
+            popupRef.current?.remove();
+            popupRef.current = null;
+            setOverlapEvents(selectedEvents);
+            return;
+          }
+          const publicId = selectedEvents[0]?.public_id ?? ids[0];
           if (typeof publicId === "string") onSelectRef.current(publicId);
         });
         map.on("mouseenter", "events-circles", (event) => {
@@ -270,12 +370,66 @@ export function EventMap({
       className="event-map"
     >
       <div className="sr-only" aria-live="polite">
-        {mappedCount} of {events.length} events mapped.
+        {mappedCount} mapped events across {locationCount} locations,{" "}
+        {events.length} total.
       </div>
       <div className="map-legend">
         <span className="map-legend__dot" aria-hidden="true" />
-        {mappedCount} mapped · {events.length} events
+        {mappedCount} mapped · {locationCount} locations · {events.length}{" "}
+        events
       </div>
+      <button
+        type="button"
+        className="map-reset-control"
+        aria-label="Reset map view"
+        title="Reset view"
+        onClick={() => {
+          popupRef.current?.remove();
+          popupRef.current = null;
+          setOverlapEvents([]);
+          onResetRef.current?.();
+          if (mapRef.current && isLoaded) {
+            applyRegionViewport(mapRef.current, region);
+          }
+        }}
+      >
+        Reset view
+      </button>
+      {overlapEvents.length > 1 && (
+        <div
+          className="event-map-overlap"
+          role="dialog"
+          aria-label="Events at this location"
+        >
+          <div className="event-map-overlap__header">
+            <strong>{overlapEvents.length} events at this location</strong>
+            <button
+              type="button"
+              aria-label="Close events at this location"
+              onClick={() => setOverlapEvents([])}
+            >
+              ×
+            </button>
+          </div>
+          <div className="event-map-overlap__list">
+            {overlapEvents.map((event) => (
+              <button
+                type="button"
+                key={event.public_id}
+                onClick={() => {
+                  setOverlapEvents([]);
+                  onSelectRef.current(event.public_id);
+                }}
+              >
+                <strong>{event.headline}</strong>
+                <span>
+                  {formatCountryLocation(event.admin1, event.country_code)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {mapError ? (
         <div className="map-fallback">
           Map unavailable. All events remain accessible in Calendar view.

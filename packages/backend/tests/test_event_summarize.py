@@ -10,6 +10,7 @@ from episignal_backend.db.types import AiProvider, AiPurpose
 from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.summarize import (
     EventSummaryVerdict,
+    FlexibleEventSummary,
     SummaryOutcome,
     pick_representative_sources,
     render_event_flash_brief,
@@ -261,3 +262,51 @@ def test_summary_verdict_keeps_one_to_three_article_facts() -> None:
         response="x",
         risk="x",
     ).snapshot == ("case",)
+
+
+def test_flexible_summary_accepts_three_and_five_bullets_and_renders_without_headings() -> None:
+    for count in (3, 5):
+        verdict = FlexibleEventSummary(
+            title="Dengue reports rise in Cebu",
+            bullets=tuple(f"Supported fact {index}" for index in range(count)),
+            takeaway="Reports indicate continued dengue activity.",
+        )
+        rendered = render_event_flash_brief(verdict)
+        assert rendered.startswith("Dengue reports rise in Cebu")
+        assert rendered.count("•") == count
+        assert "Takeaway:" in rendered
+        assert "Key Driver:" not in rendered
+
+
+def test_flexible_summary_rejects_invalid_bullet_counts_and_blank_text() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        FlexibleEventSummary(title="Title", bullets=("one", "two"), takeaway="Takeaway")
+    with pytest.raises(ValueError):
+        FlexibleEventSummary(
+            title="Title",
+            bullets=tuple(f"fact {index}" for index in range(6)),
+            takeaway="Takeaway",
+        )
+    with pytest.raises(ValueError):
+        FlexibleEventSummary(title=" ", bullets=("one", "two", "three"), takeaway="Takeaway")
+    with pytest.raises(ValueError):
+        FlexibleEventSummary(title="Title", bullets=("one", "two", "three"), takeaway=" ")
+
+
+def test_new_summary_contract_uses_existing_event_headline_as_title() -> None:
+    current = event().model_copy(update={"headline": "Canonical event title"})
+    model = Model(
+        json.dumps(
+            {
+                "title": "Model title",
+                "bullets": ["First fact", "Second fact", "Third fact"],
+                "takeaway": "Evidence remains limited.",
+            }
+        )
+    )
+    result = run_summary(model, spec(), event=current, sources=(source("Report"),))
+    assert result.outcome is SummaryOutcome.ACCEPTED
+    assert isinstance(result.verdict, FlexibleEventSummary)
+    assert result.verdict.title == "Canonical event title"

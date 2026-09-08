@@ -96,6 +96,7 @@ class Event(IdentityMixin, TimestampMixin, Base):
     # accepted summary; the versioned history lives in `event_summaries`.
     headline: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
+    summary_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     article_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -247,6 +248,7 @@ class EventSummary(IdentityMixin, Base):
     key_driver: Mapped[str | None] = mapped_column(Text)
     response: Mapped[str | None] = mapped_column(Text)
     risk: Mapped[str | None] = mapped_column(Text)
+    summary_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     model_id: Mapped[str] = mapped_column(Text, nullable=False)
     source_signal_ids: Mapped[list[UUID] | None] = mapped_column(JSONB)
     # The epidemiological snapshot this summary was written against, so the next

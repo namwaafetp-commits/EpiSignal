@@ -14,7 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from episignal_backend.db.types import LocationRole, SignalType
+from episignal_backend.db.types import HostSector, LocationRole, SignalType
 
 # Bumped when the shape of a stored extraction changes. Version 1 is every row
 # written before the brief existed: it has a `summary` and no `brief`.
@@ -568,6 +568,7 @@ class ClassificationVerdict(BaseModel):
     relevant: bool
     confidence: float = Field(ge=0.0, le=1.0)
     reason_code: str | None = Field(default=None, min_length=1, max_length=64)
+    host_sector: HostSector = HostSector.UNKNOWN
 
 
 class ClassificationResponse(BaseModel):

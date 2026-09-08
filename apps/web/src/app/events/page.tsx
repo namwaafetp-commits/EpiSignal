@@ -14,6 +14,19 @@ const DISEASES = [
 ] as const;
 
 const COUNTRIES = ["all", "TH", "CD", "YE", "AO", "PH"] as const;
+const DISEASE_GROUPS = [
+  "all",
+  "respiratory",
+  "enteric_food_waterborne",
+  "vector_borne",
+  "vaccine_preventable",
+  "viral_hemorrhagic_fever",
+  "neurologic_invasive",
+  "blood_borne_sti",
+  "healthcare_associated_amr",
+  "other_infectious",
+  "unknown",
+] as const;
 
 export default async function EventsPage({
   searchParams,
@@ -27,8 +40,23 @@ export default async function EventsPage({
     params.country && params.country !== "all" ? params.country : undefined;
   const status =
     params.status && params.status !== "all" ? params.status : undefined;
+  const hostSector =
+    params.host_sector === "human" || params.host_sector === "animal"
+      ? params.host_sector
+      : undefined;
+  const diseaseGroup =
+    params.disease_group && params.disease_group !== "all"
+      ? params.disease_group
+      : undefined;
 
-  const feed = await getEventList({ limit: 50, disease, country, status });
+  const feed = await getEventList({
+    limit: 50,
+    disease,
+    country,
+    status,
+    host_sector: hostSector,
+    disease_group: diseaseGroup,
+  });
 
   return (
     <main>
@@ -62,6 +90,18 @@ export default async function EventsPage({
             values={["all", "monitoring", "ongoing", "resolved", "unknown"]}
             label="Status"
           />
+          <FilterGroup
+            param="host_sector"
+            current={hostSector}
+            values={["all", "human", "animal"]}
+            label="Host"
+          />
+          <FilterGroup
+            param="disease_group"
+            current={diseaseGroup}
+            values={DISEASE_GROUPS}
+            label="Disease group"
+          />
         </div>
 
         {feed.status === "unavailable" && (
@@ -85,6 +125,14 @@ export default async function EventsPage({
                         {event.disease}
                       </span>
                     )}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-800 border border-cyan-200">
+                      {event.disease_group_label}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-50 text-violet-800 border border-violet-200">
+                      {event.host_sector === "both"
+                        ? "Human + Animal"
+                        : event.host_sector}
+                    </span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
                       {event.status}
                     </span>
@@ -147,7 +195,7 @@ function FilterGroup({
   values,
   label,
 }: {
-  param: "disease" | "country" | "status";
+  param: "disease" | "country" | "status" | "host_sector" | "disease_group";
   current: string | undefined;
   values: readonly string[];
   label: string;

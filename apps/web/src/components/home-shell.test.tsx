@@ -51,6 +51,9 @@ const EVENTS: DashboardEvent[] = [
     headline: "Cholera activity increasing in Cacuaco",
     summary: "Health officials are monitoring a cholera outbreak.",
     disease: "Cholera",
+    disease_group: "enteric_food_waterborne",
+    disease_group_label: "Enteric / food- & water-borne infections",
+    host_sector: "human",
     event_type: "outbreak",
     status: "ongoing",
     country_code: "AO",
@@ -68,6 +71,9 @@ const EVENTS: DashboardEvent[] = [
     headline: "Dengue activity in Thailand",
     summary: "A country-level dengue summary.",
     disease: "Dengue",
+    disease_group: "vector_borne",
+    disease_group_label: "Vector-borne infections",
+    host_sector: "both",
     event_type: "outbreak",
     status: "monitoring",
     country_code: "TH",
@@ -92,6 +98,9 @@ const detail = {
   headline: EVENTS[0].headline,
   summary: EVENTS[0].summary,
   disease: "Cholera",
+  disease_group: "enteric_food_waterborne",
+  disease_group_label: "Enteric / food- & water-borne infections",
+  host_sector: "human",
   event_type: "outbreak",
   status: "ongoing",
   verification_status: "signal",
@@ -290,6 +299,22 @@ describe("HomeShell", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("combines host and disease-group filters, including both under Animal", () => {
+    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
+
+    fireEvent.change(screen.getByLabelText("Host"), {
+      target: { value: "animal" },
+    });
+    fireEvent.change(screen.getByLabelText("Disease group"), {
+      target: { value: "vector_borne" },
+    });
+
+    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Cholera activity increasing in Cacuaco"),
+    ).not.toBeInTheDocument();
   });
 
   it("passes the selected region to the map without changing it for other filters", () => {

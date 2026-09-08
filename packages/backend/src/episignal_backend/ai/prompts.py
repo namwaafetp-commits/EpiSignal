@@ -109,8 +109,16 @@ public health.
 
 Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
-- Return only relevance, confidence, and an optional short reason_code.
+- Return relevance, confidence, host_sector, and an optional short reason_code.
 - Do not identify disease, location, cases, deaths, or event type in this pass.
+- Set host_sector to human only when the reported infection, cases, or event concerns people.
+- Set host_sector to animal only when it concerns animals and no relevant human
+  infection is reported.
+- Set host_sector to both only when the item explicitly reports relevant human
+  and animal infection or outbreak evidence.
+- Do not infer host_sector from a zoonotic disease name alone; use unknown when
+  evidence is insufficient.
+- host_sector must be one of: human, animal, both, unknown.
 - Relevant includes infectious-disease outbreaks or cases, surveillance,
   emerging infections, zoonoses, vaccination or immunisation, vaccine safety,
   infectious-disease prevention or control, outbreak response,

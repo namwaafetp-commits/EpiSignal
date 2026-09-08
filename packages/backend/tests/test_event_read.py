@@ -7,6 +7,7 @@ from episignal_backend.db.types import (
     CredibilityTier,
     EventStatus,
     EventType,
+    HostSector,
     RelationshipType,
     VerificationStatus,
 )
@@ -368,3 +369,30 @@ def test_dashboard_bulk_fallback_stays_bounded_for_many_events() -> None:
 
     assert page.total == 25
     assert len(session.executed) == 2
+
+
+def test_dashboard_reads_new_disease_slug_and_host_sector_filters() -> None:
+    event_id = uuid4()
+    event = _dashboard_event(event_id, "EVT-FILTERED")
+    event.summary_payload = {
+        "title": "Dengue activity",
+        "bullets": ["Cases reported", "Response underway", "Monitoring continues"],
+        "takeaway": "Watch for further spread.",
+    }
+    session = FakeSession(
+        [
+            FakeResult([(event, "Dengue", "dengue")]),
+            FakeResult([(event_id, HostSector.BOTH)]),
+        ]
+    )
+
+    page = query_dashboard_events(
+        session,
+        host_sector="animal",
+        disease_group="vector_borne",
+    )
+
+    assert page.total == 1
+    assert page.items[0].disease_group == "vector_borne"
+    assert page.items[0].host_sector is HostSector.BOTH
+    assert page.items[0].summary_payload == event.summary_payload

@@ -37,7 +37,7 @@ SUMMARY_SCHEMA_NAME = "event_summary"
 SUMMARY_TEMPERATURE = 0.0
 
 SUMMARY_SYSTEM = (
-    "You write one EpiSignal epidemiological event flash brief from all linked "
+    "You write one concise EpiSignal epidemiological event summary from all linked "
     "clean article sources.\n"
     "Rules:\n"
     "- Summarize the EVENT, never an individual article. Use the supplied article "
@@ -47,21 +47,11 @@ SUMMARY_SYSTEM = (
     "pathogen, transmission, dates, or response actions.\n"
     "- Preserve confirmed, suspected, and probable distinctions.\n"
     "- Every number, disease, location, response, and risk claim must be supported "
-    "by the supplied article evidence. Never invent or silently "
-    "resolve conflicting evidence.\n"
-    "- Use trajectory exactly as one of: Emerging, Increasing, Stable, Declining, "
-    "Contained, Resolved, Unclear. Use Unclear when unsupported.\n"
-    "- Use `Not yet established.` for an unsupported key driver, `No specific "
-    "response reported.` when no response is evidenced, and `Insufficient evidence "
-    "for a broader risk assessment.` when risk cannot be assessed.\n"
-    "- The headline must follow: [Pathogen/Disease] Outbreak: [Location] — "
-    "[Trajectory]. The application canonicalizes the disease, location, and "
-    "trajectory from the grouped event.\n"
-    "- The rendered brief uses these exact labels: The Snapshot:, Key Driver:, "
-    "Response:, and Public/Global Risk:.\n"
-    "- Choose 1 to 3 concise, evidence-grounded snapshot facts that are most\n"
-    "  decision-relevant for this event. Cases, deaths, and CFR are optional;\n"
-    "  never force a metric that is unsupported or less informative.\n"
+    "by supplied article evidence. Never invent or silently resolve conflicting evidence.\n"
+    "- Choose the 3 to 5 most epidemiologically useful facts as flexible bullets. "
+    "Do not use fixed headings or required topic slots.\n"
+    "- Use only 3 bullets for sparse evidence and up to 5 when evidence is richer.\n"
+    "- Write one concise takeaway supported by the same sources.\n"
     "- If linked sources disagree, state the disagreement explicitly.\n\n"
     "The object must match this JSON Schema exactly:\n"
 )
@@ -109,6 +99,36 @@ class EventSummaryVerdict(BaseModel):
         return facts
 
 
+class FlexibleEventSummary(BaseModel):
+    """The active Mistral contract: title, flexible facts, and one takeaway."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1)
+    bullets: tuple[str, ...] = Field(min_length=3, max_length=5)
+    takeaway: str = Field(min_length=1)
+
+    @field_validator("title", "takeaway")
+    @classmethod
+    def text_is_not_blank(cls, value: str) -> str:
+        collapsed = " ".join(value.split())
+        if not collapsed:
+            raise ValueError("summary text must say something")
+        return collapsed
+
+    @field_validator("bullets")
+    @classmethod
+    def bullets_are_not_blank(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        bullets = tuple(" ".join(bullet.split()) for bullet in value)
+        if any(not bullet for bullet in bullets):
+            raise ValueError("summary bullets must say something")
+        return bullets
+
+
+def flexible_summary_json_schema() -> dict[str, object]:
+    return FlexibleEventSummary.model_json_schema()
+
+
 class SummaryOutcome(StrEnum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
@@ -118,7 +138,7 @@ class SummaryOutcome(StrEnum):
 @dataclass(frozen=True)
 class SummaryResult:
     outcome: SummaryOutcome
-    verdict: EventSummaryVerdict | None = None
+    verdict: EventSummaryVerdict | FlexibleEventSummary | None = None
     attempt: Attempt | None = None
     failure_reason: str | None = None
     failure_exception_class: str | None = None
@@ -139,31 +159,43 @@ def unique_summary_candidates(
     return tuple(unique)
 
 
-def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict:
+def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict | FlexibleEventSummary:
     try:
         payload = json.loads(content)
     except ValueError as error:
         raise Rejected(RejectionReason.NOT_JSON) from error
     try:
-        verdict = EventSummaryVerdict.model_validate(payload)
-    except ValidationError as error:
-        raise Rejected(RejectionReason.SHAPE) from error
+        flexible = FlexibleEventSummary.model_validate(payload)
+    except ValidationError:
+        try:
+            verdict = EventSummaryVerdict.model_validate(payload)
+        except ValidationError as error:
+            raise Rejected(RejectionReason.SHAPE) from error
 
-    # Disease and location are already validated event metadata. Rebuild the
-    # heading from those fields so a model cannot move an event to a place or
-    # disease merely by writing a plausible headline.
-    disease = event.disease.strip() or "Unspecified pathogen/disease"
-    disease = disease[:1].upper() + disease[1:]
-    location = event.location.strip() or "Unresolved location"
-    return verdict.model_copy(
-        update={
-            "headline": f"{disease} Outbreak: {location} — {verdict.trajectory.value}",
-        }
-    )
+        disease = event.disease.strip() or "Unspecified pathogen/disease"
+        disease = disease[:1].upper() + disease[1:]
+        location = event.location.strip() or "Unresolved location"
+        return verdict.model_copy(
+            update={
+                "headline": f"{disease} Outbreak: {location} — {verdict.trajectory.value}",
+            }
+        )
+
+    return flexible.model_copy(update={"title": event.headline or flexible.title})
 
 
-def render_event_flash_brief(verdict: EventSummaryVerdict) -> str:
-    """Render the only public event-summary narrative format."""
+def render_event_flash_brief(
+    verdict: EventSummaryVerdict | FlexibleEventSummary,
+) -> str:
+    """Render new flexible summaries and old persisted summaries."""
+    if isinstance(verdict, FlexibleEventSummary):
+        return "\n\n".join(
+            (
+                verdict.title,
+                "\n".join(f"• {bullet}" for bullet in verdict.bullets),
+                f"Takeaway: {verdict.takeaway}",
+            )
+        )
     return "\n\n".join(
         (
             verdict.headline,
@@ -172,6 +204,33 @@ def render_event_flash_brief(verdict: EventSummaryVerdict) -> str:
             f"Response:\n{verdict.response}",
             f"Public/Global Risk:\n{verdict.risk}",
         )
+    )
+
+
+def summary_title(verdict: EventSummaryVerdict | FlexibleEventSummary) -> str:
+    return verdict.title if isinstance(verdict, FlexibleEventSummary) else verdict.headline
+
+
+def summary_payload(
+    verdict: EventSummaryVerdict | FlexibleEventSummary,
+) -> dict[str, object] | None:
+    if not isinstance(verdict, FlexibleEventSummary):
+        return None
+    return verdict.model_dump(mode="json")
+
+
+def legacy_summary_fields(
+    verdict: EventSummaryVerdict | FlexibleEventSummary,
+) -> tuple[str | None, list[str], str | None, str | None, str | None]:
+    """Return nullable legacy columns while keeping new summaries flexible."""
+    if isinstance(verdict, FlexibleEventSummary):
+        return None, list(verdict.bullets), None, None, None
+    return (
+        verdict.trajectory.value,
+        list(verdict.snapshot),
+        verdict.key_driver,
+        verdict.response,
+        verdict.risk,
     )
 
 
@@ -201,7 +260,7 @@ def run_summary(
     """
     request = ChatRequest(
         model_id=spec.model_id,
-        system=SUMMARY_SYSTEM + json.dumps(EventSummaryVerdict.model_json_schema(), sort_keys=True),
+        system=SUMMARY_SYSTEM + json.dumps(flexible_summary_json_schema(), sort_keys=True),
         user=json.dumps(
             {
                 "event": {
@@ -228,7 +287,7 @@ def run_summary(
             },
             ensure_ascii=False,
         ),
-        response_schema=EventSummaryVerdict.model_json_schema(),
+        response_schema=flexible_summary_json_schema(),
         schema_name=SUMMARY_SCHEMA_NAME,
         temperature=SUMMARY_TEMPERATURE,
     )

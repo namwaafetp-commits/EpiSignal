@@ -311,12 +311,27 @@ export interface components {
             country_code: string | null;
             /** Disease */
             disease: string | null;
+            /**
+             * Disease Group
+             * @default unknown
+             */
+            disease_group: string;
+            /**
+             * Disease Group Label
+             * @default Unknown / unclassified
+             */
+            disease_group_label: string;
             /** Event Type */
             event_type: string;
             /** First Reported At */
             first_reported_at: string | null;
             /** Headline */
             headline: string;
+            /**
+             * Host Sector
+             * @default unknown
+             */
+            host_sector: string;
             /**
              * Last Summarized At
              * Format: date-time
@@ -338,6 +353,10 @@ export interface components {
             status: components["schemas"]["EventStatus"];
             /** Summary */
             summary: string;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** DashboardEventsResponse */
         DashboardEventsResponse: {
@@ -373,6 +392,16 @@ export interface components {
             country_code: string | null;
             /** Disease */
             disease: string | null;
+            /**
+             * Disease Group
+             * @default unknown
+             */
+            disease_group: string;
+            /**
+             * Disease Group Label
+             * @default Unknown / unclassified
+             */
+            disease_group_label: string;
             /** Early Signal Score */
             early_signal_score: number | null;
             /** Event Type */
@@ -383,6 +412,11 @@ export interface components {
             first_reported_at: string | null;
             /** Headline */
             headline: string | null;
+            /**
+             * Host Sector
+             * @default unknown
+             */
+            host_sector: string;
             /** Last Summarized At */
             last_summarized_at: string | null;
             /**
@@ -403,6 +437,10 @@ export interface components {
             summaries: components["schemas"]["EventSummaryResponse"][];
             /** Summary */
             summary: string | null;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
             verification_status: components["schemas"]["VerificationStatus"];
         };
         /** EventListItemResponse */
@@ -417,12 +455,27 @@ export interface components {
             country_code: string | null;
             /** Disease */
             disease: string | null;
+            /**
+             * Disease Group
+             * @default unknown
+             */
+            disease_group: string;
+            /**
+             * Disease Group Label
+             * @default Unknown / unclassified
+             */
+            disease_group_label: string;
             /** Event Type */
             event_type: string;
             /** First Reported At */
             first_reported_at: string | null;
             /** Headline */
             headline: string | null;
+            /**
+             * Host Sector
+             * @default unknown
+             */
+            host_sector: string;
             /** Last Summarized At */
             last_summarized_at: string | null;
             /**
@@ -435,6 +488,10 @@ export interface components {
             status: components["schemas"]["EventStatus"];
             /** Summary */
             summary: string | null;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
             verification_status: components["schemas"]["VerificationStatus"];
         };
         /** EventListResponse */
@@ -540,6 +597,10 @@ export interface components {
             snapshot: string[] | null;
             /** Summary */
             summary: string;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
             /** Trajectory */
             trajectory: string;
             /** Version */
@@ -1159,6 +1220,8 @@ export interface operations {
                 verification_status?: string | null;
                 start_date?: string | null;
                 end_date?: string | null;
+                host_sector?: string | null;
+                disease_group?: string | null;
             };
             header?: never;
             path?: never;
@@ -1188,7 +1251,10 @@ export interface operations {
     };
     dashboard_events_api_v1_events_dashboard_get: {
         parameters: {
-            query?: never;
+            query?: {
+                host_sector?: string | null;
+                disease_group?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1202,6 +1268,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

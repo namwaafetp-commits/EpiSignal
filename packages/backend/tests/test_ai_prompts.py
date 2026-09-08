@@ -24,7 +24,8 @@ def test_classification_prompt_contains_only_discovery_metadata() -> None:
     system, user = classification_prompt(signal)
     assert "TITLE" in user and "SNIPPET" in user and "SOURCE" in user and "PUBLISHED_AT" in user
     assert "disease" not in user.lower() and "location" not in user.lower()
-    assert "relevant" in system and "confidence" in system
+    assert "relevant" in system and "confidence" in system and "host_sector" in system
+    assert "zoonotic disease name alone" in system
 
 
 def test_extraction_prompt_uses_clean_article_and_exact_identity_repair() -> None:

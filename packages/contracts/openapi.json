@@ -178,6 +178,16 @@
             ],
             "title": "Disease"
           },
+          "disease_group": {
+            "default": "unknown",
+            "title": "Disease Group",
+            "type": "string"
+          },
+          "disease_group_label": {
+            "default": "Unknown / unclassified",
+            "title": "Disease Group Label",
+            "type": "string"
+          },
           "event_type": {
             "title": "Event Type",
             "type": "string"
@@ -196,6 +206,11 @@
           },
           "headline": {
             "title": "Headline",
+            "type": "string"
+          },
+          "host_sector": {
+            "default": "unknown",
+            "title": "Host Sector",
             "type": "string"
           },
           "last_summarized_at": {
@@ -255,6 +270,18 @@
           "summary": {
             "title": "Summary",
             "type": "string"
+          },
+          "summary_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Payload"
           }
         },
         "required": [
@@ -379,6 +406,16 @@
             ],
             "title": "Disease"
           },
+          "disease_group": {
+            "default": "unknown",
+            "title": "Disease Group",
+            "type": "string"
+          },
+          "disease_group_label": {
+            "default": "Unknown / unclassified",
+            "title": "Disease Group Label",
+            "type": "string"
+          },
           "early_signal_score": {
             "anyOf": [
               {
@@ -427,6 +464,11 @@
               }
             ],
             "title": "Headline"
+          },
+          "host_sector": {
+            "default": "unknown",
+            "title": "Host Sector",
+            "type": "string"
           },
           "last_summarized_at": {
             "anyOf": [
@@ -490,6 +532,18 @@
               }
             ],
             "title": "Summary"
+          },
+          "summary_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Payload"
           },
           "verification_status": {
             "$ref": "#/components/schemas/VerificationStatus"
@@ -570,6 +624,16 @@
             ],
             "title": "Disease"
           },
+          "disease_group": {
+            "default": "unknown",
+            "title": "Disease Group",
+            "type": "string"
+          },
+          "disease_group_label": {
+            "default": "Unknown / unclassified",
+            "title": "Disease Group Label",
+            "type": "string"
+          },
           "event_type": {
             "title": "Event Type",
             "type": "string"
@@ -596,6 +660,11 @@
               }
             ],
             "title": "Headline"
+          },
+          "host_sector": {
+            "default": "unknown",
+            "title": "Host Sector",
+            "type": "string"
           },
           "last_summarized_at": {
             "anyOf": [
@@ -631,6 +700,18 @@
               }
             ],
             "title": "Summary"
+          },
+          "summary_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Payload"
           },
           "verification_status": {
             "$ref": "#/components/schemas/VerificationStatus"
@@ -987,6 +1068,18 @@
           "summary": {
             "title": "Summary",
             "type": "string"
+          },
+          "summary_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Payload"
           },
           "trajectory": {
             "title": "Trajectory",
@@ -2747,6 +2840,38 @@
               ],
               "title": "End Date"
             }
+          },
+          {
+            "in": "query",
+            "name": "host_sector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Host Sector"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disease_group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disease Group"
+            }
           }
         ],
         "responses": {
@@ -2780,6 +2905,40 @@
     "/api/v1/events/dashboard": {
       "get": {
         "operationId": "dashboard_events_api_v1_events_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "host_sector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Host Sector"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disease_group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disease Group"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2790,6 +2949,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Dashboard Events",

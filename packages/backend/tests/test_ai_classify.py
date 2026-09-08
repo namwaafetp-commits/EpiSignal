@@ -18,7 +18,7 @@ from episignal_backend.ai.documents import (
 )
 from episignal_backend.ai.ladder import Guards
 from episignal_backend.ai.protocol import ModelUnavailable
-from episignal_backend.db.types import AiOutcome, AiProvider, AiPurpose
+from episignal_backend.db.types import AiOutcome, AiProvider, AiPurpose, HostSector
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 FIRST = UUID("b3f1c2d4-0000-4000-8000-000000000001")
@@ -94,8 +94,10 @@ def signal(identifier: UUID, title: str) -> ClassifiableSignal:
     )
 
 
-def answer(relevant: bool, confidence: float) -> str:
-    return json.dumps({"relevant": relevant, "confidence": confidence})
+def answer(relevant: bool, confidence: float, host_sector: HostSector = HostSector.UNKNOWN) -> str:
+    return json.dumps(
+        {"relevant": relevant, "confidence": confidence, "host_sector": host_sector.value}
+    )
 
 
 def guards() -> Guards:
@@ -112,6 +114,7 @@ def test_relevance_uses_one_deepseek_request_per_signal_and_writes_verdicts() ->
 
     assert result == ClassificationResult(examined=2, relevant=1, irrelevant=1, requests=2)
     assert repository.verdicts[FIRST].is_public_health_relevant is True
+    assert repository.verdicts[FIRST].host_sector is HostSector.UNKNOWN
     assert repository.verdicts[SECOND].is_public_health_relevant is False
     assert [request.model_id for request in model.requests] == [
         "deepseek/deepseek-v4-flash-0731"
@@ -131,6 +134,7 @@ def test_relevance_request_has_only_the_relevance_schema_and_discovery_metadata(
         "relevant",
         "confidence",
         "reason_code",
+        "host_sector",
     }
     assert all(slot in request.user for slot in ("TITLE", "SNIPPET", "SOURCE", "PUBLISHED_AT"))
 
@@ -181,3 +185,23 @@ def test_relevance_guard_stops_after_the_allowed_request() -> None:
 
     assert result.stopped_early is True
     assert SECOND not in repository.verdicts
+
+
+def test_classification_persists_human_animal_and_both_evidence() -> None:
+    repository = FakeRepository(
+        (
+            signal(FIRST, "Human cases reported"),
+            signal(SECOND, "Poultry outbreak reported"),
+        )
+    )
+    model = ScriptedModel(
+        [
+            answer(True, 0.9, HostSector.HUMAN),
+            answer(True, 0.9, HostSector.BOTH),
+        ]
+    )
+
+    run_classification(repository, model, guards=guards(), now=lambda: NOW)
+
+    assert repository.verdicts[FIRST].host_sector is HostSector.HUMAN
+    assert repository.verdicts[SECOND].host_sector is HostSector.BOTH
