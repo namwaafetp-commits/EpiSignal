@@ -101,9 +101,9 @@ full `corepack pnpm verify` passed.
 ## Git and production boundary
 
 Branch: `codex/next-iteration`
-New commit: recorded after report commit
-Local HEAD: recorded after commit
-Remote HEAD: recorded after push
+Implementation commit: `d0003d5eaf0eaf4e9e9b89dd84a127315cda729c`
+Report metadata commit: follows the implementation commit on this branch
+Final local and remote tips: recorded in the task completion summary
 Working tree: clean after push
 
 - Deployed: **NO**
