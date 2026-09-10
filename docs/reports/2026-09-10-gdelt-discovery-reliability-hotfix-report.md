@@ -42,6 +42,17 @@ Local inspection confirmed all four reported causes:
 - The configured delay is wired into scheduled discovery, standalone discovery,
   scheduled retrieval construction, and standalone retrieval construction.
 
+## Review corrections
+
+- An HTTP 429 returned by the HTTP fallback after an HTTPS transport failure
+  now terminates `_request()` immediately. The rule makes exactly two requests
+  in that path (`https`, then `http`), and no retry follows the confirmed 429.
+- `begin_run()` now clears `_next_request_at`, so a reused client can start the
+  next run immediately while preserving pacing between requests within that
+  run.
+- Regression tests cover fallback-429 termination, rate-limit circuit state,
+  and per-run pacing reset.
+
 ## Health behavior
 
 - Provider succeeded with zero articles: `rules_attempted > 0`,
@@ -81,7 +92,7 @@ Results:
 - Lint: web ESLint and Python Ruff passed.
 - Typecheck: web TypeScript and mypy passed; 147 Python source files checked.
 - Web tests: 125 passed across 15 files.
-- Python tests: 1,469 passed, 2 skipped, 2 existing deprecation warnings.
+- Python tests: 1,471 passed, 2 skipped, 2 existing deprecation warnings.
 - Contracts: generated contracts matched the working tree.
 - Build: Next production build passed.
 - Alembic head: `20260908_0023`.

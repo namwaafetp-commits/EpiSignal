@@ -238,6 +238,36 @@ def test_rate_limit_circuit_resets_for_a_new_run() -> None:
     assert summary.circuit_open_reason is None
 
 
+def test_rate_limit_from_https_fallback_is_not_retried() -> None:
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.scheme)
+        if request.url.scheme == "https":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return httpx.Response(429, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+        request_delay_seconds=0,
+    )
+
+    with pytest.raises(GdeltUnavailable) as raised:
+        client.search(RULE, WINDOW)
+
+    assert requests == ["https", "http"]
+    assert raised.value.failure is not None
+    assert raised.value.failure.category == "http_429"
+    assert client.circuit_open
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(2)
+    assert summary.circuit_open_reason == "rate_limited"
+    assert summary.rules_skipped_circuit == 1
+
+
 def test_request_pacing_uses_request_start_times_without_extra_sleep_after_slow_request() -> None:
     clock = {"value": 0.0}
     starts: list[float] = []
@@ -294,6 +324,38 @@ def test_request_pacing_honors_the_configured_minimum_delay() -> None:
     client.search(RULE, WINDOW)
 
     assert starts == [0.0, 5.0]
+
+
+def test_begin_run_resets_the_first_request_pacing_slot() -> None:
+    clock = {"value": 0.0}
+    starts: list[float] = []
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock["value"] += seconds
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        starts.append(clock["value"])
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+        request_delay_seconds=5.0,
+    )
+
+    client.search(RULE, WINDOW)
+    clock["value"] = 1.0
+    client.begin_run()
+    client.search(RULE, WINDOW)
+    assert sleeps == []
+
+    client.search(RULE, WINDOW)
+    assert starts == [0.0, 1.0, 6.0]
+    assert sleeps == [5.0]
 
 
 def test_window_longer_than_a_day_is_accepted() -> None:

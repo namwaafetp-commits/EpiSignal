@@ -163,6 +163,7 @@ class GdeltDocClient:
         """Reset all circuit and request state for one discovery run."""
         self._https_unavailable = False
         self._circuit = GdeltCircuitBreaker()
+        self._next_request_at = None
         self._reset_run_metrics()
 
     def _reset_run_metrics(self) -> None:
@@ -352,6 +353,8 @@ class GdeltDocClient:
                     return payload
                 assert fallback_failure is not None
                 last_failure = fallback_failure
+                if fallback_failure.category == "http_429":
+                    raise GdeltUnavailable("GDELT search failed", failure=fallback_failure)
 
             if attempt < MAX_ATTEMPTS - 1:
                 self._sleep(2.0**attempt)
