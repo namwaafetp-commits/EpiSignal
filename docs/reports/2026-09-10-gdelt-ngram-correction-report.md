@@ -1,7 +1,7 @@
 # GDELT Web Legacy NGram benchmark correction
 
-**Date:** 2026-09-10 UTC  
-**Branch:** `codex/next-iteration`  
+**Date:** 2026-09-10 UTC
+**Branch:** `codex/next-iteration`
 **Previous HEAD:** `40ce88d8e41f0c308ed6905d90be6bfa8d62b0f2`
 
 ## Corrections
@@ -120,5 +120,7 @@ Full `corepack pnpm verify`: **PASS**.
 
 ## Git
 
-Implementation commit and final verification commit metadata are recorded in
-the task completion summary after push.
+Previous HEAD: `40ce88d8e41f0c308ed6905d90be6bfa8d62b0f2`
+Implementation commit: `8d18071c07492b9afeeb518fcef6487758ae896f`
+Final report metadata commit, local HEAD, and remote HEAD are recorded in the
+task completion summary after push.
