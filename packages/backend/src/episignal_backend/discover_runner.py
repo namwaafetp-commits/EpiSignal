@@ -54,7 +54,7 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
 def _run(arguments: Arguments) -> DiscoveryResult:
     settings = get_settings()
     connector = GdeltConnector(
-        search=GdeltDocClient(),
+        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
         fetcher=ArticleFetcher(
             delay_seconds=settings.gdelt_article_delay_seconds,
             user_agent=settings.gdelt_user_agent,
@@ -90,6 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"rules={result.rules_run} rules_failed={result.rules_failed} "
+        f"rules_attempted={result.rules_attempted} rules_succeeded={result.rules_succeeded} "
         f"rules_skipped_circuit={result.rules_skipped_circuit} "
         f"rules_invalid={result.rules_invalid} discovered={result.discovered} "
         f"duplicate={result.duplicate} rejected={result.rejected} "
@@ -97,8 +98,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"needs_review={result.needs_review} failed={result.failed}"
     )
 
-    attempted = result.rules_run - result.rules_skipped_circuit
-    return 1 if result.rules_failed == attempted and attempted else 0
+    return int(
+        result.rules_attempted > 0
+        and result.rules_succeeded == 0
+        and result.rules_failed == result.rules_attempted
+    )
 
 
 if __name__ == "__main__":

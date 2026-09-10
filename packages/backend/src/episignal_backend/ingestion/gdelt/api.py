@@ -111,6 +111,12 @@ class GdeltCircuitBreaker:
             self.open = True
             self.open_reason = "failure_time_budget"
 
+    def record_rate_limited(self, elapsed_sec: float) -> None:
+        self.failure_streak += 1
+        self.failure_streak_elapsed_sec += elapsed_sec
+        self.open = True
+        self.open_reason = "rate_limited"
+
 
 class _PayloadFailure(Exception):
     def __init__(self, category: str, status_code: int | None, detail: str) -> None:
@@ -136,13 +142,17 @@ class GdeltDocClient:
         fallback_client: httpx.Client | None = None,
         sleep: Callable[[float], None] = default_sleep,
         monotonic: Callable[[], float] = perf_counter,
+        request_delay_seconds: float = 5.0,
     ) -> None:
         self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._fallback_client = fallback_client or httpx.Client(timeout=TIMEOUT_SECONDS)
         self._sleep = sleep
         self._monotonic = monotonic
+        self._request_delay_seconds = max(0.0, request_delay_seconds)
+        self._next_request_at: float | None = None
         self._https_unavailable = False
         self._circuit = GdeltCircuitBreaker()
+        self._next_request_at = None
         self._reset_run_metrics()
 
     @property
@@ -252,7 +262,11 @@ class GdeltDocClient:
             self._rules_failed += 1
             failure = error.failure or GdeltFailure("other", "https", None, 0.0, str(error))
             self._failure_counts[failure.category] += 1
-            self._circuit.record_failure(self._monotonic() - rule_started)
+            elapsed = self._monotonic() - rule_started
+            if failure.category == "http_429":
+                self._circuit.record_rate_limited(elapsed)
+            else:
+                self._circuit.record_failure(elapsed)
             logger.warning(
                 "gdelt_rule_failed rule=%s rule_id=%s transport=%s error=%s "
                 "status_code=%s elapsed_ms=%.1f detail=%s",
@@ -324,6 +338,9 @@ class GdeltDocClient:
             assert failure is not None
             last_failure = failure
 
+            if failure.category == "http_429":
+                break
+
             if transport == "https" and failure.category in {
                 "connect_timeout",
                 "read_timeout",
@@ -347,6 +364,7 @@ class GdeltDocClient:
         transport: str,
         parameters: dict[str, str],
     ) -> tuple[dict[str, Any] | None, GdeltFailure | None]:
+        self._wait_for_request_slot()
         if transport == "https":
             self._https_attempts += 1
         else:
@@ -378,6 +396,14 @@ class GdeltDocClient:
                 detail=error.detail,
             )
         return payload, None
+
+    def _wait_for_request_slot(self) -> None:
+        now = self._monotonic()
+        if self._next_request_at is not None and now < self._next_request_at:
+            wait_seconds = self._next_request_at - now
+            self._sleep(wait_seconds)
+            now = max(self._monotonic(), self._next_request_at)
+        self._next_request_at = now + self._request_delay_seconds
 
     @staticmethod
     def _transport_category(error: Exception) -> str:
@@ -419,5 +445,21 @@ class GdeltDocClient:
                 "parse_error", response.status_code, "GDELT returned non-JSON"
             ) from error
         if not isinstance(payload, dict) or not isinstance(payload.get("articles"), list):
+            payload_type = type(payload).__name__
+            keys = "none"
+            articles_type = "missing"
+            if isinstance(payload, dict):
+                keys = ",".join(sorted(str(key) for key in payload)[:20]) or "none"
+                articles_type = type(payload.get("articles")).__name__
+            content_type = response.headers.get("content-type", "missing").split(";", 1)[0]
+            logger.warning(
+                "gdelt_invalid_schema status_code=%s content_type=%s payload_type=%s "
+                "keys=%s articles_type=%s",
+                response.status_code,
+                content_type,
+                payload_type,
+                keys,
+                articles_type,
+            )
             raise _PayloadFailure("invalid_response", response.status_code, "GDELT response schema")
         return payload

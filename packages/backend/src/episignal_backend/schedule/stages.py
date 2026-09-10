@@ -75,10 +75,10 @@ def _ingest(
     }
 
 
-def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, int]:
+def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
     connector = GdeltConnector(
-        search=GdeltDocClient(),
+        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
         fetcher=ArticleFetcher(
             delay_seconds=settings.gdelt_article_delay_seconds,
             user_agent=settings.gdelt_user_agent,
@@ -95,9 +95,16 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, i
             max_articles=settings.gdelt_max_articles_per_run,
         )
     cohort.signal_ids = tuple(dict.fromkeys((*cohort.signal_ids, *discovered.signal_ids)))
+    discovery_unavailable = (
+        discovered.rules_attempted > 0
+        and discovered.rules_succeeded == 0
+        and discovered.rules_failed == discovered.rules_attempted
+    )
     return {
         "window_minutes": window.minutes,
         "rules": discovered.rules_run,
+        "rules_attempted": discovered.rules_attempted,
+        "rules_succeeded": discovered.rules_succeeded,
         "rules_failed": discovered.rules_failed,
         "rules_skipped_circuit": discovered.rules_skipped_circuit,
         "discovered": discovered.discovered,
@@ -108,13 +115,15 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, i
         "existing_duplicates": discovered.duplicate,
         "new_signals": discovered.stored,
         "cohort_size": len(discovered.signal_ids),
+        "__stage_ok": not discovery_unavailable,
+        "__stage_error": "DiscoveryUnavailable" if discovery_unavailable else None,
     }
 
 
 def _retrieve(cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
     connector = GdeltConnector(
-        search=GdeltDocClient(),
+        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
         fetcher=ArticleFetcher(
             delay_seconds=settings.gdelt_article_delay_seconds,
             user_agent=settings.gdelt_user_agent,

@@ -33,6 +33,8 @@ logger = logging.getLogger("episignal_backend.ingestion.discovery")
 @dataclass(frozen=True)
 class DiscoveryResult:
     rules_run: int = 0
+    rules_attempted: int = 0
+    rules_succeeded: int = 0
     rules_failed: int = 0
     rules_skipped_circuit: int = 0
     rules_invalid: int = 0
@@ -66,7 +68,13 @@ def run_discovery(
     moment = now or datetime.now(UTC)
     window = TimeWindow(start=moment - timedelta(minutes=window_minutes), end=moment)
 
-    rules = repository.active_rules()
+    rules = tuple(repository.active_rules())
+    if rules:
+        # A stable hourly slot rotates the first rule without introducing a
+        # persistent cursor or random ordering. This keeps a repeatedly-opened
+        # circuit from starving the tail of the active rule set.
+        offset = int(moment.timestamp() // 3600) % len(rules)
+        rules = rules[offset:] + rules[:offset]
     filters = compile_rules(repository.filter_rules())
     if not filters.titles and not filters.domains:
         # A valid configuration, not an error. Said out loud because the
@@ -74,6 +82,8 @@ def run_discovery(
         # counts alone.
         logger.info("No active filter rules; discovery is running unfiltered")
     rules_failed = 0
+    rules_attempted = 0
+    rules_succeeded = 0
     rules_skipped_circuit = 0
     failed = 0
     discovered: dict[str, DiscoveredArticle] = {}
@@ -83,6 +93,7 @@ def run_discovery(
         begin_run()
 
     for rule in rules:
+        rules_attempted += 1
         try:
             found = connector.discover(rule, window)
         except Exception as error:
@@ -94,6 +105,7 @@ def run_discovery(
                 type(error).__name__,
             )
             continue
+        rules_succeeded += 1
         for article in found:
             # Within a run the same story arrives under several rules; the first
             # sighting keeps the rule that found it.
@@ -102,6 +114,9 @@ def run_discovery(
     finish_run = getattr(connector, "finish_discovery_run", None)
     if callable(finish_run):
         summary = finish_run(len(rules))
+        rules_attempted = int(getattr(summary, "rules_attempted", rules_attempted))
+        rules_succeeded = int(getattr(summary, "rules_succeeded", rules_succeeded))
+        rules_failed = int(getattr(summary, "rules_failed", rules_failed))
         rules_skipped_circuit = int(getattr(summary, "rules_skipped_circuit", 0))
 
     already_stored = repository.seen_urls(tuple(discovered))
@@ -182,6 +197,8 @@ def run_discovery(
 
     return DiscoveryResult(
         rules_run=len(rules),
+        rules_attempted=rules_attempted,
+        rules_succeeded=rules_succeeded,
         rules_failed=rules_failed,
         rules_skipped_circuit=rules_skipped_circuit,
         rules_invalid=filters.invalid,

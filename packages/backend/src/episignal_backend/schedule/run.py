@@ -28,7 +28,7 @@ def run_chain(
     for stage in chain:
         started = perf_counter()
         try:
-            counts = runners[stage]()
+            counts = dict(runners[stage]())
         except Exception as error:
             # The type name only. An exception raised near the session can carry
             # the connection string, and one raised near a prompt can carry the
@@ -43,11 +43,14 @@ def run_chain(
                 )
             )
             continue
+        stage_ok = bool(counts.pop("__stage_ok", True))
+        stage_error = counts.pop("__stage_error", None)
         outcomes.append(
             StageOutcome(
                 stage=stage,
-                ok=True,
-                counts=dict(counts),
+                ok=stage_ok,
+                counts=counts,
+                error=stage_error,
                 duration_sec=perf_counter() - started,
             )
         )
