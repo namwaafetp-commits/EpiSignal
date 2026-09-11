@@ -35,12 +35,14 @@ from episignal_backend.ingestion.documents import (
 from episignal_backend.ingestion.normalize_title import normalize_title
 from episignal_backend.models import (
     Disease,
+    GdeltDiscoveryState,
     GdeltQueryRule,
     RejectedSighting,
     Signal,
     SignalFilterRule,
     Source,
 )
+from episignal_backend.models.discovery import GDELT_NGRAM_PROVIDER
 
 
 def build_signal(signal: NormalizedSignal, source_id: UUID) -> Signal:
@@ -150,6 +152,24 @@ class SqlAlchemyDiscoveryRepository:
                 language=row.language,
             )
             for row in rows
+        )
+
+    def get_cursor(self) -> datetime | None:
+        return self._session.execute(
+            select(GdeltDiscoveryState.cursor_at).where(
+                GdeltDiscoveryState.provider == GDELT_NGRAM_PROVIDER
+            )
+        ).scalar_one_or_none()
+
+    def set_cursor(self, value: datetime) -> None:
+        statement = pg_insert(GdeltDiscoveryState).values(
+            provider=GDELT_NGRAM_PROVIDER, cursor_at=value
+        )
+        self._session.execute(
+            statement.on_conflict_do_update(
+                index_elements=[GdeltDiscoveryState.provider],
+                set_={"cursor_at": value, "updated_at": func.now()},
+            )
         )
 
     def filter_rules(self) -> Sequence[FilterRule]:

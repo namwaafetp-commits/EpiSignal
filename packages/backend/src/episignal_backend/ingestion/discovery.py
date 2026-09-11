@@ -10,7 +10,7 @@ publisher connection is opened, and what remains is capped.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -45,6 +45,8 @@ class DiscoveryResult:
     stored: int = 0
     needs_review: int = 0
     failed: int = 0
+    provider_status: str = "healthy"
+    ngram_metrics: dict[str, int | str | None] = field(default_factory=dict)
     signal_ids: tuple[UUID, ...] = ()
 
 
@@ -87,32 +89,59 @@ def run_discovery(
     rules_skipped_circuit = 0
     failed = 0
     discovered: dict[str, DiscoveredArticle] = {}
+    provider_status = "healthy"
+    ngram_metrics: dict[str, int | str | None] = {}
+    ngram_cursor_after: datetime | None = None
+    batch_discovery = (
+        getattr(connector, "discover_rules", None)
+        if rules and getattr(connector, "supports_batch_discovery", False)
+        else None
+    )
 
     begin_run = getattr(connector, "begin_discovery_run", None)
     if callable(begin_run):
         begin_run()
 
-    for rule in rules:
-        rules_attempted += 1
+    if callable(batch_discovery):
+        rules_attempted = len(rules)
         try:
-            found = connector.discover(rule, window)
+            batch_result = batch_discovery(rules, window)
         except Exception as error:
-            # One rate-limited rule must not discard the other forty-nine.
-            rules_failed += 1
-            logger.warning(
-                "Discovery rule %s failed (%s)",
-                rule.label,
-                type(error).__name__,
-            )
-            continue
-        rules_succeeded += 1
-        for article in found:
-            # Within a run the same story arrives under several rules; the first
-            # sighting keeps the rule that found it.
-            discovered.setdefault(article.canonical_url, article)
+            provider_status = "unavailable"
+            rules_failed = len(rules)
+            logger.warning("Discovery provider failed (%s)", type(error).__name__)
+        else:
+            provider_status = str(getattr(batch_result, "status", "healthy"))
+            rules_succeeded = len(rules) if provider_status != "unavailable" else 0
+            rules_failed = 1 if provider_status == "partial_degradation" else 0
+            ngram_cursor_after = getattr(batch_result, "cursor_after", None)
+            metrics = getattr(batch_result, "metrics", None)
+            if metrics is not None and callable(getattr(metrics, "as_dict", None)):
+                ngram_metrics = metrics.as_dict()
+            for article in getattr(batch_result, "candidates", ()):
+                discovered.setdefault(article.canonical_url, article)
+    else:
+        for rule in rules:
+            rules_attempted += 1
+            try:
+                found = connector.discover(rule, window)
+            except Exception as error:
+                # One rate-limited rule must not discard the other forty-nine.
+                rules_failed += 1
+                logger.warning(
+                    "Discovery rule %s failed (%s)",
+                    rule.label,
+                    type(error).__name__,
+                )
+                continue
+            rules_succeeded += 1
+            for article in found:
+                # Within a run the same story arrives under several rules; the first
+                # sighting keeps the rule that found it.
+                discovered.setdefault(article.canonical_url, article)
 
     finish_run = getattr(connector, "finish_discovery_run", None)
-    if callable(finish_run):
+    if callable(finish_run) and not callable(batch_discovery):
         summary = finish_run(len(rules))
         rules_attempted = int(getattr(summary, "rules_attempted", rules_attempted))
         rules_succeeded = int(getattr(summary, "rules_succeeded", rules_succeeded))
@@ -195,6 +224,13 @@ def run_discovery(
 
         stored += 1
 
+    complete_discovery = getattr(connector, "complete_discovery", None)
+    if callable(complete_discovery):
+        complete_discovery(
+            ngram_cursor_after,
+            success=(failed == 0 and len(candidates) <= max_articles),
+        )
+
     return DiscoveryResult(
         rules_run=len(rules),
         rules_attempted=rules_attempted,
@@ -209,6 +245,8 @@ def run_discovery(
         stored=stored,
         needs_review=0,
         failed=failed,
+        provider_status=provider_status,
+        ngram_metrics=ngram_metrics,
         signal_ids=tuple(signal_ids),
     )
 

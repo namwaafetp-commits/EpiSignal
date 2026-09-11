@@ -18,9 +18,9 @@ from episignal_backend.ingestion.discovery import (
     DiscoveryResult,
     run_discovery,
 )
-from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
 from episignal_backend.ingestion.gdelt.connector import GdeltConnector
+from episignal_backend.ingestion.gdelt.ngram import GdeltNgramClient, GdeltNgramDiscovery
 from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
 
 
@@ -53,16 +53,26 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
 
 def _run(arguments: Arguments) -> DiscoveryResult:
     settings = get_settings()
-    connector = GdeltConnector(
-        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
-        fetcher=ArticleFetcher(
-            delay_seconds=settings.gdelt_article_delay_seconds,
-            user_agent=settings.gdelt_user_agent,
-            timeout_seconds=settings.gdelt_article_timeout_seconds,
-        ),
-    )
     with session_scope() as session:
         repository = SqlAlchemyDiscoveryRepository(session)
+        connector = GdeltConnector(
+            ngram=GdeltNgramDiscovery(
+                GdeltNgramClient(
+                    timeout_seconds=settings.gdelt_ngram_timeout_seconds,
+                    max_download_bytes=settings.gdelt_ngram_max_download_bytes,
+                    user_agent=settings.gdelt_user_agent,
+                ),
+                cursor_store=repository,
+                max_catchup_minutes=settings.gdelt_ngram_max_catchup_minutes,
+                max_batches=settings.gdelt_ngram_max_batches,
+                max_download_bytes=settings.gdelt_ngram_max_download_bytes,
+            ),
+            fetcher=ArticleFetcher(
+                delay_seconds=settings.gdelt_article_delay_seconds,
+                user_agent=settings.gdelt_user_agent,
+                timeout_seconds=settings.gdelt_article_timeout_seconds,
+            ),
+        )
         discovered = run_discovery(
             repository,
             connector,
@@ -95,13 +105,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"rules_invalid={result.rules_invalid} discovered={result.discovered} "
         f"duplicate={result.duplicate} rejected={result.rejected} "
         f"deferred={result.deferred} stored={result.stored} "
-        f"needs_review={result.needs_review} failed={result.failed}"
+        f"needs_review={result.needs_review} failed={result.failed} "
+        f"provider_status={result.provider_status} "
+        + " ".join(f"{key}={value}" for key, value in result.ngram_metrics.items())
     )
 
     return int(
-        result.rules_attempted > 0
-        and result.rules_succeeded == 0
-        and result.rules_failed == result.rules_attempted
+        result.provider_status != "healthy"
+        or (
+            result.rules_attempted > 0
+            and result.rules_succeeded == 0
+            and result.rules_failed == result.rules_attempted
+        )
     )
 
 

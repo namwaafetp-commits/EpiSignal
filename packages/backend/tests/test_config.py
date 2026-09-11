@@ -129,6 +129,10 @@ def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -
     assert settings.gdelt_max_articles_per_run == 200
     assert settings.gdelt_request_delay_seconds == 5.0
     assert settings.gdelt_article_delay_seconds == 1.0
+    assert settings.gdelt_ngram_timeout_seconds == 30.0
+    assert settings.gdelt_ngram_max_catchup_minutes == 360
+    assert settings.gdelt_ngram_max_batches == 64
+    assert settings.gdelt_ngram_max_download_bytes == 1_500_000_000
     assert settings.gdelt_max_retrieval_attempts == 3
     assert settings.gdelt_retry_batch_size == 50
 

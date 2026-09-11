@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     gdelt_request_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
     gdelt_article_delay_seconds: float = Field(default=1.0, ge=0.0, le=60.0)
     gdelt_article_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+    gdelt_ngram_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
+    gdelt_ngram_max_catchup_minutes: int = Field(default=360, ge=1, le=1440)
+    gdelt_ngram_max_batches: int = Field(default=64, ge=1, le=256)
+    gdelt_ngram_max_download_bytes: int = Field(
+        default=1_500_000_000, ge=1_000_000, le=10_000_000_000
+    )
     gdelt_max_retrieval_attempts: int = Field(default=3, ge=1, le=20)
     gdelt_retry_batch_size: int = Field(default=50, ge=0, le=1000)
     gdelt_user_agent: str = "EpiSignal/0.1 (+https://episignal.org)"

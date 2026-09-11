@@ -12,6 +12,7 @@ EXPECTED_TABLES = {
     "event_observations",
     "event_locations",
     "gdelt_query_rules",
+    "gdelt_discovery_state",
     "filter_rules",
     "rejected_sightings",
     "ai_models",

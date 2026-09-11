@@ -44,6 +44,7 @@ from episignal_backend.ingestion.discovery import run_discovery
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
 from episignal_backend.ingestion.gdelt.connector import GdeltConnector
+from episignal_backend.ingestion.gdelt.ngram import GdeltNgramClient, GdeltNgramDiscovery
 from episignal_backend.ingestion.pipeline import run_ingestion
 from episignal_backend.ingestion.protocol import SourceConnector
 from episignal_backend.ingestion.repository import (
@@ -77,16 +78,26 @@ def _ingest(
 
 def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
-    connector = GdeltConnector(
-        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
-        fetcher=ArticleFetcher(
-            delay_seconds=settings.gdelt_article_delay_seconds,
-            user_agent=settings.gdelt_user_agent,
-            timeout_seconds=settings.gdelt_article_timeout_seconds,
-        ),
-    )
     with session_scope() as session:
         repository = SqlAlchemyDiscoveryRepository(session)
+        connector = GdeltConnector(
+            ngram=GdeltNgramDiscovery(
+                GdeltNgramClient(
+                    timeout_seconds=settings.gdelt_ngram_timeout_seconds,
+                    max_download_bytes=settings.gdelt_ngram_max_download_bytes,
+                    user_agent=settings.gdelt_user_agent,
+                ),
+                cursor_store=repository,
+                max_catchup_minutes=settings.gdelt_ngram_max_catchup_minutes,
+                max_batches=settings.gdelt_ngram_max_batches,
+                max_download_bytes=settings.gdelt_ngram_max_download_bytes,
+            ),
+            fetcher=ArticleFetcher(
+                delay_seconds=settings.gdelt_article_delay_seconds,
+                user_agent=settings.gdelt_user_agent,
+                timeout_seconds=settings.gdelt_article_timeout_seconds,
+            ),
+        )
         discovered = run_discovery(
             repository,
             connector,
@@ -112,11 +123,22 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, A
         "rejected": discovered.rejected,
         "stored": discovered.stored,
         "failed": discovered.failed,
+        "provider_status": discovered.provider_status,
+        **discovered.ngram_metrics,
         "existing_duplicates": discovered.duplicate,
         "new_signals": discovered.stored,
         "cohort_size": len(discovered.signal_ids),
-        "__stage_ok": not discovery_unavailable,
-        "__stage_error": "DiscoveryUnavailable" if discovery_unavailable else None,
+        "__stage_ok": not discovery_unavailable
+        and discovered.provider_status != "partial_degradation",
+        "__stage_error": (
+            "DiscoveryUnavailable"
+            if discovery_unavailable
+            else (
+                "DiscoveryPartialDegradation"
+                if discovered.provider_status == "partial_degradation"
+                else None
+            )
+        ),
     }
 
 

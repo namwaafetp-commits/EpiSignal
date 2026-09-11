@@ -22,6 +22,7 @@ from episignal_backend.ingestion.fingerprint import content_hash
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient, GdeltRunSummary
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher, Disallowed, Unfetchable
 from episignal_backend.ingestion.gdelt.extract import extract_page
+from episignal_backend.ingestion.gdelt.ngram import GdeltNgramDiscovery, NgramDiscoveryResult
 from episignal_backend.ingestion.protocol import RetrievalFailed
 
 DISCOVERY_NAME = "GDELT"
@@ -38,22 +39,56 @@ class GdeltConnector:
     def __init__(
         self,
         search: GdeltDocClient | None = None,
+        ngram: GdeltNgramDiscovery | None = None,
         fetcher: ArticleFetcher | None = None,
         now: Callable[[], datetime] = _utc_now,
         minimum_body_characters: int = MINIMUM_BODY_CHARACTERS,
     ) -> None:
-        self._search = search or GdeltDocClient()
+        self._search = search
+        self._ngram = ngram
         self._fetcher = fetcher or ArticleFetcher()
         self._now = now
         self._minimum_body_characters = minimum_body_characters
 
+    @property
+    def supports_batch_discovery(self) -> bool:
+        return self._ngram is not None
+
     def discover(self, rule: QueryRule, window: TimeWindow) -> Sequence[DiscoveredArticle]:
+        if self._search is None:
+            raise RuntimeError("GDELT DOC discovery is not configured")
         return self._search.search(rule, window)
 
+    def discover_rules(
+        self, rules: Sequence[QueryRule], window: TimeWindow
+    ) -> NgramDiscoveryResult:
+        if self._ngram is None:
+            raise RuntimeError("GDELT NGram discovery is not configured")
+        return self._ngram.discover_rules(rules, window)
+
+    def complete_discovery(self, cursor_after: datetime | None, *, success: bool) -> None:
+        if self._ngram is not None:
+            self._ngram.complete(cursor_after, success=success)
+
     def begin_discovery_run(self) -> None:
-        self._search.begin_run()
+        if self._search is not None:
+            self._search.begin_run()
 
     def finish_discovery_run(self, rules_total: int) -> GdeltRunSummary:
+        if self._search is None:
+            return GdeltRunSummary(
+                rules_total=rules_total,
+                rules_attempted=0,
+                rules_succeeded=0,
+                rules_failed=0,
+                rules_skipped_circuit=0,
+                https_attempts=0,
+                http_attempts=0,
+                failure_counts={},
+                circuit_open=False,
+                circuit_open_reason=None,
+                failure_streak_elapsed_sec=0.0,
+            )
         return self._search.finish_run(rules_total)
 
     def retrieve(self, article: DiscoveredArticle, first_seen_at: datetime) -> DiscoveredSignal:

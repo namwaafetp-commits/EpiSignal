@@ -98,6 +98,19 @@ def test_a_discovered_signal_is_marked_as_discovered_via_gdelt() -> None:
     assert row.discovered_via is DiscoveryMethod.GDELT
 
 
+def test_ngram_cursor_is_read_from_and_written_to_durable_state() -> None:
+    from episignal_backend.ingestion.repository import SqlAlchemyDiscoveryRepository
+
+    session = FakeSession([None])
+    repository = SqlAlchemyDiscoveryRepository(session)  # type: ignore[arg-type]
+
+    assert repository.get_cursor() is None
+    repository.set_cursor(SEEN)
+
+    assert len(session.executed) == 2
+    assert "gdelt_discovery_state" in str(session.executed[1])
+
+
 def test_a_discovered_signal_keeps_all_four_timestamps_apart() -> None:
     row = build_discovered_signal(discovered(), uuid4())
     assert row.published_at == NOW

@@ -114,6 +114,10 @@ class DiscoveryRepository(Protocol):
 
     def rollback(self) -> None: ...
 
+    def get_cursor(self) -> datetime | None: ...
+
+    def set_cursor(self, value: datetime) -> None: ...
+
 
 @runtime_checkable
 class DedupeRepository(Protocol):

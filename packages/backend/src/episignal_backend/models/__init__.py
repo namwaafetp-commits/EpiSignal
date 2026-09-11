@@ -1,6 +1,7 @@
 from episignal_backend.models.ai import AiModel, AiRequest
 from episignal_backend.models.catalog import Disease, Pathogen, Source
 from episignal_backend.models.discovery import (
+    GdeltDiscoveryState,
     GdeltQueryRule,
     RejectedSighting,
     SignalFilterRule,
@@ -29,6 +30,7 @@ __all__ = [
     "EventSummary",
     "GazetteerPlace",
     "GdeltQueryRule",
+    "GdeltDiscoveryState",
     "GeocodeCache",
     "Pathogen",
     "PipelineHealthRun",

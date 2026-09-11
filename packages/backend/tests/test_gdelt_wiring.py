@@ -15,12 +15,16 @@ def _settings() -> SimpleNamespace:
         gdelt_article_delay_seconds=0.0,
         gdelt_user_agent="test",
         gdelt_article_timeout_seconds=10.0,
+        gdelt_ngram_timeout_seconds=30.0,
+        gdelt_ngram_max_download_bytes=1_500_000_000,
+        gdelt_ngram_max_catchup_minutes=360,
+        gdelt_ngram_max_batches=64,
         gdelt_query_window_minutes=20,
         gdelt_max_articles_per_run=200,
     )
 
 
-def test_standalone_discover_runner_wires_request_delay(
+def test_standalone_discover_runner_wires_ngram_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
@@ -30,11 +34,11 @@ def test_standalone_discover_runner_wires_request_delay(
             captured.update(kwargs)
 
     class Connector:
-        def __init__(self, *, search: object, fetcher: object) -> None:
-            captured["search"] = search
+        def __init__(self, *, ngram: object, fetcher: object) -> None:
+            captured["ngram"] = ngram
 
     monkeypatch.setattr(discover_runner, "get_settings", _settings)
-    monkeypatch.setattr(discover_runner, "GdeltDocClient", Client)
+    monkeypatch.setattr(discover_runner, "GdeltNgramClient", Client)
     monkeypatch.setattr(discover_runner, "GdeltConnector", Connector)
     monkeypatch.setattr(discover_runner, "session_scope", lambda: nullcontext(None))
     monkeypatch.setattr(
@@ -45,10 +49,11 @@ def test_standalone_discover_runner_wires_request_delay(
 
     discover_runner._run(discover_runner.Arguments(window_minutes=None, max_articles=None))
 
-    assert captured["request_delay_seconds"] == 3.25
+    assert captured["timeout_seconds"] == 30.0
+    assert captured["max_download_bytes"] == 1_500_000_000
 
 
-def test_scheduled_discovery_wires_request_delay(
+def test_scheduled_discovery_wires_ngram_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
@@ -58,11 +63,11 @@ def test_scheduled_discovery_wires_request_delay(
             captured.update(kwargs)
 
     class Connector:
-        def __init__(self, *, search: object, fetcher: object) -> None:
-            captured["search"] = search
+        def __init__(self, *, ngram: object, fetcher: object) -> None:
+            captured["ngram"] = ngram
 
     monkeypatch.setattr(stages, "get_settings", _settings)
-    monkeypatch.setattr(stages, "GdeltDocClient", Client)
+    monkeypatch.setattr(stages, "GdeltNgramClient", Client)
     monkeypatch.setattr(stages, "GdeltConnector", Connector)
     monkeypatch.setattr(stages, "session_scope", lambda: nullcontext(None))
     monkeypatch.setattr(
@@ -86,4 +91,5 @@ def test_scheduled_discovery_wires_request_delay(
         PipelineCohort(),
     )
 
-    assert captured["request_delay_seconds"] == 3.25
+    assert captured["timeout_seconds"] == 30.0
+    assert captured["max_download_bytes"] == 1_500_000_000
