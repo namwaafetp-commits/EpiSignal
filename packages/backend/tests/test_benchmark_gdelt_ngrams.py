@@ -252,3 +252,18 @@ def test_missing_batch_is_not_reported_as_available(monkeypatch) -> None:
     )
 
     assert found == ()
+
+
+def test_unwritable_optional_output_does_not_fail_completed_benchmark(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from scripts import benchmark_gdelt_ngrams as benchmark
+
+    target = tmp_path / "mounted" / "report.txt"
+
+    def refuse(*args, **kwargs):
+        raise PermissionError("mounted output is not writable")
+
+    monkeypatch.setattr(Path, "write_text", refuse)
+
+    assert benchmark.write_report_safely(target, "completed") is False

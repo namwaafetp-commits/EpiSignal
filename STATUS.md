@@ -245,8 +245,8 @@ runtime, wrapper, container, timezone, environment, and persistent mount.
   available without automatic fallback.
 - [x] Structured discovery stage metrics and resource safeguards added.
 - [x] Benchmark optional-output permission failure fixed and tested.
-- [x] Full repository gate passed at commit `16b535c`: web 125 passed; Python
-  1,493 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
+- [x] Full repository gate passed at commit `5a5ba6c`: web 125 passed; Python
+  1,497 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
   build passed.
 
 Completion report:

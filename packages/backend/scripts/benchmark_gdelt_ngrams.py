@@ -1000,6 +1000,20 @@ def format_report(result: BenchmarkResult, *, example_limit: int = 30) -> str:
     return "\n".join(lines) + "\n"
 
 
+def write_report_safely(path: Path, report: str) -> bool:
+    """Keep completed benchmark successful when optional mount is unwritable."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(report, encoding="utf-8")
+    except OSError as exc:
+        print(
+            f"Could not write benchmark report ({type(exc).__name__}); report remains on stdout.",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def _bounded_hours(value: str) -> float:
     try:
         parsed = float(value)
@@ -1061,8 +1075,7 @@ def main() -> int:
     report = format_report(result)
     print(report, end="")
     if arguments.output:
-        arguments.output.parent.mkdir(parents=True, exist_ok=True)
-        arguments.output.write_text(report, encoding="utf-8")
+        write_report_safely(arguments.output, report)
     return 0
 
 

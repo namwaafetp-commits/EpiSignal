@@ -2,7 +2,7 @@
 
 Date: 2026-09-11
 Branch: `codex/next-iteration`
-Commit verified: `16b535c`
+Commit verified: `5a5ba6c`
 
 ## IMPLEMENTATION
 
@@ -72,7 +72,7 @@ NGram-specific:
 - Production NGram tests cover inventory, incomplete pairs, gzip streaming, active rule matching, English filtering, French `MERS` regression, multiple rules per DOCID, URL deduplication, cursor behavior, bounded catch-up, partial/total failure, normal pipeline handoff, and cleanup.
 - Benchmark tests cover the standalone benchmark logic and unwritable optional output behavior.
 
-Python: 1,493 passed, 2 skipped, 2 existing warnings.
+Python: 1,497 passed, 2 skipped, 2 existing warnings.
 Web: 125 passed.
 format: PASS.
 lint: PASS.
@@ -89,11 +89,11 @@ Alembic: migration `20260911_0024_gdelt_ngram_state` added and migration-head/mo
 
 ## GIT
 
-Previous HEAD: `cff830a`
-New commit: `16b535c` (implementation); report/status follow-up pending.
-Local HEAD: `16b535c`
-Remote HEAD: `cff830a`
-Working tree: clean before report/status update.
+Previous HEAD: `cff830a` locally; remote benchmark commits through `2ae6d33` were integrated during push reconciliation.
+New commit: `5a5ba6c` (production implementation); report/status follow-up commit pending.
+Local HEAD: `619fa39` before report/status correction.
+Remote HEAD: `2ae6d33` before push.
+Working tree: benchmark permission fix and report/status correction are being committed.
 
 ## PRODUCTION
 
