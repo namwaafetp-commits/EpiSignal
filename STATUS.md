@@ -4,7 +4,7 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-11
 
 ## Position
 
@@ -248,6 +248,12 @@ runtime, wrapper, container, timezone, environment, and persistent mount.
 - [x] Full repository gate passed at commit `5a5ba6c`: web 125 passed; Python
   1,497 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
   build passed.
+- [x] Review corrections preserve durable-cursor authority, oldest-first
+  `max_batches` continuity, mid-batch retry continuity, and non-green status
+  when zero batches succeed.
+- [x] Correction gate passed at commit `0b4019b`: web 125 passed; Python 1,501
+  passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and build
+  passed.
 
 Completion report:
 [Production GDELT NGram discovery report](docs/reports/2026-09-11-gdelt-ngram-production-report.md).
