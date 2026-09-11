@@ -2,7 +2,7 @@
 
 Date: 2026-09-11
 Branch: `codex/next-iteration`
-Commit verified: `0b4019b`
+Commit verified: `61af04e`
 
 ## IMPLEMENTATION
 
@@ -45,6 +45,17 @@ health-reporting defects without changing the pipeline shape:
 - A run is healthy only after at least one complete batch succeeds. Zero
   complete pairs and all-failed runs are unavailable; successful zero-news runs
   remain healthy.
+
+## SCHEDULER INTEGRATION CORRECTION
+
+Scheduled batch discovery now treats the NGram provider status as authoritative:
+
+- `healthy` keeps the discovery stage successful, including a successful batch
+  with zero candidates.
+- `partial_degradation` fails the stage with `DiscoveryPartialDegradation`.
+- `unavailable` fails the stage with `DiscoveryUnavailable`, even when the
+  legacy per-rule counters are `rules_succeeded=0` and `rules_failed=0`.
+- The legacy all-rules-failed rule remains active for non-batch/DOC discovery.
 
 Resource safeguards:
 
@@ -90,7 +101,7 @@ NGram-specific:
   continuity, and zero-candidate health semantics.
 - Benchmark tests cover the standalone benchmark logic and unwritable optional output behavior.
 
-Python: 1,501 passed, 2 skipped, 2 existing warnings.
+Python: 1,505 passed, 2 skipped, 2 existing warnings.
 Web: 125 passed.
 format: PASS.
 lint: PASS.
@@ -107,8 +118,8 @@ Alembic: migration `20260911_0024_gdelt_ngram_state` added and migration-head/mo
 
 ## GIT
 
-Previous implementation HEAD: `ed6cfef`.
-Correction commit: `0b4019b`.
+Previous HEAD: `e31c4c4`.
+Correction commit: `61af04e`.
 The full verification gate ran against the correction tree; this report and
 the status-ledger update are documentation follow-up.
 

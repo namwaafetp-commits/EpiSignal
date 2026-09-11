@@ -258,6 +258,18 @@ runtime, wrapper, container, timezone, environment, and persistent mount.
 Completion report:
 [Production GDELT NGram discovery report](docs/reports/2026-09-11-gdelt-ngram-production-report.md).
 
+## Task ledger — scheduler NGram health propagation (2026-09-11)
+
+- [x] Batch provider status is authoritative for scheduled discovery stage
+  success/failure.
+- [x] Partial and unavailable provider statuses map to their explicit stage
+  errors; legacy all-rules-failed DOC behavior remains protected.
+- [x] Regression coverage added for healthy zero-candidate, partial,
+  unavailable with zero failed-rule count, and legacy DOC failure cases.
+- [x] Full repository gate passed at commit `61af04e`: web 125 passed; Python
+  1,505 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
+  build passed. Alembic head remains `20260911_0024`.
+
 ## Task ledger — additive surveillance dimensions and flexible summaries (2026-09-08)
 
 - [x] Map all 30 seeded diseases to the explicit additive disease-group taxonomy with unknown fallback.
