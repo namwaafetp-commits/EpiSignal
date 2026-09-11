@@ -111,10 +111,12 @@ class FakeClient:
     def __init__(self, outcomes: dict[datetime, str | Exception]) -> None:
         self.outcomes = outcomes
         self.downloaded: list[str] = []
+        self.inventory_calls: list[tuple[datetime, datetime, int]] = []
 
     def inventory(
         self, start: datetime, end: datetime, *, max_batches: int
     ) -> tuple[NgramBatch, ...]:
+        self.inventory_calls.append((start, end, max_batches))
         return tuple(
             NgramBatch(
                 timestamp=timestamp,
@@ -123,7 +125,7 @@ class FakeClient:
             )
             for timestamp in sorted(self.outcomes)
             if start <= timestamp <= end
-        )[:max_batches]
+        )
 
     def download(self, url: str, destination: Path, *, max_bytes: int | None = None) -> int:
         timestamp = datetime.fromisoformat(url.split("::", 1)[0])
@@ -135,6 +137,14 @@ class FakeClient:
         destination.write_bytes(payload)
         self.downloaded.append(url)
         return len(payload)
+
+
+def _downloaded_batches(client: FakeClient) -> list[tuple[datetime, str]]:
+    return [
+        (datetime.fromisoformat(url.split("::", 1)[0]), "ngram")
+        for url in client.downloaded
+        if url.endswith("::ngram")
+    ]
 
 
 class FakeCursor:
@@ -224,6 +234,108 @@ def test_cursor_initialization_and_bounded_catchup(tmp_path: Path) -> None:
     assert result.metrics.catchup_minutes == 60
     assert result.metrics.cursor_before == NOW - timedelta(hours=12)
     assert result.metrics.cursor_after is None
+    assert result.status is NgramProviderStatus.UNAVAILABLE
+
+
+def test_durable_cursor_overrides_newer_scheduler_window_start(tmp_path: Path) -> None:
+    cursor_time = datetime(2026, 9, 10, 9, 32, tzinfo=UTC)
+    first = datetime(2026, 9, 10, 9, 47, tzinfo=UTC)
+    second = datetime(2026, 9, 10, 10, 17, tzinfo=UTC)
+    third = datetime(2026, 9, 10, 10, 32, tzinfo=UTC)
+    client = FakeClient(
+        {
+            first: '{"ID":7,"lang":"en","title":"Dengue","url":"https://example.org/a"}',
+            second: '{"ID":7,"lang":"en","title":"Dengue","url":"https://example.org/b"}',
+            third: '{"ID":7,"lang":"en","title":"Dengue","url":"https://example.org/c"}',
+        }
+    )
+    cursor = FakeCursor(cursor_time)
+    discovery = GdeltNgramDiscovery(client, cursor_store=cursor, temp_directory=tmp_path)
+
+    result = discovery.discover_rules(
+        RULES,
+        TimeWindow(
+            start=datetime(2026, 9, 10, 10, 0, tzinfo=UTC),
+            end=datetime(2026, 9, 10, 11, 0, tzinfo=UTC),
+        ),
+    )
+
+    assert client.inventory_calls[0][0] == cursor_time
+    assert [timestamp for timestamp, _ in _downloaded_batches(client)] == [first, second, third]
+    assert result.cursor_after == third
+    discovery.complete(result.cursor_after, success=True)
+    assert cursor.cursor == third
+
+
+def test_max_batches_processes_oldest_pairs_without_gaps(tmp_path: Path) -> None:
+    first = datetime(2026, 9, 10, 1, 0, tzinfo=UTC)
+    batches = [first + timedelta(minutes=15 * index) for index in range(10)]
+    payload = '{"ID":7,"lang":"en","title":"Dengue","url":"https://example.org/a"}'
+    client = FakeClient(dict.fromkeys(batches, payload))
+    cursor = FakeCursor()
+    discovery = GdeltNgramDiscovery(
+        client,
+        cursor_store=cursor,
+        max_batches=4,
+        max_catchup_minutes=240,
+        temp_directory=tmp_path,
+    )
+    window = TimeWindow(start=first, end=batches[-1] + timedelta(minutes=5))
+
+    for expected in (batches[:4], batches[4:8], batches[8:]):
+        result = discovery.discover_rules(RULES, window)
+        assert [timestamp for timestamp, _ in _downloaded_batches(client)][
+            -len(expected) :
+        ] == expected
+        assert result.cursor_after == expected[-1]
+        discovery.complete(result.cursor_after, success=True)
+        assert cursor.cursor == expected[-1]
+
+
+def test_mid_batch_failure_does_not_leap_over_unprocessed_pairs(tmp_path: Path) -> None:
+    first = datetime(2026, 9, 10, 1, 0, tzinfo=UTC)
+    batches = [first + timedelta(minutes=15 * index) for index in range(5)]
+    payload = '{"ID":7,"lang":"en","title":"Dengue","url":"https://example.org/a"}'
+    outcomes: dict[datetime, str | Exception] = dict.fromkeys(batches, payload)
+    outcomes[batches[2]] = RuntimeError("download failed")
+    client = FakeClient(outcomes)
+    cursor = FakeCursor()
+    discovery = GdeltNgramDiscovery(
+        client,
+        cursor_store=cursor,
+        max_batches=5,
+        max_catchup_minutes=240,
+        temp_directory=tmp_path,
+    )
+    window = TimeWindow(start=first, end=batches[-1] + timedelta(minutes=5))
+
+    first_result = discovery.discover_rules(RULES, window)
+
+    assert first_result.status is NgramProviderStatus.PARTIAL
+    assert first_result.cursor_after == batches[1]
+    assert [timestamp for timestamp, _ in _downloaded_batches(client)] == batches[:2]
+    discovery.complete(first_result.cursor_after, success=True)
+    assert cursor.cursor == batches[1]
+
+    outcomes[batches[2]] = payload
+    second_result = discovery.discover_rules(RULES, window)
+
+    assert second_result.cursor_after == batches[-1]
+    assert [timestamp for timestamp, _ in _downloaded_batches(client)][-3:] == batches[2:]
+
+
+def test_successful_batch_with_zero_candidates_is_healthy(tmp_path: Path) -> None:
+    first = NOW - timedelta(minutes=10)
+    client = FakeClient(
+        {first: '{"ID":7,"lang":"fr","title":"Dengue","url":"https://example.org/a"}'}
+    )
+    discovery = GdeltNgramDiscovery(client, cursor_store=FakeCursor(), temp_directory=tmp_path)
+
+    result = discovery.discover_rules(RULES, TimeWindow(start=first, end=NOW))
+
+    assert result.status is NgramProviderStatus.HEALTHY
+    assert result.metrics.batches_succeeded == 1
+    assert result.metrics.unique_candidates == 0
 
 
 def test_ngram_run_metrics_expose_requested_operational_fields() -> None:

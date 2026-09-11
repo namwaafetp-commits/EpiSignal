@@ -313,7 +313,7 @@ class GdeltNgramClient:
         ngram_files_seen = 0
         toc_files_seen = 0
         transport_failures = 0
-        while cursor >= lower and len(found) < max_batches:
+        while cursor >= lower:
             minutes_checked += 1
             ngram_url = _url_for(cursor, "ngrams.txt.gz")
             toc_url = _url_for(cursor, "toc.json.gz")
@@ -387,12 +387,15 @@ class GdeltNgramDiscovery:
         cursor_before = self._cursor_store.get_cursor()
         safe_end = window.end.astimezone(UTC) - timedelta(minutes=SAFE_LAG_MINUTES)
         safe_end = safe_end.replace(second=0, microsecond=0)
-        lower_bound = max(
-            window.start.astimezone(UTC).replace(second=0, microsecond=0),
-            safe_end - timedelta(minutes=self._max_catchup_minutes),
-        )
+        catchup_floor = safe_end - timedelta(minutes=self._max_catchup_minutes)
         if cursor_before is not None:
-            lower_bound = max(lower_bound, cursor_before.astimezone(UTC))
+            cursor_bound = cursor_before.astimezone(UTC).replace(second=0, microsecond=0)
+            lower_bound = max(cursor_bound, catchup_floor)
+        else:
+            lower_bound = max(
+                window.start.astimezone(UTC).replace(second=0, microsecond=0),
+                catchup_floor,
+            )
 
         metrics = NgramRunMetrics(
             catchup_minutes=max(0, int((safe_end - lower_bound).total_seconds() // 60)),
@@ -408,11 +411,15 @@ class GdeltNgramDiscovery:
 
         by_url: dict[str, DiscoveredArticle] = {}
         last_success: datetime | None = None
+        batches_selected = 0
         for batch in inventory.batches:
             if metrics.bytes_downloaded >= self._max_download_bytes:
                 break
             if cursor_before is not None and batch.timestamp <= cursor_before:
                 continue
+            if batches_selected >= self._max_batches:
+                break
+            batches_selected += 1
             metrics.batches_attempted += 1
             try:
                 result = self._process_batch(
@@ -438,7 +445,7 @@ class GdeltNgramDiscovery:
         metrics.cursor_after = last_success
         if metrics.batches_failed and metrics.batches_succeeded:
             status = NgramProviderStatus.PARTIAL
-        elif metrics.batches_failed or inventory.transport_failures and not inventory.batches:
+        elif metrics.batches_succeeded == 0:
             status = NgramProviderStatus.UNAVAILABLE
         else:
             status = NgramProviderStatus.HEALTHY
