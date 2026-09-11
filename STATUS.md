@@ -234,6 +234,24 @@ Next action: separate deployment-time verification of actual scheduler phase,
 runtime, wrapper, container, timezone, environment, and persistent mount.
 **NOT DEPLOYED. VPS NOT ACCESSED. COOLIFY NOT ACCESSED. PRODUCTION CRON NOT MODIFIED.**
 
+## Task ledger — production GDELT NGram discovery (2026-09-11)
+
+- [x] Production NGram/TOC connector moved benchmark-proven matching, streaming,
+  language filtering, canonicalization, deduplication, and cleanup into backend
+  modules.
+- [x] Durable NGram cursor added with success-only advancement, restart safety,
+  bounded six-hour catch-up, partial failure retention, and provider health states.
+- [x] Scheduled discovery defaults to NGram only; `GdeltDocClient` remains
+  available without automatic fallback.
+- [x] Structured discovery stage metrics and resource safeguards added.
+- [x] Benchmark optional-output permission failure fixed and tested.
+- [x] Full repository gate passed at commit `16b535c`: web 125 passed; Python
+  1,493 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
+  build passed.
+
+Completion report:
+[Production GDELT NGram discovery report](docs/reports/2026-09-11-gdelt-ngram-production-report.md).
+
 ## Task ledger — additive surveillance dimensions and flexible summaries (2026-09-08)
 
 - [x] Map all 30 seeded diseases to the explicit additive disease-group taxonomy with unknown fallback.
