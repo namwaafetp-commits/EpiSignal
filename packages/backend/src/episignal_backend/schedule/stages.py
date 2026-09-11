@@ -106,11 +106,14 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, A
             max_articles=settings.gdelt_max_articles_per_run,
         )
     cohort.signal_ids = tuple(dict.fromkeys((*cohort.signal_ids, *discovered.signal_ids)))
-    discovery_unavailable = (
+    provider_unavailable = discovered.provider_status == "unavailable"
+    provider_partial = discovered.provider_status == "partial_degradation"
+    legacy_discovery_unavailable = (
         discovered.rules_attempted > 0
         and discovered.rules_succeeded == 0
         and discovered.rules_failed == discovered.rules_attempted
     )
+    discovery_unavailable = provider_unavailable or legacy_discovery_unavailable
     return {
         "window_minutes": window.minutes,
         "rules": discovered.rules_run,
@@ -128,16 +131,11 @@ def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, A
         "existing_duplicates": discovered.duplicate,
         "new_signals": discovered.stored,
         "cohort_size": len(discovered.signal_ids),
-        "__stage_ok": not discovery_unavailable
-        and discovered.provider_status != "partial_degradation",
+        "__stage_ok": not discovery_unavailable and not provider_partial,
         "__stage_error": (
             "DiscoveryUnavailable"
             if discovery_unavailable
-            else (
-                "DiscoveryPartialDegradation"
-                if discovered.provider_status == "partial_degradation"
-                else None
-            )
+            else ("DiscoveryPartialDegradation" if provider_partial else None)
         ),
     }
 
