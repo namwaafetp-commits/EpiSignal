@@ -291,3 +291,25 @@ Commit: `bb7aaeb`. Local only; no production migration or deployment was perform
 
 Evidence: [surveillance review corrections report](docs/reports/2026-09-08-surveillance-review-corrections-report.md).
 Fix commit: `bc51db3`; migration head remains `20260908_0023`.
+
+## Task ledger — focused surveillance and two-level grouping (2026-09-12)
+
+- [x] DeepSeek relevance requires a real infectious-disease event and excludes
+  disease-name-only, AI biological-weapons, and ruled-out disease reporting.
+- [x] Gemini extraction remains structured-only with optional controlled
+  categories/tags and no prose or recommendations.
+- [x] Conservative deterministic same-story grouping is separate from article
+  dedupe and strict epidemiologic event matching.
+- [x] Strong same-story unresolved signals remain one event unit; resolved
+  member evidence is available for strict event clustering.
+- [x] Event summaries use DeepSeek with optional legacy takeaway compatibility
+  and a 3–5 bullet, approximately 30–100 word contract.
+- [x] Regression coverage and generated contracts are updated; no migration,
+  production configuration, or deployment was performed.
+
+Verified baseline: `d9bb2ea1908df694228908382761ec8fbb531a5a`.
+
+`corepack pnpm verify` passed: web 125 tests; Python 1,518 passed and 2
+skipped; format, lint, typecheck, contracts, and build passed. Alembic head is
+`20260911_0024`; the only warnings are the two existing deprecations. Full
+evidence: [next iteration report](docs/reports/2026-09-12-next-iteration-report.md).
