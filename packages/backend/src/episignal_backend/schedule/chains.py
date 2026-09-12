@@ -8,6 +8,7 @@ DAILY_CHAIN: tuple[StageName, ...] = (
     StageName.DEDUPE,
     StageName.CLASSIFY,
     StageName.RETRIEVE,
+    StageName.STORY_GROUP,
     StageName.EXTRACT,
     StageName.MATCH,
     StageName.SUMMARIZE,

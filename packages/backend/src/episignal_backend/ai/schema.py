@@ -441,6 +441,26 @@ class ExtractionLocation(BaseModel):
         return collapsed or None
 
 
+class ExtractionTag(StrEnum):
+    OUTBREAK = "outbreak"
+    CLUSTER = "cluster"
+    HUMAN_CASES = "human_cases"
+    ANIMAL_CASES = "animal_cases"
+    ZOONOTIC = "zoonotic"
+    DEATH = "death"
+    HOSPITALIZATION = "hospitalization"
+    CROSS_BORDER = "cross_border"
+    SURVEILLANCE = "surveillance"
+    VACCINATION = "vaccination"
+    CONTROL_MEASURE = "control_measure"
+    FOODBORNE = "foodborne"
+    WATERBORNE = "waterborne"
+    VECTOR_BORNE = "vector_borne"
+    HEALTHCARE_ASSOCIATED = "healthcare_associated"
+    ANTIMICROBIAL_RESISTANCE = "antimicrobial_resistance"
+    UNKNOWN_PATHOGEN = "unknown_pathogen"
+
+
 class Extraction(BaseModel):
     """The complete active model contract: event identity only."""
 
@@ -461,6 +481,8 @@ class Extraction(BaseModel):
     driver_or_barrier_evidence: tuple[GroundedEvidence, ...] = ()
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     locations: tuple[ExtractionLocation, ...] = ()
+    categories: tuple[str, ...] = ()
+    tags: tuple[ExtractionTag, ...] = ()
 
     @classmethod
     def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -529,7 +551,12 @@ class StoredExtractionPayload(Extraction):
                         or raw.get("country_name"),
                     }
                 )
-        return {"disease": disease, "locations": locations}
+        return {
+            "disease": disease,
+            "locations": locations,
+            "categories": payload.get("categories", ()),
+            "tags": payload.get("tags", ()),
+        }
 
 
 def extraction_json_schema() -> dict[str, Any]:
@@ -555,6 +582,14 @@ def extraction_json_schema() -> dict[str, Any]:
                         "country": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     },
                 },
+            },
+            "categories": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string", "enum": [tag.value for tag in ExtractionTag]},
             },
         },
     }

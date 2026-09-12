@@ -28,7 +28,7 @@ class Rejected(Exception):
 
 
 MIN_CONFIDENCE_DEFAULT = 0.60
-_ACTIVE_EXTRACTION_KEYS = frozenset({"disease", "locations"})
+_ACTIVE_EXTRACTION_KEYS = frozenset({"disease", "locations", "categories", "tags"})
 
 
 def _loads(content: str) -> object:
@@ -59,8 +59,13 @@ def validate_extraction(
     """
     del raw_text, title, min_confidence
     payload = _loads(content)
-    if not isinstance(payload, dict) or set(payload) != _ACTIVE_EXTRACTION_KEYS:
-        raise Rejected(RejectionReason.SHAPE, "extraction must contain only disease and locations")
+    if not isinstance(payload, dict) or not set(payload).issubset(_ACTIVE_EXTRACTION_KEYS):
+        raise Rejected(
+            RejectionReason.SHAPE,
+            "extraction may contain only disease, locations, categories, and tags",
+        )
+    if not isinstance(payload, dict) or not {"disease", "locations"}.issubset(payload):
+        raise Rejected(RejectionReason.SHAPE, "disease and locations are required fields")
     return parse_extraction(content)
 
 

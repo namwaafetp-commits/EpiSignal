@@ -58,7 +58,7 @@ def _spec(model_id: str, provider: AiProvider, purpose: AiPurpose) -> ModelSpec:
         (AiPurpose.EXTRACTION, "google/gemini-3.1-flash-lite", AiProvider.GEMINI),
         (
             AiPurpose.EVENT_SUMMARY,
-            "mistralai/mistral-small-3.2-24b-instruct",
+            "deepseek/deepseek-v4-flash-0731",
             AiProvider.OPENROUTER,
         ),
     ],
@@ -73,7 +73,7 @@ def test_purpose_registry_selects_exact_final_model(
 
 def test_extraction_schema_contains_only_disease_and_locations() -> None:
     schema = extraction_json_schema()
-    assert set(schema["properties"]) == {"disease", "locations"}
+    assert set(schema["properties"]) == {"disease", "locations", "categories", "tags"}
     assert set(schema["properties"]["locations"]["items"]["properties"]) == {"town", "country"}
 
 
@@ -276,11 +276,13 @@ def test_summary_sends_linked_article_text_and_not_legacy_brief() -> None:
                     {
                         "title": "Dengue activity in Cebu",
                         "bullets": [
-                            "Three cases reported",
-                            "Cebu is the affected location",
-                            "Further monitoring is needed",
+                            "Three cases were reported by health officials in Cebu "
+                            "during the latest surveillance update.",
+                            "Cebu is the affected location named by the linked infectious-disease "
+                            "report.",
+                            "The article describes continued investigation without reporting a "
+                            "confirmed transmission route.",
                         ],
-                        "takeaway": "Evidence remains limited to the reported cases.",
                     }
                 ),
                 latency_ms=1,
@@ -288,7 +290,7 @@ def test_summary_sends_linked_article_text_and_not_legacy_brief() -> None:
 
     model = SummaryModel()
     spec = _spec(
-        "mistralai/mistral-small-3.2-24b-instruct",
+        "deepseek/deepseek-v4-flash-0731",
         AiProvider.OPENROUTER,
         AiPurpose.EVENT_SUMMARY,
     )

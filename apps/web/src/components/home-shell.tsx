@@ -147,9 +147,11 @@ function SummaryBlock({
           <li key={bullet}>{bullet}</li>
         ))}
       </ul>
-      <p>
-        <strong>Takeaway:</strong> {payload.takeaway}
-      </p>
+      {payload.takeaway && (
+        <p>
+          <strong>Takeaway:</strong> {payload.takeaway}
+        </p>
+      )}
     </div>
   );
 }

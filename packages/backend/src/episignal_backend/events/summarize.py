@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from episignal_backend.ai.documents import ChatRequest, ModelSpec, TokenUsage
 from episignal_backend.ai.ladder import Attempt, cost_usd
@@ -37,22 +37,28 @@ SUMMARY_SCHEMA_NAME = "event_summary"
 SUMMARY_TEMPERATURE = 0.0
 
 SUMMARY_SYSTEM = (
-    "You write one concise EpiSignal epidemiological event summary from all linked "
-    "clean article sources.\n"
+    "You write a concise infectious-disease event brief from all linked clean article sources.\n"
     "Rules:\n"
     "- Summarize the EVENT, never an individual article. Use the supplied article "
     "title, publication time, source, and clean article text as the evidence.\n"
     "- The linked article sources are authoritative for narrative facts. Do not "
     "expect or invent deprecated extraction fields such as cases, deaths, CFR, "
     "pathogen, transmission, dates, or response actions.\n"
-    "- Preserve confirmed, suspected, and probable distinctions.\n"
+    "- Preserve confirmed, probable, suspected, possible, and under investigation "
+    "distinctions exactly.\n"
     "- Every number, disease, location, response, and risk claim must be supported "
     "by supplied article evidence. Never invent or silently resolve conflicting evidence.\n"
-    "- Choose the 3 to 5 most epidemiologically useful facts as flexible bullets. "
-    "Do not use fixed headings or required topic slots.\n"
-    "- Use only 3 bullets for sparse evidence and up to 5 when evidence is richer.\n"
-    "- Write one concise takeaway supported by the same sources.\n"
-    "- If linked sources disagree, state the disagreement explicitly.\n\n"
+    "- Return 3 to 5 bullets, with approximately 30 to 100 words across all bullets.\n"
+    "- Prioritize concrete facts needed to understand the event quickly. Use WHAT, WHO, "
+    "WHERE, WHEN, WHY, and HOW only when supported.\n"
+    "- Do not force case counts, death counts, dates, causes, locations, transmission "
+    "routes, or responses.\n"
+    "- Do not invent missing information, repeat facts, exaggerate severity, or add "
+    "recommendations.\n"
+    "- Avoid generic filler such as 'this highlights the importance of' or "
+    "'authorities must remain vigilant'.\n"
+    "- If sources disagree, briefly state the disagreement. Prefer event facts over "
+    "background commentary.\n\n"
     "The object must match this JSON Schema exactly:\n"
 )
 
@@ -100,17 +106,19 @@ class EventSummaryVerdict(BaseModel):
 
 
 class FlexibleEventSummary(BaseModel):
-    """The active Mistral contract: title, flexible facts, and one takeaway."""
+    """The active DeepSeek contract, with optional legacy takeaway readability."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     title: str = Field(min_length=1)
     bullets: tuple[str, ...] = Field(min_length=3, max_length=5)
-    takeaway: str = Field(min_length=1)
+    takeaway: str | None = None
 
     @field_validator("title", "takeaway")
     @classmethod
-    def text_is_not_blank(cls, value: str) -> str:
+    def text_is_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         collapsed = " ".join(value.split())
         if not collapsed:
             raise ValueError("summary text must say something")
@@ -123,6 +131,13 @@ class FlexibleEventSummary(BaseModel):
         if any(not bullet for bullet in bullets):
             raise ValueError("summary bullets must say something")
         return bullets
+
+    @model_validator(mode="after")
+    def enforce_bullet_word_budget(self) -> "FlexibleEventSummary":
+        words = sum(len(bullet.split()) for bullet in self.bullets)
+        if not 30 <= words <= 100:
+            raise ValueError("summary bullets must contain approximately 30 to 100 words")
+        return self
 
 
 def flexible_summary_json_schema() -> dict[str, object]:
@@ -177,13 +192,13 @@ def render_event_flash_brief(
 ) -> str:
     """Render new flexible summaries and old persisted summaries."""
     if isinstance(verdict, FlexibleEventSummary):
-        return "\n\n".join(
-            (
-                verdict.title,
-                "\n".join(f"• {bullet}" for bullet in verdict.bullets),
-                f"Takeaway: {verdict.takeaway}",
-            )
-        )
+        rendered = [
+            verdict.title,
+            "\n".join(f"• {bullet}" for bullet in verdict.bullets),
+        ]
+        if verdict.takeaway is not None:
+            rendered.append(f"Takeaway: {verdict.takeaway}")
+        return "\n\n".join(rendered)
     return "\n\n".join(
         (
             verdict.headline,
@@ -204,7 +219,7 @@ def summary_payload(
 ) -> dict[str, object] | None:
     if not isinstance(verdict, FlexibleEventSummary):
         return None
-    return verdict.model_dump(mode="json")
+    return verdict.model_dump(mode="json", exclude_none=True)
 
 
 def legacy_summary_fields(
@@ -357,7 +372,7 @@ def build_summary_failure_diagnostic(
 
 
 def configure_summary(settings: Settings, specs: list[ModelSpec]) -> SummaryWiring:
-    """Resolve Mistral Small 3.2 through the purpose registry."""
+    """Resolve DeepSeek through the purpose registry and existing router."""
     from episignal_backend.ai.routing import NoProviderKey, routed_from_settings
 
     try:

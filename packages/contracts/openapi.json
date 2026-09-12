@@ -2318,6 +2318,7 @@
           "ingest_ecdc",
           "discover",
           "retrieve",
+          "story_group",
           "classify",
           "dedupe",
           "triage",

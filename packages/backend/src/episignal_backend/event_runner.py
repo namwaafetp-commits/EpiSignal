@@ -80,6 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"seen={summary.signals_seen} clusters={summary.clusters_built} "
+        f"story_groups={summary.story_groups_built} "
         f"created={summary.events_created} attached={summary.signals_attached} "
         f"refused={summary.signals_refused} unclusterable={summary.unclusterable} "
         f"deltas={summary.deltas_applied}"

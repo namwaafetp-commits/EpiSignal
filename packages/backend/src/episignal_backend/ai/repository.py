@@ -8,7 +8,7 @@ behalf of the passes above it.
 
 import logging
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -230,7 +230,13 @@ class SqlAlchemyAiRepository:
         stmt = select(Signal).where(*conditions).order_by(Signal.first_seen_at)
         rows = self._scan_valid_signals(stmt, limit, "extraction")
         return tuple(
-            ExtractableSignal(id=row.id, title=row.title, raw_text=row.raw_text or "")
+            ExtractableSignal(
+                id=row.id,
+                title=row.title,
+                raw_text=row.raw_text or "",
+                published_at=getattr(row, "published_at", None),
+                first_seen_at=getattr(row, "first_seen_at", datetime.min.replace(tzinfo=UTC)),
+            )
             for row in rows
         )
 
@@ -391,6 +397,8 @@ class SqlAlchemyAiRepository:
             "locations": [
                 location.model_dump(mode="json") for location in stored.extraction.locations
             ],
+            "categories": list(stored.extraction.categories),
+            "tags": [tag.value for tag in stored.extraction.tags],
         }
         payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
 
@@ -490,6 +498,8 @@ class SqlAlchemyAiRepository:
             "locations": [
                 location.model_dump(mode="json") for location in stored.extraction.locations
             ],
+            "categories": list(stored.extraction.categories),
+            "tags": [tag.value for tag in stored.extraction.tags],
         }
         payload[EXTRACTION_VERSION_KEY] = EXTRACTION_SCHEMA_VERSION
 

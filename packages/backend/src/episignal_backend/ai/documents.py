@@ -11,7 +11,7 @@ This module imports neither SQLAlchemy nor httpx.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -101,6 +101,8 @@ class ExtractableSignal(BaseModel):
     id: UUID
     title: str = Field(min_length=1)
     raw_text: str = Field(min_length=1)
+    published_at: datetime | None = None
+    first_seen_at: datetime = datetime.min.replace(tzinfo=UTC)
 
     @field_validator("title", "raw_text")
     @classmethod

@@ -203,6 +203,7 @@ class SqlAlchemyEventRepository:
                     published_at=sig.published_at,
                     first_seen_at=sig.first_seen_at,
                     title=sig.title,
+                    raw_text=getattr(sig, "raw_text", None) or "",
                     locations=_metadata_locations(extraction, resolver),
                     extraction=extraction,
                 )

@@ -22,13 +22,15 @@ from episignal_backend.ai.schema import (
     triage_json_schema,
 )
 
-GEMINI_EXTRACTION_PROMPT = """You extract the main disease and event locations from one news
+GEMINI_EXTRACTION_PROMPT = """You extract structured infectious-disease event metadata from one news
 article.
 Read both TITLE and ARTICLE.
 Return JSON only.
 Extract only:
 1. disease
 2. locations
+3. categories
+4. tags
 DISEASE
 Return the main disease or pathogen being reported.
 Use a sensible natural disease name.
@@ -77,6 +79,16 @@ Do not infer event location from:
 Return only locations actually relevant to the reported event.
 If disease cannot be identified, return null.
 If event location cannot be identified, return an empty locations array.
+ CATEGORIES
+Return concise categories explicitly supported by the article. Omit this field
+when none are supported.
+ TAGS
+Use only tags from this list when explicitly supported; omit the field when none are supported:
+outbreak, cluster, human_cases, animal_cases, zoonotic, death, hospitalization,
+cross_border, surveillance, vaccination, control_measure, foodborne, waterborne,
+vector_borne, healthcare_associated, antimicrobial_resistance, unknown_pathogen.
+Do not infer tags from a disease name. Do not add a tag because it sounds plausible.
+Never return a prose summary, interpretation, recommendation, or risk commentary.
 Return exactly:
 {
   "disease": string | null,
@@ -85,7 +97,9 @@ Return exactly:
       "town": string | null,
       "country": string | null
     }
-  ]
+  ],
+  "categories": [string],
+  "tags": [string]
 }
 
 Input:
@@ -111,6 +125,27 @@ Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
 - Return relevance, confidence, host_sector, and an optional short reason_code.
 - Do not identify disease, location, cases, deaths, or event type in this pass.
+- Relevant means the item reports, materially updates, investigates, confirms,
+  suspects, or responds to a real infectious-disease event affecting humans
+  and/or animals.
+- Relevant examples include an outbreak, cluster, unusual increase, confirmed,
+  probable, suspected, or possible infection, infectious-disease deaths or
+  hospitalizations, geographic spread, zoonotic spillover, an emerging
+  pathogen, a surveillance alert, an active outbreak investigation, or a
+  vaccination/control response to an active infectious event.
+- A disease name alone is never sufficient. The item must describe an actual
+  event or an active surveillance, investigation, or control development.
+- Mark irrelevant when the article is basic laboratory research, drug or
+  vaccine development without an active event, AI biological-weapons research,
+  gain-of-function discussion without an actual outbreak, historical reporting
+  with no current development, generic disease education, political discussion,
+  funding, hypothetical pandemic simulation, or an incidental disease mention.
+- If a disease was explicitly ruled out, do not treat it as a positive event.
+  For example, a passenger initially suspected of Ebola but later confirmed not
+  to have Ebola is irrelevant as an Ebola event.
+- An Anthropic report about misuse of AI for biological-weapons research remains
+  irrelevant even if it names chikungunya, avian influenza, or other pathogens;
+  those names do not make it an infectious-disease event.
 - Set host_sector to human only when the reported infection, cases, or event concerns people.
 - Set host_sector to animal only when it concerns animals and no relevant human
   infection is reported.
@@ -119,13 +154,8 @@ Rules:
 - Do not infer host_sector from a zoonotic disease name alone; use unknown when
   evidence is insufficient.
 - host_sector must be one of: human, animal, both, unknown.
-- Relevant includes infectious-disease outbreaks or cases, surveillance,
-  emerging infections, zoonoses, vaccination or immunisation, vaccine safety,
-  infectious-disease prevention or control, outbreak response,
-  infectious-disease public-health programmes, and important
-  infectious-disease public-health system issues.
-- When you are unsure, mark it relevant: a missed outbreak costs more than a
-  wasted extraction.
+- Do not classify a general public-health or health-system issue as relevant
+  unless it is tied to an active infectious-disease event.
 
 The object must match this JSON Schema exactly:
 """

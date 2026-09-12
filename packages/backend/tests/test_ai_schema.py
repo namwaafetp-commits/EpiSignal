@@ -38,7 +38,7 @@ def test_extraction_rejects_extra_nested_keys() -> None:
 
 def test_prompt_schema_contains_only_active_fields() -> None:
     schema = extraction_json_schema()
-    assert set(schema["properties"]) == {"disease", "locations"}
+    assert set(schema["properties"]) == {"disease", "locations", "categories", "tags"}
     assert set(schema["properties"]["locations"]["items"]["properties"]) == {"town", "country"}
 
 

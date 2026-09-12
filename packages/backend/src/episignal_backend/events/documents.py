@@ -81,6 +81,7 @@ class SignalForMatching(BaseModel):
     published_at: datetime | None = None
     first_seen_at: datetime
     title: str = ""
+    raw_text: str = ""
     locations: tuple[LocationForMatching, ...] = ()
     extraction: Extraction | None = None
     embedding: tuple[float, ...] | None = None

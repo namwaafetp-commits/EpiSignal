@@ -20,6 +20,7 @@ class StageName(StrEnum):
     INGEST_ECDC = "ingest_ecdc"
     DISCOVER = "discover"
     RETRIEVE = "retrieve"
+    STORY_GROUP = "story_group"
     CLASSIFY = "classify"
     DEDUPE = "dedupe"
     TRIAGE = "triage"
@@ -50,6 +51,7 @@ class PipelineCohort:
     """In-memory identity of the signals and events touched by one run."""
 
     signal_ids: tuple[UUID, ...] = ()
+    story_groups: tuple[tuple[UUID, ...], ...] = ()
     touched_event_ids: tuple[UUID, ...] = ()
 
 

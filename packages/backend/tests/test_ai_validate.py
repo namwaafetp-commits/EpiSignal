@@ -36,6 +36,34 @@ def test_null_disease_and_empty_locations_are_valid() -> None:
     assert value.locations == ()
 
 
+def test_optional_categories_and_controlled_tags_are_supported_without_prose() -> None:
+    value = validate_extraction(
+        json.dumps(
+            {
+                "disease": "chikungunya",
+                "locations": [],
+                "categories": ["infectious disease"],
+                "tags": ["outbreak", "human_cases"],
+            }
+        )
+    )
+    assert value.categories == ("infectious disease",)
+    assert [tag.value for tag in value.tags] == ["outbreak", "human_cases"]
+
+
+def test_unknown_or_prose_tags_are_rejected() -> None:
+    with pytest.raises(Rejected):
+        validate_extraction(
+            json.dumps(
+                {
+                    "disease": "dengue",
+                    "locations": [],
+                    "tags": ["this article recommends vigilance"],
+                }
+            )
+        )
+
+
 def test_classification_accepts_only_one_relevance_verdict() -> None:
     verdict = validate_classification(json.dumps({"relevant": True, "confidence": 0.8}))
     assert verdict.relevant is True

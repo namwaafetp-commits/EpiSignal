@@ -1,4 +1,4 @@
-"""Mistral event-summary and material-change tests."""
+"""DeepSeek event-summary and material-change tests."""
 
 import json
 from datetime import UTC, datetime
@@ -25,8 +25,8 @@ def spec() -> ModelSpec:
     return ModelSpec(
         id=uuid4(),
         tier=1,
-        model_id="mistralai/mistral-small-3.2-24b-instruct",
-        label="Mistral Small 3.2",
+        model_id="deepseek/deepseek-v4-flash-0731",
+        label="DeepSeek V4 Flash",
         provider=AiProvider.OPENROUTER,
         purpose=AiPurpose.EVENT_SUMMARY,
         prompt_price_per_million=Decimal("0"),
@@ -53,8 +53,14 @@ def valid_answer() -> str:
     return json.dumps(
         {
             "title": "Dengue activity in Cebu",
-            "bullets": ["Three cases", "Two deaths", "Case investigation"],
-            "takeaway": "Reports indicate continued activity.",
+            "bullets": [
+                "Three cases were reported by health officials in Cebu during the latest "
+                "surveillance update.",
+                "Two deaths were reported, while investigators continue reviewing the "
+                "affected people and circumstances.",
+                "The article describes an active case investigation but does not report a "
+                "confirmed transmission route.",
+            ],
         }
     )
 
@@ -87,12 +93,12 @@ class EvidenceAwareModel:
                 {
                     "title": "Dengue activity in Cebu",
                     "bullets": [
-                        "42 confirmed cases on 20 August 2026",
-                        "2 deaths",
-                        "Mosquito transmission reported",
-                        "Response teams were deployed.",
+                        "42 confirmed cases were reported in Cebu on 20 August 2026.",
+                        "Two deaths were reported alongside the confirmed cases in this update.",
+                        "Mosquito transmission was reported as the suspected route in the article.",
+                        "Response teams were deployed to investigate and control the "
+                        "reported event.",
                     ],
-                    "takeaway": "Mosquito transmission remains the key reported concern.",
                 }
             ),
             latency_ms=1,
@@ -105,7 +111,7 @@ def test_summary_uses_linked_article_text_and_mistral_route() -> None:
         model, spec(), event=event(), sources=(source("Three cases and two deaths."),)
     )
     assert result.outcome is SummaryOutcome.ACCEPTED
-    assert model.request.model_id == "mistralai/mistral-small-3.2-24b-instruct"
+    assert model.request.model_id == "deepseek/deepseek-v4-flash-0731"
     payload = json.loads(model.request.user)
     assert payload["sources"][0]["article_text"] == "Three cases and two deaths."
     assert "brief" not in payload["sources"][0]
@@ -120,8 +126,11 @@ def test_summary_evidence_is_article_grounded_for_counts_transmission_response_a
     result = run_summary(model, spec(), event=event(), sources=(source(article),))
     assert result.outcome is SummaryOutcome.ACCEPTED
     assert isinstance(result.verdict, FlexibleEventSummary)
-    assert "42 confirmed cases on 20 August 2026" in result.verdict.bullets
-    assert "Response teams were deployed." in result.verdict.bullets
+    assert "42 confirmed cases were reported in Cebu on 20 August 2026." in result.verdict.bullets
+    assert (
+        "Response teams were deployed to investigate and control the reported event."
+        in result.verdict.bullets
+    )
 
 
 def test_new_summary_uses_existing_event_heading_and_renders_flexible_contract() -> None:
@@ -131,7 +140,7 @@ def test_new_summary_uses_existing_event_heading_and_renders_flexible_contract()
     assert result.verdict.title == "Canonical event title"
     rendered = render_event_flash_brief(result.verdict)
     assert "• Three cases" in rendered
-    assert "Takeaway:" in rendered
+    assert "Takeaway:" not in rendered
     assert "Key Driver:" not in rendered
 
 
@@ -283,13 +292,16 @@ def test_flexible_summary_accepts_three_and_five_bullets_and_renders_without_hea
     for count in (3, 5):
         verdict = FlexibleEventSummary(
             title="Dengue reports rise in Cebu",
-            bullets=tuple(f"Supported fact {index}" for index in range(count)),
-            takeaway="Reports indicate continued dengue activity.",
+            bullets=tuple(
+                f"Supported epidemiological fact {index} is documented in the linked "
+                "surveillance report."
+                for index in range(count)
+            ),
         )
         rendered = render_event_flash_brief(verdict)
         assert rendered.startswith("Dengue reports rise in Cebu")
         assert rendered.count("•") == count
-        assert "Takeaway:" in rendered
+        assert "Takeaway:" not in rendered
         assert "Key Driver:" not in rendered
 
 
@@ -297,15 +309,14 @@ def test_flexible_summary_rejects_invalid_bullet_counts_and_blank_text() -> None
     import pytest
 
     with pytest.raises(ValueError):
-        FlexibleEventSummary(title="Title", bullets=("one", "two"), takeaway="Takeaway")
+        FlexibleEventSummary(title="Title", bullets=("one", "two"))
     with pytest.raises(ValueError):
         FlexibleEventSummary(
             title="Title",
             bullets=tuple(f"fact {index}" for index in range(6)),
-            takeaway="Takeaway",
         )
     with pytest.raises(ValueError):
-        FlexibleEventSummary(title=" ", bullets=("one", "two", "three"), takeaway="Takeaway")
+        FlexibleEventSummary(title=" ", bullets=("one", "two", "three"))
     with pytest.raises(ValueError):
         FlexibleEventSummary(title="Title", bullets=("one", "two", "three"), takeaway=" ")
 
@@ -316,8 +327,14 @@ def test_new_summary_contract_uses_existing_event_headline_as_title() -> None:
         json.dumps(
             {
                 "title": "Model title",
-                "bullets": ["First fact", "Second fact", "Third fact"],
-                "takeaway": "Evidence remains limited.",
+                "bullets": [
+                    "First supported fact is described in the linked infectious disease "
+                    "surveillance report.",
+                    "Second supported fact is described in the linked infectious disease "
+                    "surveillance report.",
+                    "Third supported fact is described in the linked infectious disease "
+                    "surveillance report.",
+                ],
             }
         )
     )

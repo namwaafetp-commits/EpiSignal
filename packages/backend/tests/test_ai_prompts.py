@@ -26,6 +26,8 @@ def test_classification_prompt_contains_only_discovery_metadata() -> None:
     assert "disease" not in user.lower() and "location" not in user.lower()
     assert "relevant" in system and "confidence" in system and "host_sector" in system
     assert "zoonotic disease name alone" in system
+    assert "Anthropic" in system and "chikungunya" in system
+    assert "explicitly ruled out" in system
 
 
 def test_extraction_prompt_uses_clean_article_and_exact_identity_repair() -> None:
@@ -36,7 +38,8 @@ def test_extraction_prompt_uses_clean_article_and_exact_identity_repair() -> Non
     )
     assert user == "Return the extraction JSON."
     assert "disease" in system and "locations" in system
-    assert "cases" not in system.lower()
+    assert "categories" in system and "tags" in system
+    assert "never return a prose summary" in system.lower()
     assert IDENTITY_REPAIR
 
 

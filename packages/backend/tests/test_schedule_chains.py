@@ -10,6 +10,7 @@ def test_daily_chain_contains_only_the_lean_mvp_runtime_stages() -> None:
         StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
+        StageName.STORY_GROUP,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,
@@ -43,6 +44,7 @@ def test_every_stage_appears_exactly_once() -> None:
         StageName.CLASSIFY,
         StageName.RETRIEVE,
         StageName.EXTRACT,
+        StageName.STORY_GROUP,
         StageName.MATCH,
         StageName.SUMMARIZE,
     }

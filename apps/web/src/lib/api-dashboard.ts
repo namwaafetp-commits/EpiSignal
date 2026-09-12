@@ -20,7 +20,7 @@ export interface DashboardEvent {
   summary_payload?: {
     title: string;
     bullets: string[];
-    takeaway: string;
+    takeaway?: string;
   } | null;
 }
 
@@ -63,7 +63,7 @@ function isCoordinate(
 function isFlexibleSummaryPayload(value: unknown): value is {
   title: string;
   bullets: string[];
-  takeaway: string;
+  takeaway?: string;
 } {
   if (typeof value !== "object" || value === null) return false;
   const payload = value as Record<string, unknown>;
@@ -76,8 +76,9 @@ function isFlexibleSummaryPayload(value: unknown): value is {
     payload.bullets.every(
       (bullet) => typeof bullet === "string" && bullet.trim().length > 0,
     ) &&
-    typeof payload.takeaway === "string" &&
-    payload.takeaway.trim().length > 0
+    (payload.takeaway === undefined ||
+      (typeof payload.takeaway === "string" &&
+        payload.takeaway.trim().length > 0))
   );
 }
 

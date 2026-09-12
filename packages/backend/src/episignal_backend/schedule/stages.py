@@ -53,6 +53,7 @@ from episignal_backend.ingestion.repository import (
     SqlAlchemySignalRepository,
 )
 from episignal_backend.ingestion.retrieval import run_retrieval
+from episignal_backend.ingestion.story import story_group_ids
 from episignal_backend.ingestion.who_don import WhoDonConnector
 from episignal_backend.schedule.documents import DiscoveryWindow, PipelineCohort, StageName
 from episignal_backend.schedule.run import StageRunner
@@ -296,6 +297,24 @@ def _extract(cohort: PipelineCohort) -> Mapping[str, int]:
     }
 
 
+def _story_group(cohort: PipelineCohort) -> Mapping[str, int]:
+    """Group retrieved relevant articles before Gemini extraction."""
+    settings = get_settings()
+    with session_scope() as session:
+        repository = SqlAlchemyAiRepository(session)
+        candidates = repository.awaiting_extraction(
+            limit=settings.event_match_batch_size,
+            signal_ids=cohort.signal_ids,
+        )
+    groups = story_group_ids(candidates)
+    cohort.story_groups = groups
+    return {
+        "examined": len(candidates),
+        "story_groups": len(groups),
+        "grouped_articles": sum(len(group) for group in groups),
+    }
+
+
 def _match(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
@@ -313,11 +332,13 @@ def _match(cohort: PipelineCohort) -> Mapping[str, int]:
             candidate_lookback_days=settings.event_lookback_days,
             candidate_limit=settings.event_candidate_limit,
             signal_ids=cohort.signal_ids,
+            story_group_ids=cohort.story_groups,
         )
         cohort.touched_event_ids = summary.touched_event_ids
     return {
         "seen": summary.signals_seen,
         "clusters": summary.clusters_built,
+        "story_groups": summary.story_groups_built,
         "created": summary.events_created,
         "updated": max(0, len(summary.touched_event_ids) - summary.events_created),
         "attached": summary.signals_attached,
@@ -450,6 +471,7 @@ def build_stage_runners(
         StageName.DEDUPE: lambda: _dedupe(run_cohort),
         StageName.CLASSIFY: lambda: _classify(run_cohort),
         StageName.RETRIEVE: lambda: _retrieve(run_cohort),
+        StageName.STORY_GROUP: lambda: _story_group(run_cohort),
         StageName.EXTRACT: lambda: _extract(run_cohort),
         StageName.MATCH: lambda: _match(run_cohort),
         StageName.SUMMARIZE: lambda: _summarize(run_cohort),

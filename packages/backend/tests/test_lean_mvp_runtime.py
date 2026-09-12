@@ -25,6 +25,7 @@ def test_daily_runtime_is_lean_mvp_chain() -> None:
         StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
+        StageName.STORY_GROUP,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,

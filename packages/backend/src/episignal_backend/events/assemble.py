@@ -19,7 +19,12 @@ from episignal_backend.ai.protocol import ChatModel
 from episignal_backend.ai.schema import BriefPoint
 from episignal_backend.db.types import RelationshipType
 from episignal_backend.events.cluster import build_clusters
-from episignal_backend.events.documents import CandidateEvent, MatchAction, StoryCluster
+from episignal_backend.events.documents import (
+    CandidateEvent,
+    MatchAction,
+    SignalForMatching,
+    StoryCluster,
+)
 from episignal_backend.events.finalize import (
     finalize_event_creation,
     finalize_event_link,
@@ -33,6 +38,7 @@ from episignal_backend.events.score import (
     evidence_score,
     verification_status,
 )
+from episignal_backend.ingestion.story import StoryArticle, group_stories
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +50,7 @@ class AssemblySummary(BaseModel):
 
     signals_seen: int
     clusters_built: int
+    story_groups_built: int = 0
     events_created: int
     signals_attached: int
     signals_refused: int
@@ -93,6 +100,7 @@ def run_event_assembly(
     delta_spec: ModelSpec | None = None,
     followup_window_days: float | None = None,
     signal_ids: Sequence[UUID] | None = None,
+    story_group_ids: Sequence[Sequence[UUID]] | None = None,
 ) -> AssemblySummary:
     """Run the end-to-end event assembly pass.
 
@@ -113,6 +121,7 @@ def run_event_assembly(
         return AssemblySummary(
             signals_seen=0,
             clusters_built=0,
+            story_groups_built=0,
             events_created=0,
             signals_attached=0,
             signals_refused=0,
@@ -120,8 +129,9 @@ def run_event_assembly(
             touched_event_ids=(),
         )
 
-    clusters, unclusterable = build_clusters(
-        signals,
+    story_units = _story_units(signals, story_group_ids)
+    clusters, unclusterable = _event_clusters(
+        story_units,
         window_days=cluster_window_days,
         distance_km=cluster_distance_km,
     )
@@ -245,10 +255,10 @@ def run_event_assembly(
             touched_event_ids.append(created.event_id)
             signals_attached += len(cluster.signals)
 
-    for sig in unclusterable:
+    for cluster in unclusterable:
         created = finalize_event_creation(
             repo,
-            cluster=StoryCluster(signals=(sig,)),
+            cluster=cluster,
             early_signal_weights=early_signal_weights,
             evidence_weights=evidence_weights,
             now=now,
@@ -256,13 +266,14 @@ def run_event_assembly(
         logger.info("uncertain event fields; created new event event_id=%s", created.event_id)
         events_created += 1
         touched_event_ids.append(created.event_id)
-        signals_attached += 1
+        signals_attached += len(cluster.signals)
 
     repo.commit()
 
     return AssemblySummary(
         signals_seen=len(signals),
         clusters_built=len(clusters),
+        story_groups_built=len(story_units),
         events_created=events_created,
         signals_attached=signals_attached,
         signals_refused=signals_refused,
@@ -271,4 +282,111 @@ def run_event_assembly(
         ambiguous_judged=ambiguous_judged,
         ambiguous_attached=ambiguous_attached,
         touched_event_ids=tuple(dict.fromkeys(touched_event_ids)),
+    )
+
+
+def _story_units(
+    signals: Sequence[SignalForMatching],
+    story_group_ids: Sequence[Sequence[UUID]] | None,
+) -> tuple[tuple[SignalForMatching, ...], ...]:
+    """Build article groups, or consume groups prepared by the scheduler."""
+    by_id = {signal.signal_id: signal for signal in signals}
+    if story_group_ids is None:
+        groups = group_stories(
+            tuple(
+                StoryArticle(
+                    signal_id=signal.signal_id,
+                    title=signal.title or "untitled",
+                    raw_text=signal.raw_text,
+                    published_at=signal.published_at,
+                    first_seen_at=signal.first_seen_at,
+                )
+                for signal in signals
+            )
+        )
+        return tuple(
+            tuple(by_id[article.signal_id] for article in group.articles) for group in groups
+        )
+
+    assigned: set[UUID] = set()
+    units: list[tuple[SignalForMatching, ...]] = []
+    for ids in story_group_ids:
+        unit_members: list[SignalForMatching] = []
+        seen_in_unit: set[UUID] = set()
+        for signal_id in ids:
+            if signal_id in by_id and signal_id not in assigned and signal_id not in seen_in_unit:
+                unit_members.append(by_id[signal_id])
+                seen_in_unit.add(signal_id)
+        unit = tuple(
+            sorted(
+                unit_members,
+                key=lambda signal: (
+                    signal.published_at or signal.first_seen_at,
+                    signal.signal_id.bytes,
+                ),
+            )
+        )
+        if unit:
+            units.append(unit)
+            assigned.update(signal.signal_id for signal in unit)
+    units.extend(
+        (signal,)
+        for signal in sorted(
+            (signal for signal in signals if signal.signal_id not in assigned),
+            key=lambda item: (item.published_at or item.first_seen_at, item.signal_id.bytes),
+        )
+    )
+    return tuple(units)
+
+
+def _event_clusters(
+    story_units: Sequence[tuple[SignalForMatching, ...]],
+    *,
+    window_days: int,
+    distance_km: float,
+) -> tuple[tuple[StoryCluster, ...], tuple[StoryCluster, ...]]:
+    """Match story units strictly, preserving each unit's source members."""
+    representatives = tuple(_event_representative(unit) for unit in story_units)
+    strict_clusters, unclusterable = build_clusters(
+        representatives,
+        window_days=window_days,
+        distance_km=distance_km,
+    )
+    unit_by_representative = {unit[0].signal_id: unit for unit in story_units}
+    expanded: list[StoryCluster] = []
+    for cluster in strict_clusters:
+        members = tuple(
+            signal
+            for representative in cluster.signals
+            for signal in unit_by_representative[representative.signal_id]
+        )
+        expanded.append(StoryCluster(signals=members))
+    expanded.sort(key=lambda cluster: (cluster.span[0], cluster.signals[0].signal_id.bytes))
+    return tuple(expanded), tuple(
+        StoryCluster(signals=unit_by_representative[representative.signal_id])
+        for representative in unclusterable
+    )
+
+
+def _event_representative(unit: tuple[SignalForMatching, ...]) -> SignalForMatching:
+    """Expose all resolved identity evidence while keeping the lead signal id."""
+    lead = unit[0]
+    disease_id = next((signal.disease_id for signal in unit if signal.disease_id), None)
+    disease_text = next(
+        (
+            signal.disease_text
+            for signal in unit
+            if signal.disease_text and signal.disease_text.strip()
+        ),
+        None,
+    )
+    locations = tuple(location for signal in unit for location in signal.locations)
+    embedding = next((signal.embedding for signal in unit if signal.embedding is not None), None)
+    return lead.model_copy(
+        update={
+            "disease_id": disease_id,
+            "disease_text": disease_text,
+            "locations": locations,
+            "embedding": embedding,
+        }
     )

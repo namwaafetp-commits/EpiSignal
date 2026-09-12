@@ -47,7 +47,8 @@ class FakeAssemblyRepository:
         limit: int = 20,
         distance_km: float = 50.0,
     ) -> list[CandidateEvent]:
-        assert cluster.disease_id is not None
+        if cluster.disease_id is None:
+            return []
         return self._candidates.get(cluster.disease_id, [])
 
     def recent_source_titles(self, event_id: UUID, *, limit: int = 5) -> tuple[str, ...]:
@@ -124,6 +125,8 @@ def _make_signal(
     is_official: bool = True,
     cred_tier: CredibilityTier = CredibilityTier.OFFICIAL,
     embedding: tuple[float, ...] | None = None,
+    title: str = "",
+    raw_text: str = "",
 ) -> SignalForMatching:
     locations = (loc,) if loc is not None else ()
     return SignalForMatching(
@@ -136,6 +139,8 @@ def _make_signal(
         first_seen_at=published_at,
         locations=locations,
         embedding=embedding,
+        title=title,
+        raw_text=raw_text,
     )
 
 
@@ -209,6 +214,112 @@ def test_clear_new_cluster_creates_event_and_attaches_signals() -> None:
     # Scores applied
     assert created_id in repo.applied_scores
     assert repo.committed is True
+
+
+def test_same_story_with_unresolved_fields_creates_one_event_with_all_sources() -> None:
+    now = datetime.now(UTC)
+    articles = [
+        (
+            "Anthropic blocks AI users over suspected bioweapons research",
+            "Anthropic reported biological weapons misuse involving chikungunya.",
+        ),
+        (
+            "Anthropic Blocks AI Misuse for Biological Weapons Research",
+            "Anthropic described biological weapons inquiries involving chikungunya.",
+        ),
+        (
+            "Anthropic reports AI misuse for biological weapons research",
+            "The Anthropic report covered biological weapons and chikungunya inquiries.",
+        ),
+        (
+            "Anthropic blocks users over biological weapons research",
+            "Anthropic said it blocked users seeking biological weapons research help.",
+        ),
+    ]
+    signals = [
+        _make_signal(
+            disease_id=None,
+            published_at=now + timedelta(minutes=index),
+            title=title,
+            raw_text=body,
+        )
+        for index, (title, body) in enumerate(articles)
+    ]
+
+    repo = FakeAssemblyRepository(signals)
+    summary = run_event_assembly(repo)
+
+    assert summary.story_groups_built == 1
+    assert summary.unclusterable == 1
+    assert summary.events_created == 1
+    assert summary.signals_attached == 4
+    assert len(repo.created_events) == 1
+
+
+def test_story_identity_uses_resolved_supporting_evidence_for_event_clustering() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="PH",
+        place_name="Cebu",
+    )
+    signals = [
+        _make_signal(
+            disease_id=None,
+            published_at=now,
+            title="Cebu outbreak report identifies dengue activity",
+            raw_text="Officials described the outbreak report and ongoing case investigation.",
+        ),
+        _make_signal(
+            disease_id=disease_id,
+            loc=location,
+            published_at=now + timedelta(minutes=2),
+            title="Cebu outbreak report identifies dengue activity",
+            raw_text=(
+                "Officials identified dengue activity in Cebu and continued the case investigation."
+            ),
+        ),
+    ]
+
+    repo = FakeAssemblyRepository(signals)
+    summary = run_event_assembly(repo)
+
+    assert summary.unclusterable == 0
+    assert summary.events_created == 1
+    assert summary.signals_attached == 2
+    assert repo.created_events[0].disease_id == disease_id
+
+
+def test_overlapping_story_group_ids_attach_each_signal_once() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="PH",
+        place_name="Cebu",
+    )
+    signals = [
+        _make_signal(
+            disease_id=disease_id,
+            loc=location,
+            published_at=now + timedelta(minutes=index),
+            title=f"Dengue report {index}",
+            raw_text=f"A dengue report describes the Cebu outbreak update {index}.",
+        )
+        for index in range(2)
+    ]
+
+    repo = FakeAssemblyRepository(signals)
+    summary = run_event_assembly(
+        repo,
+        story_group_ids=((signals[0].signal_id, signals[1].signal_id), (signals[1].signal_id,)),
+    )
+
+    assert summary.events_created == 1
+    assert summary.signals_attached == 2
 
 
 def test_attach_decision_updates_existing_event_and_recomputes_scores() -> None:

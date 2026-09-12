@@ -96,7 +96,9 @@ class AiRepository:
     def awaiting_cluster_extraction(self, *, limit: int) -> Sequence[ExtractableCluster]:
         return ()
 
-    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]:
+    def awaiting_extraction(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ExtractableSignal]:
         return ()
 
     def record_request(self, record: AiRequestRecord) -> None:
@@ -167,6 +169,7 @@ def test_daily_order_and_irrelevant_stop_prevent_all_downstream_work() -> None:
         StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
+        StageName.STORY_GROUP,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,
@@ -220,6 +223,11 @@ def test_daily_order_and_irrelevant_stop_prevent_all_downstream_work() -> None:
         )
         return {"extracted": result.extracted}
 
+    def story_group() -> Mapping[str, int]:
+        calls.append(StageName.STORY_GROUP)
+        assert ai.awaiting_extraction(limit=10) == ()
+        return {"story_groups": 0}
+
     def match() -> Mapping[str, int]:
         calls.append(StageName.MATCH)
         result = run_event_assembly(event_repository)
@@ -239,6 +247,7 @@ def test_daily_order_and_irrelevant_stop_prevent_all_downstream_work() -> None:
             StageName.DEDUPE,
             StageName.CLASSIFY,
             StageName.RETRIEVE,
+            StageName.STORY_GROUP,
             StageName.EXTRACT,
             StageName.MATCH,
             StageName.SUMMARIZE,
@@ -248,6 +257,7 @@ def test_daily_order_and_irrelevant_stop_prevent_all_downstream_work() -> None:
             StageName.DEDUPE: deduplicate,
             StageName.CLASSIFY: classify,
             StageName.RETRIEVE: retrieve,
+            StageName.STORY_GROUP: story_group,
             StageName.EXTRACT: extract,
             StageName.MATCH: match,
             StageName.SUMMARIZE: summarize,
@@ -259,6 +269,7 @@ def test_daily_order_and_irrelevant_stop_prevent_all_downstream_work() -> None:
         StageName.DEDUPE,
         StageName.CLASSIFY,
         StageName.RETRIEVE,
+        StageName.STORY_GROUP,
         StageName.EXTRACT,
         StageName.MATCH,
         StageName.SUMMARIZE,

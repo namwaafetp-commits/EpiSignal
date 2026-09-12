@@ -29,7 +29,7 @@ PURPOSE_ROUTES: dict[AiPurpose, PurposeRoute] = {
         provider=AiProvider.GEMINI,
     ),
     AiPurpose.EVENT_SUMMARY: PurposeRoute(
-        model_id="mistralai/mistral-small-3.2-24b-instruct",
+        model_id="deepseek/deepseek-v4-flash-0731",
         provider=AiProvider.OPENROUTER,
     ),
 }

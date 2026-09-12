@@ -190,7 +190,7 @@ export default async function EventPage({
 function FlexibleSummary({
   payload,
 }: {
-  payload: { title: string; bullets: string[]; takeaway: string };
+  payload: { title: string; bullets: string[]; takeaway?: string };
 }) {
   return (
     <article className="event-page__section" aria-labelledby="overview-heading">
@@ -200,22 +200,24 @@ function FlexibleSummary({
           <li key={bullet}>{bullet}</li>
         ))}
       </ul>
-      <p>
-        <strong>Takeaway:</strong> {payload.takeaway}
-      </p>
+      {payload.takeaway && (
+        <p>
+          <strong>Takeaway:</strong> {payload.takeaway}
+        </p>
+      )}
     </article>
   );
 }
 
 function isFlexibleSummary(
   value: EventDetailResponse["summary_payload"],
-): value is { title: string; bullets: string[]; takeaway: string } {
+): value is { title: string; bullets: string[]; takeaway?: string } {
   if (!value || typeof value !== "object") return false;
   return (
     typeof value.title === "string" &&
     Array.isArray(value.bullets) &&
     value.bullets.every((bullet) => typeof bullet === "string") &&
-    typeof value.takeaway === "string"
+    (value.takeaway === undefined || typeof value.takeaway === "string")
   );
 }
 

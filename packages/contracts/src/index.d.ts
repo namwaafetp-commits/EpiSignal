@@ -1049,7 +1049,7 @@ export interface components {
          * @description One step of the pipeline. Never a rung of the model ladder: that is a tier.
          * @enum {string}
          */
-        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "classify" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
+        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "story_group" | "classify" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
         /** ValidationError */
         ValidationError: {
             /** Context */
