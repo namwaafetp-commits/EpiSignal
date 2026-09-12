@@ -120,6 +120,7 @@ class FakeAssemblyRepository:
 def _make_signal(
     *,
     disease_id: UUID | None,
+    disease_text: str | None = None,
     loc: LocationForMatching | None = None,
     published_at: datetime,
     is_official: bool = True,
@@ -132,6 +133,7 @@ def _make_signal(
     return SignalForMatching(
         signal_id=uuid4(),
         disease_id=disease_id,
+        disease_text=disease_text,
         source_id=uuid4(),
         source_is_official=is_official,
         credibility_tier=cred_tier,
@@ -141,6 +143,13 @@ def _make_signal(
         embedding=embedding,
         title=title,
         raw_text=raw_text,
+    )
+
+
+def _run_story_group(signals: list[SignalForMatching], repo: FakeAssemblyRepository):
+    return run_event_assembly(
+        repo,
+        story_group_ids=(tuple(signal.signal_id for signal in signals),),
     )
 
 
@@ -290,6 +299,167 @@ def test_story_identity_uses_resolved_supporting_evidence_for_event_clustering()
     assert summary.events_created == 1
     assert summary.signals_attached == 2
     assert repo.created_events[0].disease_id == disease_id
+
+
+def test_conflicting_story_locations_do_not_match_an_unrelated_event() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    bangkok = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        place_name="Bangkok",
+    )
+    singapore = bangkok.model_copy(update={"country_code": "SG", "place_name": "Singapore"})
+    signals = [
+        _make_signal(
+            disease_id=disease_id,
+            loc=bangkok if index < 3 else singapore,
+            published_at=now + timedelta(minutes=index),
+        )
+        for index in range(4)
+    ]
+    singapore_event = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(singapore,),
+        first_signal_at=now - timedelta(days=1),
+        last_updated_at=now,
+    )
+    repo = FakeAssemblyRepository([*signals], {disease_id: [singapore_event]})
+
+    summary = _run_story_group(signals, repo)
+
+    assert summary.events_created == 1
+    assert summary.signals_attached == 4
+    assert repo.created_events[0].locations == ()
+    assert all(event_id != singapore_event.event_id for event_id, *_ in repo.attached_signals)
+
+
+def test_one_resolved_story_location_represents_unresolved_peers() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    bangkok = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        place_name="Bangkok",
+    )
+    unresolved = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.UNRESOLVED,
+        place_name="Unknown place",
+    )
+    signals = [
+        _make_signal(
+            disease_id=disease_id,
+            loc=bangkok if index == 0 else unresolved,
+            published_at=now + timedelta(minutes=index),
+        )
+        for index in range(4)
+    ]
+    existing_event = CandidateEvent(
+        event_id=uuid4(),
+        disease_id=disease_id,
+        locations=(bangkok,),
+        first_signal_at=now - timedelta(days=1),
+        last_updated_at=now,
+    )
+    repo = FakeAssemblyRepository([*signals], {disease_id: [existing_event]})
+
+    summary = _run_story_group(signals, repo)
+
+    assert summary.events_created == 0
+    assert summary.signals_attached == 4
+    assert repo.attached_signals[0][0] == existing_event.event_id
+
+
+def test_evenly_conflicting_story_locations_remain_unresolved() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    bangkok = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        place_name="Bangkok",
+    )
+    singapore = bangkok.model_copy(update={"country_code": "SG", "place_name": "Singapore"})
+    signals = [
+        _make_signal(
+            disease_id=disease_id,
+            loc=bangkok if index < 2 else singapore,
+            published_at=now + timedelta(minutes=index),
+        )
+        for index in range(4)
+    ]
+    repo = FakeAssemblyRepository(signals)
+
+    summary = _run_story_group(signals, repo)
+
+    assert summary.unclusterable == 1
+    assert summary.events_created == 1
+    assert repo.created_events[0].locations == ()
+
+
+def test_disease_consensus_ignores_generic_or_unknown_member() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        place_name="Bangkok",
+    )
+    signals = [
+        _make_signal(
+            disease_id=None,
+            disease_text="unknown",
+            loc=location,
+            published_at=now,
+        ),
+        *(
+            _make_signal(
+                disease_id=disease_id,
+                loc=location,
+                published_at=now + timedelta(minutes=index),
+            )
+            for index in range(1, 4)
+        ),
+    ]
+    repo = FakeAssemblyRepository(signals)
+
+    summary = _run_story_group(signals, repo)
+
+    assert summary.unclusterable == 0
+    assert summary.events_created == 1
+    assert repo.created_events[0].disease_id == disease_id
+
+
+def test_conflicting_story_diseases_remain_unresolved() -> None:
+    now = datetime.now(UTC)
+    chikungunya = uuid4()
+    dengue = uuid4()
+    location = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        place_name="Bangkok",
+    )
+    signals = [
+        _make_signal(
+            disease_id=chikungunya if index < 2 else dengue,
+            loc=location,
+            published_at=now + timedelta(minutes=index),
+        )
+        for index in range(4)
+    ]
+    repo = FakeAssemblyRepository(signals)
+
+    summary = _run_story_group(signals, repo)
+
+    assert summary.unclusterable == 1
+    assert summary.events_created == 1
+    assert repo.created_events[0].disease_id is None
 
 
 def test_overlapping_story_group_ids_attach_each_signal_once() -> None:

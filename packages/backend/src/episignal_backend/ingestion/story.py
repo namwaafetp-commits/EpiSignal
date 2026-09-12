@@ -1,9 +1,9 @@
 """Conservative deterministic grouping of articles covering one story.
 
 Story identity is deliberately separate from epidemiologic event identity. It
-may use strong textual/entity evidence even when extraction has not resolved a
-disease or location. It never uses disease, country, or a discovery rule as a
-positive match by itself.
+may use strong textual evidence and distinctive-term overlap even when
+extraction has not resolved a disease or location. It never uses disease,
+country, or a discovery rule as a positive match by itself.
 """
 
 import re
@@ -99,8 +99,10 @@ def story_match_score(left: StoryArticle, right: StoryArticle) -> float:
     left_terms = _distinctive_terms(f"{left.title} {left.raw_text}")
     right_terms = _distinctive_terms(f"{right.title} {right.raw_text}")
     overlap = len(left_terms & right_terms)
-    entity_score = min(1.0, overlap / 3.0)
-    return 0.35 * title_score + 0.35 * body_score + 0.20 * entity_score + 0.10 * time_score
+    distinctive_term_score = min(1.0, overlap / 3.0)
+    return (
+        0.35 * title_score + 0.35 * body_score + 0.20 * distinctive_term_score + 0.10 * time_score
+    )
 
 
 def _same_story(left: StoryArticle, right: StoryArticle) -> bool:

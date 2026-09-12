@@ -8,6 +8,7 @@ This module imports neither SQLAlchemy nor httpx.
 """
 
 import logging
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
@@ -17,13 +18,15 @@ from pydantic import BaseModel, ConfigDict
 from episignal_backend.ai.documents import ModelSpec
 from episignal_backend.ai.protocol import ChatModel
 from episignal_backend.ai.schema import BriefPoint
-from episignal_backend.db.types import RelationshipType
+from episignal_backend.db.types import Precision, RelationshipType
 from episignal_backend.events.cluster import build_clusters
 from episignal_backend.events.documents import (
     CandidateEvent,
+    LocationForMatching,
     MatchAction,
     SignalForMatching,
     StoryCluster,
+    normalize_disease_text,
 )
 from episignal_backend.events.finalize import (
     finalize_event_creation,
@@ -38,6 +41,7 @@ from episignal_backend.events.score import (
     evidence_score,
     verification_status,
 )
+from episignal_backend.geocode.normalize import normalized_form
 from episignal_backend.ingestion.story import StoryArticle, group_stories
 
 logger = logging.getLogger(__name__)
@@ -360,27 +364,113 @@ def _event_clusters(
             for representative in cluster.signals
             for signal in unit_by_representative[representative.signal_id]
         )
-        expanded.append(StoryCluster(signals=members))
+        expanded.append(
+            StoryCluster(
+                signals=members,
+                event_representative=_event_representative(cluster.signals),
+            )
+        )
     expanded.sort(key=lambda cluster: (cluster.span[0], cluster.signals[0].signal_id.bytes))
     return tuple(expanded), tuple(
-        StoryCluster(signals=unit_by_representative[representative.signal_id])
+        StoryCluster(
+            signals=unit_by_representative[representative.signal_id],
+            event_representative=representative,
+        )
         for representative in unclusterable
     )
 
 
-def _event_representative(unit: tuple[SignalForMatching, ...]) -> SignalForMatching:
-    """Expose all resolved identity evidence while keeping the lead signal id."""
-    lead = unit[0]
-    disease_id = next((signal.disease_id for signal in unit if signal.disease_id), None)
-    disease_text = next(
-        (
-            signal.disease_text
-            for signal in unit
-            if signal.disease_text and signal.disease_text.strip()
-        ),
-        None,
+_UNRESOLVED_DISEASE_TEXTS = frozenset(
+    {
+        "disease",
+        "generic",
+        "generic disease",
+        "infectious disease",
+        "unknown",
+        "unknown disease",
+        "unspecified",
+        "unspecified disease",
+    }
+)
+
+_LOCATION_PRECISION_RANK = {
+    Precision.PLACE: 4,
+    Precision.ADMIN2: 3,
+    Precision.ADMIN1: 2,
+    Precision.COUNTRY: 1,
+    Precision.UNRESOLVED: 0,
+}
+
+
+def _resolved_disease_identity(signal: SignalForMatching) -> str | None:
+    if signal.disease_id is not None:
+        return f"id:{signal.disease_id}"
+    disease_text = normalize_disease_text(signal.disease_text)
+    if disease_text is None or disease_text in _UNRESOLVED_DISEASE_TEXTS:
+        return None
+    return f"text:{disease_text}"
+
+
+def _disease_consensus(unit: tuple[SignalForMatching, ...]) -> tuple[UUID | None, str | None]:
+    identities = [
+        (identity, signal)
+        for signal in unit
+        if (identity := _resolved_disease_identity(signal)) is not None
+    ]
+    if not identities:
+        return None, None
+
+    counts = Counter(identity for identity, _ in identities)
+    winner, winner_count = counts.most_common(1)[0]
+    if len(counts) > 1 and winner_count * 2 <= len(identities):
+        return None, None
+
+    winning_signal = next(signal for identity, signal in identities if identity == winner)
+    return winning_signal.disease_id, winning_signal.disease_text
+
+
+def _location_identity(location: LocationForMatching) -> tuple[str, str, str, str]:
+    return (
+        (location.country_code or "").strip().upper(),
+        normalized_form(location.admin1) if location.admin1 else "",
+        normalized_form(location.admin2) if location.admin2 else "",
+        normalized_form(location.place_name) if location.place_name else "",
     )
-    locations = tuple(location for signal in unit for location in signal.locations)
+
+
+def _resolved_location_consensus(
+    unit: tuple[SignalForMatching, ...],
+) -> tuple[LocationForMatching, ...]:
+    resolved = tuple(
+        location
+        for signal in unit
+        for location in signal.locations
+        if location.precision != Precision.UNRESOLVED
+        and location.country_code is not None
+        and location.country_code.strip()
+    )
+    if not resolved:
+        return ()
+
+    identities = {_location_identity(location) for location in resolved}
+    if len(identities) != 1:
+        return ()
+
+    chosen = max(
+        resolved,
+        key=lambda location: (
+            location.location_role.value == "primary",
+            _LOCATION_PRECISION_RANK[location.precision],
+        ),
+    )
+    return (chosen,)
+
+
+def _event_representative(unit: tuple[SignalForMatching, ...]) -> SignalForMatching:
+    """Build a conservative epidemiologic identity for one story unit."""
+    lead = unit[0]
+    disease_id, disease_text = _disease_consensus(unit)
+    locations = _resolved_location_consensus(unit)
     embedding = next((signal.embedding for signal in unit if signal.embedding is not None), None)
     return lead.model_copy(
         update={

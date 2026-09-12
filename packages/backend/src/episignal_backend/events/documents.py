@@ -109,13 +109,18 @@ class StoryCluster(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     signals: tuple[SignalForMatching, ...] = Field(min_length=1)
+    event_representative: SignalForMatching | None = Field(default=None, exclude=True)
 
     @property
     def disease_id(self) -> UUID | None:
+        if self.event_representative is not None:
+            return self.event_representative.disease_id
         return next((signal.disease_id for signal in self.signals if signal.disease_id), None)
 
     @property
     def disease_text(self) -> str | None:
+        if self.event_representative is not None:
+            return normalize_disease_text(self.event_representative.disease_text)
         return next(
             (
                 text
@@ -139,7 +144,10 @@ class StoryCluster(BaseModel):
 
         Falls back to highest-precision location with any role if no primary exists.
         """
-        all_locs = [loc for sig in self.signals for loc in sig.locations]
+        source_signals = (
+            (self.event_representative,) if self.event_representative is not None else self.signals
+        )
+        all_locs = [loc for sig in source_signals for loc in sig.locations]
         if not all_locs:
             return None
 
