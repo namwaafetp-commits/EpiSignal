@@ -350,3 +350,22 @@ Evidence: [event identity reconciliation report](docs/reports/2026-09-12-event-i
 Verified baseline: commit containing this ledger entry. Alembic head remains
 `20260911_0024`; no production database or deployment changes were made.
 Evidence: [event summary gate correction report](docs/reports/2026-09-12-event-summary-gate-report.md).
+
+## Task ledger — DeepSeek event-summary roster migration (2026-09-12)
+
+- [x] Trace the database-owned roster, seed loader, migration chain, and
+  purpose-specific registry from the pre-change Mistral summary route.
+- [x] Add idempotent Alembic migration `20260912_0025` to activate the
+  DeepSeek/OpenRouter `event_summary` row and retire the old Mistral row without
+  deleting audit identities or mutating event summaries.
+- [x] Keep the reviewed seed convergent and preserve DeepSeek classification,
+  Gemini extraction, and DeepSeek summarization as the three-model workflow.
+- [x] Add fresh/upgrade integration coverage plus repository, wiring, and seed
+  regressions.
+- [x] Full repository gate passed: web 125; Python 1,533 passed, 2 skipped,
+  2 existing deprecation warnings; format, lint, typecheck, contracts, and
+  build passed.
+
+Verified implementation baseline: `f816cf1`; Alembic head is
+`20260912_0025`. No production database or deployment changes were made.
+Evidence: [event-summary roster migration report](docs/reports/2026-09-12-event-summary-roster-migration-report.md).
