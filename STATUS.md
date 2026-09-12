@@ -313,3 +313,22 @@ Verified baseline: `d9bb2ea1908df694228908382761ec8fbb531a5a`.
 skipped; format, lint, typecheck, contracts, and build passed. Alembic head is
 `20260911_0024`; the only warnings are the two existing deprecations. Full
 evidence: [next iteration report](docs/reports/2026-09-12-next-iteration-report.md).
+
+## Task ledger — story-group epidemiologic identity reconciliation (2026-09-12)
+
+- [x] Disease representatives use deterministic consensus and leave conflicts
+  unresolved instead of selecting the first member.
+- [x] Location representatives use exact agreement, allow one resolved value
+  with unresolved peers, and leave conflicting locations unresolved.
+- [x] Expanded story clusters retain reconciled event identity while attaching
+  every original signal.
+- [x] Regression coverage protects bad, missing, and conflicting locations;
+  disease consensus/conflict; Anthropic story grouping; and event matching.
+- [x] Terminology uses `distinctive-term overlap`; no NER was added.
+
+Verified baseline: `577dbcb`.
+
+`corepack pnpm verify` passed: web 125 tests; Python 1,523 passed, 2 skipped,
+2 existing deprecation warnings; format, lint, typecheck, contracts, and build
+passed. Alembic head remains `20260911_0024`.
+Evidence: [event identity reconciliation report](docs/reports/2026-09-12-event-identity-reconciliation-report.md).
