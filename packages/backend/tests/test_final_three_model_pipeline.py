@@ -313,17 +313,19 @@ def test_summary_sends_linked_article_text_and_not_legacy_brief() -> None:
     assert "brief" not in payload["sources"][0]
 
 
-def test_summary_is_due_for_new_linked_article_only() -> None:
+def test_summary_is_due_after_sufficient_new_article_evidence() -> None:
     now = datetime(2026, 9, 2, tzinfo=UTC)
-    assert should_resummarize(
-        last_summarized_at=now,
-        latest_observation=None,
-        previous_counts=None,
-        unsummarized_articles=1,
-    )
     assert not should_resummarize(
         last_summarized_at=now,
         latest_observation=None,
         previous_counts=None,
-        unsummarized_articles=0,
+        unsummarized_articles=1,
+        now=now,
+    )
+    assert should_resummarize(
+        last_summarized_at=now,
+        latest_observation=None,
+        previous_counts=None,
+        unsummarized_articles=3,
+        now=now,
     )

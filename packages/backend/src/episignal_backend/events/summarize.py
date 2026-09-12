@@ -13,7 +13,7 @@ the routing layer here.
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
@@ -174,6 +174,11 @@ def unique_summary_candidates(
     return tuple(unique)
 
 
+def has_usable_summary_source(sources: Sequence[SummarySource]) -> bool:
+    """Return whether at least one linked source has clean article text."""
+    return any(source.article_text.strip() for source in sources)
+
+
 def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict | FlexibleEventSummary:
     try:
         payload = json.loads(content)
@@ -241,8 +246,9 @@ def legacy_summary_fields(
 class SummaryWiring:
     """Everything the summarizer needs, resolved once.
 
-    `model` is None when no provider key is configured: the summarizer then
-    never runs, and the event simply keeps its previous headline and summary.
+    `model` or `spec` is None when the provider key or purpose-specific roster
+    row is unavailable: the summarizer then never runs, and the event simply
+    keeps its previous headline and summary.
     """
 
     model: ChatModel | None
@@ -464,8 +470,12 @@ def should_resummarize(
     max_age_hours: int = 24,
     new_article_count: int = 3,
 ) -> bool:
-    """Regenerate once for a new linked source or a never-summarized event."""
+    """Decide whether an existing event has enough material change to refresh."""
     if last_summarized_at is None:
         return True
-    del latest_observation, previous_counts, now, max_age_hours, new_article_count
-    return unsummarized_articles > 0
+    reference = now or datetime.now(UTC)
+    if not _counts_equals(latest_observation, previous_counts):
+        return True
+    if unsummarized_articles >= new_article_count:
+        return True
+    return reference - last_summarized_at > timedelta(hours=max_age_hours)

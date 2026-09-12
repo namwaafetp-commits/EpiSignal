@@ -31,6 +31,7 @@ from episignal_backend.events.summarize import (
     SummaryResult,
     build_summary_failure_diagnostic,
     configure_summary,
+    has_usable_summary_source,
     legacy_summary_fields,
     render_event_flash_brief,
     run_summary,
@@ -363,6 +364,9 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
 
         examined = 0
         skipped = 0
+        skipped_no_change = 0
+        skipped_no_model = 0
+        skipped_no_sources = 0
         summarized = 0
         failed = 0
         unavailable = 0
@@ -381,13 +385,20 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
                 new_article_count=settings.resummary_new_article_count,
             ):
                 skipped += 1
+                skipped_no_change += 1
+                continue
+
+            sources = event.sources
+            if not has_usable_summary_source(sources):
+                skipped += 1
+                skipped_no_sources += 1
                 continue
 
             if wiring.model is None or wiring.spec is None:
                 skipped += 1
+                skipped_no_model += 1
                 continue
 
-            sources = event.sources
             pending.append((event, sources))
 
         if pending and wiring.model is not None and wiring.spec is not None:
@@ -453,6 +464,9 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
     return {
         "examined": examined,
         "skipped": skipped,
+        "skipped_no_change": skipped_no_change,
+        "skipped_no_model": skipped_no_model,
+        "skipped_no_sources": skipped_no_sources,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,

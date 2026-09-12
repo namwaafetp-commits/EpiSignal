@@ -12,6 +12,8 @@ from episignal_backend.events.summarize import (
     EventSummaryVerdict,
     FlexibleEventSummary,
     SummaryOutcome,
+    configure_summary,
+    has_usable_summary_source,
     pick_representative_sources,
     render_event_flash_brief,
     run_summary,
@@ -184,6 +186,7 @@ def test_no_unsummarized_linked_article_does_not_trigger_resummary() -> None:
             latest_observation=None,
             previous_counts=None,
             unsummarized_articles=0,
+            now=NOW,
         )
         is False
     )
@@ -193,6 +196,17 @@ def test_no_unsummarized_linked_article_does_not_trigger_resummary() -> None:
             latest_observation=None,
             previous_counts=None,
             unsummarized_articles=1,
+            now=NOW,
+        )
+        is False
+    )
+    assert (
+        should_resummarize(
+            last_summarized_at=NOW,
+            latest_observation=None,
+            previous_counts=None,
+            unsummarized_articles=3,
+            now=NOW,
         )
         is True
     )
@@ -202,6 +216,75 @@ def test_never_summarized_event_is_due() -> None:
     assert should_resummarize(
         last_summarized_at=None, latest_observation=None, previous_counts=None
     )
+
+
+def test_new_event_with_article_text_is_eligible_without_structured_observation() -> None:
+    current = event().model_copy(
+        update={
+            "disease": "",
+            "location": "",
+            "latest_observation": None,
+            "previous_counts": None,
+            "sources": (source("Officials are investigating an unusual illness."),),
+        }
+    )
+
+    assert current.last_summarized_at is None
+    assert current.latest_observation is None
+    assert has_usable_summary_source(current.sources)
+    assert should_resummarize(
+        last_summarized_at=current.last_summarized_at,
+        latest_observation=current.latest_observation,
+        previous_counts=current.previous_counts,
+    )
+
+
+def test_new_event_with_unresolved_identity_and_article_text_is_eligible() -> None:
+    current = event().model_copy(
+        update={
+            "disease": "",
+            "location": "Unresolved location",
+            "sources": (source("A suspected outbreak is under investigation."),),
+        }
+    )
+
+    assert should_resummarize(
+        last_summarized_at=current.last_summarized_at,
+        latest_observation=current.latest_observation,
+        previous_counts=current.previous_counts,
+    )
+    assert has_usable_summary_source(current.sources)
+
+
+def test_event_without_usable_article_text_is_not_eligible_for_summary() -> None:
+    assert not has_usable_summary_source((source("   "),))
+
+
+def test_existing_event_with_material_observation_change_is_due() -> None:
+    assert should_resummarize(
+        last_summarized_at=NOW,
+        latest_observation={"material_facts": {"cases": 4}},
+        previous_counts={"material_facts": {"cases": 3}},
+        unsummarized_articles=0,
+        now=NOW,
+    )
+
+
+def test_deepseek_summary_wiring_uses_openrouter_registry_route() -> None:
+    from episignal_backend.config import Settings
+
+    settings = Settings(
+        database_url="postgresql://user:secret@host/db",
+        openrouter_api_key="openrouter-test-key",
+        _env_file=None,
+    )
+
+    wiring = configure_summary(settings, [spec()])
+
+    assert wiring.model is not None
+    assert wiring.spec is not None
+    assert wiring.spec.model_id == "deepseek/deepseek-v4-flash-0731"
+    assert wiring.spec.provider is AiProvider.OPENROUTER
 
 
 def test_representative_sources_are_official_then_recent_and_article_backed() -> None:

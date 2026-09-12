@@ -63,15 +63,24 @@ def test_new_linked_follow_up_article_is_due_for_summary_again() -> None:
     assert should_resummarize(
         last_summarized_at=None, latest_observation=None, previous_counts=None
     )
-    assert should_resummarize(
+    assert not should_resummarize(
         last_summarized_at=first,
         latest_observation=None,
         previous_counts=None,
         unsummarized_articles=1,
+        now=first,
+    )
+    assert should_resummarize(
+        last_summarized_at=first,
+        latest_observation=None,
+        previous_counts=None,
+        unsummarized_articles=3,
+        now=first,
     )
     assert not should_resummarize(
         last_summarized_at=first,
         latest_observation=None,
         previous_counts=None,
         unsummarized_articles=0,
+        now=first,
     )

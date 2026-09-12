@@ -332,3 +332,21 @@ Verified baseline: `577dbcb`.
 2 existing deprecation warnings; format, lint, typecheck, contracts, and build
 passed. Alembic head remains `20260911_0024`.
 Evidence: [event identity reconciliation report](docs/reports/2026-09-12-event-identity-reconciliation-report.md).
+
+## Task ledger — initial event summary gate correction (2026-09-12)
+
+- [x] Prove newly created events are due without structured observations,
+  resolved disease, resolved location, or counts when clean article text exists.
+- [x] Preserve conservative summarized-event behavior for material change,
+  sufficient new article evidence, and summary age.
+- [x] Skip events without usable article text and expose bounded skip reasons.
+- [x] Verify DeepSeek/OpenRouter purpose wiring through the existing registry.
+- [x] Add regression coverage for initial, unresolved, no-source, unchanged,
+  changed, wiring, and legacy summary behavior.
+- [x] Full repository gate passed: web 125; Python 1,530 passed, 2 skipped,
+  2 existing deprecation warnings; format, lint, typecheck, contracts, and
+  build passed.
+
+Verified baseline: commit containing this ledger entry. Alembic head remains
+`20260911_0024`; no production database or deployment changes were made.
+Evidence: [event summary gate correction report](docs/reports/2026-09-12-event-summary-gate-report.md).

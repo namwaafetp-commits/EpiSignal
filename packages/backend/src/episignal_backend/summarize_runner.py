@@ -22,6 +22,7 @@ from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     configure_summary,
+    has_usable_summary_source,
     legacy_summary_fields,
     render_event_flash_brief,
     run_summary,
@@ -70,6 +71,9 @@ def _run(arguments: Arguments) -> dict[str, int]:
 
         examined = 0
         skipped = 0
+        skipped_no_change = 0
+        skipped_no_model = 0
+        skipped_no_sources = 0
         summarized = 0
         failed = 0
         unavailable = 0
@@ -86,17 +90,24 @@ def _run(arguments: Arguments) -> dict[str, int]:
                 new_article_count=settings.resummary_new_article_count,
             ):
                 skipped += 1
+                skipped_no_change += 1
+                continue
+
+            sources = event.sources
+            if not has_usable_summary_source(sources):
+                skipped += 1
+                skipped_no_sources += 1
                 continue
 
             if wiring.model is None or wiring.spec is None:
                 # No summarizer configured: the event keeps its current
                 # narrative. Counted as skipped rather than failed.
                 skipped += 1
+                skipped_no_model += 1
                 continue
 
             # The contract requires consolidated evidence from every linked
             # source; representative-source caps belong to the old summary.
-            sources = event.sources
             result = run_summary(
                 wiring.model,
                 wiring.spec,
@@ -143,6 +154,9 @@ def _run(arguments: Arguments) -> dict[str, int]:
     return {
         "examined": examined,
         "skipped": skipped,
+        "skipped_no_change": skipped_no_change,
+        "skipped_no_model": skipped_no_model,
+        "skipped_no_sources": skipped_no_sources,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,
@@ -164,6 +178,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"examined={counts['examined']} skipped={counts['skipped']} "
+        f"skipped_no_change={counts['skipped_no_change']} "
+        f"skipped_no_model={counts['skipped_no_model']} "
+        f"skipped_no_sources={counts['skipped_no_sources']} "
         f"summarized={counts['summarized']} failed={counts['failed']} "
         f"unavailable={counts['unavailable']}"
     )
