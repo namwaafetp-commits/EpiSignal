@@ -155,12 +155,25 @@ def test_the_seed_carries_a_triage_and_a_summary_model() -> None:
     assert models["deepseek/deepseek-v4-flash-0731"].completion_price_per_million == Decimal("0.10")
 
 
-def test_every_existing_rung_stays_purposeless() -> None:
+def test_every_non_retired_existing_rung_stays_purposeless() -> None:
     from episignal_backend.seeds import load_ai_models
 
     for seed in load_ai_models():
-        if seed.model_id.startswith(("google/", "mistralai/", "anthropic/")):
+        if seed.model_id.startswith(("google/", "anthropic/")):
             assert seed.purpose is None
+
+
+def test_the_retired_summary_rung_is_explicitly_inactive() -> None:
+    from episignal_backend.db.types import AiPurpose
+    from episignal_backend.seeds import load_ai_models
+
+    retired = next(
+        seed
+        for seed in load_ai_models()
+        if seed.model_id == "mistralai/mistral-small-3.2-24b-instruct"
+    )
+    assert retired.purpose is AiPurpose.EVENT_SUMMARY
+    assert retired.active is False
 
 
 def test_the_active_general_roster_is_gemini_with_one_openrouter_fallback() -> None:

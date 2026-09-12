@@ -36,6 +36,7 @@ from episignal_backend.events.documents import (
     SummarySource,
 )
 from episignal_backend.events.summarize import run_summary, should_resummarize
+from episignal_backend.seeds import load_ai_models
 
 
 def _spec(model_id: str, provider: AiProvider, purpose: AiPurpose) -> ModelSpec:
@@ -69,6 +70,34 @@ def test_purpose_registry_selects_exact_final_model(
     wanted = _spec(model_id, provider, purpose)
     noise = _spec("other/model", provider, purpose)
     assert model_for_purpose((noise, wanted), purpose) == wanted
+
+
+def test_seeded_roster_preserves_the_three_model_workflow() -> None:
+    specs = tuple(
+        ModelSpec(
+            id=uuid4(),
+            tier=seed.tier,
+            model_id=seed.model_id,
+            label=seed.label,
+            provider=seed.provider,
+            purpose=seed.purpose,
+            prompt_price_per_million=seed.prompt_price_per_million,
+            completion_price_per_million=seed.completion_price_per_million,
+        )
+        for seed in load_ai_models()
+        if seed.active
+    )
+
+    assert model_for_purpose(specs, AiPurpose.CLASSIFICATION).model_id == (
+        "deepseek/deepseek-v4-flash-0731"
+    )
+    assert model_for_purpose(specs, AiPurpose.EXTRACTION).model_id == (
+        "google/gemini-3.1-flash-lite"
+    )
+    summary = model_for_purpose(specs, AiPurpose.EVENT_SUMMARY)
+    assert summary.model_id == "deepseek/deepseek-v4-flash-0731"
+    assert summary.provider is AiProvider.OPENROUTER
+    assert summary.purpose is AiPurpose.EVENT_SUMMARY
 
 
 def test_extraction_schema_contains_only_disease_and_locations() -> None:

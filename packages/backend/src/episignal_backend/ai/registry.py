@@ -36,7 +36,13 @@ PURPOSE_ROUTES: dict[AiPurpose, PurposeRoute] = {
 
 
 def model_for_purpose(specs: Sequence[ModelSpec], purpose: AiPurpose) -> ModelSpec:
-    """Return the one configured row allowed to serve ``purpose``."""
+    """Return the one configured row allowed to serve ``purpose``.
+
+    The final classification and event-summary routes intentionally share one
+    physical DeepSeek row because ``ai_models.model_id`` is unique.  Its roster
+    purpose records the summary rollout, while this exact route match keeps the
+    already-live DeepSeek classifier working as well.
+    """
     route = PURPOSE_ROUTES.get(purpose)
     if route is None:
         raise NoModelsConfigured(f"no production route for {purpose.value}")
@@ -45,7 +51,15 @@ def model_for_purpose(specs: Sequence[ModelSpec], purpose: AiPurpose) -> ModelSp
         for spec in specs
         if spec.model_id == route.model_id
         and spec.provider is route.provider
-        and (spec.purpose is None or spec.purpose is purpose)
+        and (
+            spec.purpose is None
+            or spec.purpose is purpose
+            or (
+                purpose is AiPurpose.CLASSIFICATION
+                and spec.purpose is AiPurpose.EVENT_SUMMARY
+                and route == PURPOSE_ROUTES[AiPurpose.EVENT_SUMMARY]
+            )
+        )
     ]
     if len(matches) != 1:
         raise NoModelsConfigured(

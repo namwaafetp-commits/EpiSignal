@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260911_0024"]
+    assert scripts.get_heads() == ["20260912_0025"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -355,3 +355,18 @@ def test_the_summary_downgrade_refuses_to_erase_judge_cost_rows() -> None:
     source = _revision_source("20260830_0019_event_summaries")
     assert "event_match_judge" in source
     assert "raise RuntimeError" in source
+
+
+def test_the_model_roster_revision_reconciles_the_summary_route() -> None:
+    module = _load_revision("20260912_0025_deepseek_event_summary_roster")
+    source = _revision_source("20260912_0025_deepseek_event_summary_roster").lower()
+
+    assert module.revision == "20260912_0025"
+    assert module.down_revision == "20260911_0024"
+    assert "deepseek/deepseek-v4-flash-0731" in source
+    assert "openrouter" in source
+    assert "event_summary" in source
+    assert "mistralai/mistral-small-3.2-24b-instruct" in source
+    assert "on conflict (model_id) do update" in source
+    assert "active = false" in source
+    assert "delete from ai_models" not in source
