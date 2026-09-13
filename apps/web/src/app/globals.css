@@ -972,3 +972,38 @@ select {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Internal admin surfaces. These keep their own dark canvas, which the
+   Tailwind slate and cyan utilities in the review queue are matched to. */
+.review-console {
+  --review-canvas: #061321;
+  --review-panel: #0b1d2d;
+  --review-line: #20384a;
+  --review-ink: #f3f7fb;
+  --review-muted: #9eb0c2;
+  --review-accent: #37d6df;
+  min-height: 100vh;
+  background-color: var(--review-canvas);
+  color: var(--review-ink);
+}
+.empty-state {
+  margin: 0;
+  padding: clamp(1.2rem, 3vw, 1.75rem);
+  border: 1px dashed var(--line);
+  border-radius: 2px;
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+}
+.review-console .empty-state {
+  border-color: var(--review-line);
+  color: var(--review-muted);
+}
+
+.route-skeleton__message {
+  margin: 0.6rem 0 0;
+  color: var(--ink-muted);
+  font-family: var(--display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 480;
+  letter-spacing: -0.04em;
+}

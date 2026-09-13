@@ -1,56 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { hrefWithParam } from "./page";
+import { briefingHref } from "./page";
 import { diseaseGroupLabel, hostSectorLabel } from "@/lib/surveillance-labels";
 
-const activeFilters = {
-  disease: "Dengue",
-  country: "TH",
-  status: "ongoing",
-  host_sector: "animal",
-  disease_group: "vector_borne",
-};
-
-function queryOf(href: string) {
-  return new URLSearchParams(href.split("?")[1]);
-}
-
-describe("event filter links", () => {
-  it.each([
-    ["host_sector", "animal"],
-    ["disease_group", "vector_borne"],
-    ["country", "TH"],
-    ["status", "ongoing"],
-  ])("preserves all active filters when selecting %s", (param, value) => {
-    const query = queryOf(
-      hrefWithParam(param, value, undefined, activeFilters),
-    );
-
-    for (const [key, expected] of Object.entries(activeFilters)) {
-      expect(query.get(key)).toBe(expected);
-    }
+describe("legacy /events redirect", () => {
+  it("sends a bare request to the briefing", () => {
+    expect(briefingHref({})).toBe("/briefing");
   });
 
-  it("preserves combined disease, country, host, and group filters", () => {
-    const query = queryOf(
-      hrefWithParam("disease_group", "respiratory", undefined, activeFilters),
-    );
+  it("carries the filters the briefing still supports", () => {
+    const href = briefingHref({
+      disease: "Dengue",
+      country: "TH",
+      host_sector: "animal",
+      disease_group: "vector_borne",
+    });
+    const query = new URLSearchParams(href.split("?")[1]);
 
-    expect(query.get("disease")).toBe("Dengue");
-    expect(query.get("country")).toBe("TH");
-    expect(query.get("host_sector")).toBe("animal");
-    expect(query.get("disease_group")).toBe("respiratory");
-  });
-
-  it("clears only the active filter", () => {
-    const query = queryOf(
-      hrefWithParam("host_sector", "animal", "animal", activeFilters),
-    );
-
-    expect(query.has("host_sector")).toBe(false);
-    expect(query.get("disease")).toBe("Dengue");
-    expect(query.get("country")).toBe("TH");
-    expect(query.get("status")).toBe("ongoing");
     expect(query.get("disease_group")).toBe("vector_borne");
+    expect(query.get("country")).toBe("TH");
+    expect(query.get("host")).toBe("animal");
+    // A named disease becomes a free-text search on the briefing.
+    expect(query.get("q")).toBe("Dengue");
+  });
+
+  it("drops retired and all-value filters", () => {
+    const href = briefingHref({
+      status: "ongoing",
+      country: "all",
+      disease_group: "respiratory",
+    });
+    const query = new URLSearchParams(href.split("?")[1]);
+
+    expect(query.has("status")).toBe(false);
+    expect(query.has("country")).toBe(false);
+    expect(query.get("disease_group")).toBe("respiratory");
   });
 
   it("uses human-facing surveillance labels", () => {

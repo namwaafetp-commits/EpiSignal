@@ -244,3 +244,7 @@
     padding-top: 2rem;
   }
 }
+
+.event-content__loading-title {
+  color: var(--ink-muted);
+}

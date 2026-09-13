@@ -1,263 +1,30 @@
-import { getEventList } from "@/lib/api-events";
-import { formatCountryLocation } from "@/lib/country";
-import {
-  DISEASE_GROUP_OPTIONS,
-  diseaseGroupLabel,
-  hostSectorLabel,
-} from "@/lib/surveillance-labels";
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-const DISEASES = [
-  "all",
-  "Dengue",
-  "Measles",
-  "Cholera",
-  "Avian influenza",
-  "COVID-19",
-  "Mpox",
-  "Ebola virus disease",
-] as const;
+/**
+ * The v2 briefing supersedes this list. Old links keep working by carrying the
+ * filters that still exist; `status` was retired from the filter set.
+ */
+const CARRIED_PARAMS: ReadonlyArray<[legacy: string, briefing: string]> = [
+  ["disease_group", "disease_group"],
+  ["country", "country"],
+  ["host_sector", "host"],
+  ["disease", "q"],
+];
 
-const COUNTRIES = ["all", "TH", "CD", "YE", "AO", "PH"] as const;
-const DISEASE_GROUPS = DISEASE_GROUP_OPTIONS.map(({ value }) => value);
+export function briefingHref(params: Record<string, string | undefined>) {
+  const query = new URLSearchParams();
+  for (const [legacy, briefing] of CARRIED_PARAMS) {
+    const value = params[legacy];
+    if (value && value !== "all") query.set(briefing, value);
+  }
+  const serialized = query.toString();
+  return serialized ? `/briefing?${serialized}` : "/briefing";
+}
 
 export default async function EventsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const params = await searchParams;
-  const disease =
-    params.disease && params.disease !== "all" ? params.disease : undefined;
-  const country =
-    params.country && params.country !== "all" ? params.country : undefined;
-  const status =
-    params.status && params.status !== "all" ? params.status : undefined;
-  const hostSector =
-    params.host_sector === "human" || params.host_sector === "animal"
-      ? params.host_sector
-      : undefined;
-  const diseaseGroup =
-    params.disease_group && params.disease_group !== "all"
-      ? params.disease_group
-      : undefined;
-
-  const feed = await getEventList({
-    limit: 50,
-    disease,
-    country,
-    status,
-    host_sector: hostSector,
-    disease_group: diseaseGroup,
-  });
-
-  return (
-    <main>
-      <section className="hero" aria-labelledby="events-title">
-        <p className="eyebrow">Events</p>
-        <h1 id="events-title">Epidemiological Events</h1>
-        <p className="hero-intro">
-          Each event assembles many reports of the same real-world outbreak.
-          Case counts, places, and statuses are kept with their sources and
-          never overwritten.
-        </p>
-      </section>
-
-      <section className="evidence-section" aria-labelledby="filters-heading">
-        <div className="flex flex-wrap gap-4 mb-6">
-          <FilterGroup
-            param="disease"
-            current={disease}
-            values={DISEASES}
-            label="Disease"
-            searchParams={params}
-          />
-          <FilterGroup
-            param="country"
-            current={country}
-            values={COUNTRIES}
-            label="Country"
-            searchParams={params}
-          />
-          <FilterGroup
-            param="status"
-            current={status}
-            values={["all", "monitoring", "ongoing", "resolved", "unknown"]}
-            label="Status"
-            searchParams={params}
-          />
-          <FilterGroup
-            param="host_sector"
-            current={hostSector}
-            values={["all", "human", "animal"]}
-            label="Host"
-            formatValue={hostSectorLabel}
-            searchParams={params}
-          />
-          <FilterGroup
-            param="disease_group"
-            current={diseaseGroup}
-            values={DISEASE_GROUPS}
-            label="Disease group"
-            formatValue={diseaseGroupLabel}
-            searchParams={params}
-          />
-        </div>
-
-        {feed.status === "unavailable" && (
-          <p className="empty-state">
-            Events unavailable. The API could not load events.
-          </p>
-        )}
-        {feed.status === "ready" && feed.data.total === 0 && (
-          <p className="empty-state">
-            No events match these filters. Try broadening the search.
-          </p>
-        )}
-        {feed.status === "ready" && feed.data.items.length > 0 && (
-          <div className="evidence-layout">
-            <div className="evidence-list" aria-live="polite">
-              {feed.data.items.map((event) => (
-                <article key={event.public_id} className="evidence-card">
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {event.disease && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
-                        {event.disease}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-800 border border-cyan-200">
-                      {diseaseGroupLabel(event.disease_group)}
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-50 text-violet-800 border border-violet-200">
-                      {hostSectorLabel(event.host_sector)}
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                      {event.status}
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                      {event.verification_status.replaceAll("_", " ")}
-                    </span>
-                    {event.country_code && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        {formatCountryLocation(
-                          event.admin1,
-                          event.country_code,
-                        )}
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">
-                    {event.headline ?? event.public_id}
-                  </h3>
-                  {event.headline && (
-                    <p className="text-sm text-slate-500 mb-1">
-                      {event.public_id}
-                    </p>
-                  )}
-
-                  {event.summary && (
-                    <p className="text-sm text-slate-700 mb-2 line-clamp-3">
-                      {event.summary}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap gap-4 text-xs text-slate-500 mt-2">
-                    <time dateTime={event.latest_report_at}>
-                      Updated {dateLabel(event.latest_report_at)}
-                    </time>
-                    <span>{event.article_count} articles</span>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-slate-100">
-                    <Link
-                      href={`/events/${encodeURIComponent(event.public_id)}`}
-                      className="source-link text-sm font-medium text-blue-600 hover:text-blue-800"
-                    >
-                      View event
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-    </main>
-  );
-}
-
-function FilterGroup({
-  param,
-  current,
-  values,
-  label,
-  formatValue,
-  searchParams,
-}: {
-  param: "disease" | "country" | "status" | "host_sector" | "disease_group";
-  current: string | undefined;
-  values: readonly string[];
-  label: string;
-  formatValue?: (value: string) => string;
-  searchParams: Record<string, string | undefined>;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <label className="text-sm font-medium text-slate-600">{label}</label>
-      <div className="flex flex-wrap gap-1">
-        {values.map((value) => {
-          const isActive = (current ?? "all") === value;
-          return (
-            <a
-              key={value}
-              className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${
-                isActive
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-              href={hrefWithParam(param, value, current, searchParams)}
-            >
-              {formatValue
-                ? formatValue(value)
-                : value === "all"
-                  ? "All"
-                  : value}
-            </a>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function hrefWithParam(
-  param: string,
-  value: string,
-  current: string | undefined,
-  searchParams: Record<string, string | undefined>,
-): string {
-  const next = new URLSearchParams();
-  for (const [key, entry] of Object.entries(searchParams)) {
-    if (entry !== undefined) next.set(key, entry);
-  }
-  if (value === "all" || (current && value === current)) {
-    // Clicking active deselects.
-    next.delete(param);
-  } else {
-    next.set(param, value);
-  }
-  const query = next.toString();
-  return query ? `/events?${query}` : "/events";
-}
-
-function dateLabel(value: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "UTC",
-  }).format(new Date(value));
+  redirect(briefingHref(await searchParams));
 }
