@@ -57,7 +57,8 @@ def sqlite_session() -> Session:
                 retrieval_attempts SMALLINT NOT NULL DEFAULT 0,
                 query_rule_id CHAR(32),
                 duplicate_of_signal_id CHAR(32),
-                disease_id CHAR(32)
+                disease_id CHAR(32),
+                host_sector VARCHAR(16)
             )
 
 

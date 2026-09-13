@@ -248,3 +248,9 @@ event identifiers, a public open API, and machine-assisted source reconciliation
 forecasting, risk recommendations to the public, patient-level data, accounts and
 permissions, native mobile applications, push and messaging alerts, genomic data.
 Do not build these, and do not let a roadmap item quietly grow into one.
+
+## UI v2 — user-directed product surface
+
+| Item | Scope | Status |
+| --- | --- | --- |
+| UI v2 | Shared editorial Map/Briefing/event UI, themes, URL filters, accessible previews; no backend changes. [Spec](docs/superpowers/specs/2026-09-13-ui-v2-design.md) · [Plan](docs/superpowers/plans/2026-09-13-ui-v2.md) | `building` |

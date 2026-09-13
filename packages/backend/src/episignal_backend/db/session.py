@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 
-from sqlalchemy import Connection, Engine, create_engine
+from sqlalchemy import Connection, Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from episignal_backend.config import get_settings
@@ -38,6 +38,16 @@ def get_session_factory() -> sessionmaker[Session]:
 def connection_scope() -> Iterator[Connection]:
     with get_engine().connect() as connection:
         yield connection
+
+
+def enforce_read_only_transaction(session: Session) -> None:
+    """Make current transaction read-only and fail closed if PostgreSQL disagrees."""
+    session.execute(text("SET TRANSACTION READ ONLY"))
+    read_only = session.execute(text("SHOW transaction_read_only")).scalar_one()
+    if str(read_only).lower() != "on":
+        raise RuntimeError(
+            f"read-only transaction enforcement failed: transaction_read_only={read_only}"
+        )
 
 
 @contextmanager

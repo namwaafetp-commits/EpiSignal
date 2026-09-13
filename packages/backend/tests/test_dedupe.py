@@ -258,6 +258,24 @@ def test_a_syndicated_copy_within_the_near_exact_window_is_a_duplicate() -> None
     assert repository.duplicates == [(copy.id, primary.id)]
 
 
+def test_prefetch_dedupe_can_reject_a_metadata_only_syndicated_copy() -> None:
+    primary = signal(
+        title="Measles outbreak spreads in Hanoi",
+        body=None,
+        first_seen_at=FIRST,
+    ).model_copy(update={"raw_text": "", "published_at": None})
+    copy = signal(
+        title="Measles outbreak spreads in Hanoi | Example News",
+        body=None,
+        first_seen_at=LATER,
+    ).model_copy(update={"raw_text": "", "published_at": None})
+    repository = FakeRepository(queue=(copy,), pool=(primary, copy))
+
+    run_dedupe(repository, metadata_only=True)
+
+    assert repository.duplicates == [(copy.id, primary.id)]
+
+
 def test_a_near_exact_title_farther_than_the_window_is_not_a_duplicate() -> None:
     primary = signal(
         title="A cholera outbreak reported in Juba",

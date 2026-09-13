@@ -10,21 +10,27 @@ in progress, and exits 0 — a skipped overlap is the correct outcome.
 """
 
 import argparse
+import logging
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
+from episignal_backend.monitoring_repository import persist_pipeline_health_best_effort
+from episignal_backend.operational_monitoring import build_health_record
 from episignal_backend.requeue import requeue_historical_extractions
 from episignal_backend.schedule.chains import chain_for
-from episignal_backend.schedule.documents import ChainOutcome, StageName
+from episignal_backend.schedule.documents import ChainOutcome, PipelineCohort, StageName
 from episignal_backend.schedule.repository import SqlAlchemyPipelineRunRepository
 from episignal_backend.schedule.run import run_chain
 from episignal_backend.schedule.stages import build_stage_runners
 from episignal_backend.schedule.window import catch_up_window
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -76,6 +82,30 @@ def _print(outcome: ChainOutcome, backlog: dict[str, int]) -> None:
     print("backlog " + " ".join(f"{key}={value}" for key, value in sorted(backlog.items())))
 
 
+def _persist_health_best_effort(
+    *,
+    run_id: UUID,
+    started_at: datetime,
+    finished_at: datetime | None,
+    outcome: ChainOutcome,
+    trigger: PipelineTrigger | None = None,
+    fatal_error_type: str | None = None,
+) -> None:
+    try:
+        persist_pipeline_health_best_effort(
+            build_health_record(
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                outcome=outcome,
+                trigger=trigger,
+                fatal_error_type=fatal_error_type,
+            )
+        )
+    except Exception as error:
+        logger.warning("Pipeline health persistence unavailable (%s)", type(error).__name__)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
     settings = get_settings()
@@ -87,6 +117,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.only is not None:
         chain = (arguments.only,)
 
+    run_id: UUID | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    outcome: ChainOutcome | None = None
+    backlog: dict[str, int] = {}
     try:
         with session_scope() as session:
             repository = SqlAlchemyPipelineRunRepository(session)
@@ -111,23 +146,57 @@ def main(argv: Sequence[str] | None = None) -> int:
                     started_at=started_at,
                     window=window if StageName.DISCOVER in chain else None,
                 )
+                # Make the parent durable before stage work so a fatal exception
+                # can still leave a linked failed health row behind.
+                session.commit()
 
-                outcome = run_chain(chain, build_stage_runners(window=window))
+                outcome = run_chain(
+                    chain,
+                    build_stage_runners(window=window, cohort=PipelineCohort()),
+                )
                 backlog = repository.backlog_depth()
 
+                finished_at = datetime.now(UTC)
                 repository.finish_run(
                     run_id,
                     status=(
                         PipelineRunStatus.SUCCEEDED if outcome.ok else PipelineRunStatus.FAILED
                     ),
-                    finished_at=datetime.now(UTC),
-                    stage_counts={str(item.stage): dict(item.counts) for item in outcome.outcomes},
+                    finished_at=finished_at,
+                    stage_counts={
+                        str(item.stage): {
+                            **dict(item.counts),
+                            **(
+                                {"duration_sec": item.duration_sec}
+                                if item.duration_sec is not None
+                                else {}
+                            ),
+                        }
+                        for item in outcome.outcomes
+                    },
                     backlog=backlog,
                     failed_stages=[item for item in outcome.outcomes if not item.ok],
                 )
             finally:
                 repository.unlock()
+        if run_id is not None and started_at is not None and outcome is not None:
+            _persist_health_best_effort(
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                outcome=outcome,
+                trigger=PipelineTrigger(arguments.trigger),
+            )
     except Exception as error:
+        if run_id is not None and started_at is not None:
+            _persist_health_best_effort(
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+                outcome=outcome or ChainOutcome(outcomes=()),
+                trigger=PipelineTrigger(arguments.trigger),
+                fatal_error_type=type(error).__name__,
+            )
         print(
             f"The pipeline run failed before completing ({type(error).__name__}). "
             "Check the database and the migration state.",
@@ -135,6 +204,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
+    assert outcome is not None
     _print(outcome, backlog)
     if arguments.requeue_existing:
         print(f"requeued_existing={requeued}")

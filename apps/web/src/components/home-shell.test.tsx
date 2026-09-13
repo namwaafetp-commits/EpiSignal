@@ -1,5 +1,6 @@
 import {
   fireEvent,
+  cleanup,
   render,
   screen,
   waitFor,
@@ -11,6 +12,7 @@ import type { EventDetailResponse } from "../lib/api-events";
 import { HomeShell } from "./home-shell";
 
 const getEventDetail = vi.fn();
+const track = vi.fn();
 vi.mock("../lib/api-events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/api-events")>()),
   getEventDetail: (...args: unknown[]) => getEventDetail(...args),
@@ -51,6 +53,9 @@ const EVENTS: DashboardEvent[] = [
     headline: "Cholera activity increasing in Cacuaco",
     summary: "Health officials are monitoring a cholera outbreak.",
     disease: "Cholera",
+    disease_group: "enteric_food_waterborne",
+    disease_group_label: "Enteric / food- & water-borne infections",
+    host_sector: "human",
     event_type: "outbreak",
     status: "ongoing",
     country_code: "AO",
@@ -68,6 +73,9 @@ const EVENTS: DashboardEvent[] = [
     headline: "Dengue activity in Thailand",
     summary: "A country-level dengue summary.",
     disease: "Dengue",
+    disease_group: "vector_borne",
+    disease_group_label: "Vector-borne infections",
+    host_sector: "both",
     event_type: "outbreak",
     status: "monitoring",
     country_code: "TH",
@@ -92,6 +100,9 @@ const detail = {
   headline: EVENTS[0].headline,
   summary: EVENTS[0].summary,
   disease: "Cholera",
+  disease_group: "enteric_food_waterborne",
+  disease_group_label: "Enteric / food- & water-borne infections",
+  host_sector: "human",
   event_type: "outbreak",
   status: "ongoing",
   verification_status: "signal",
@@ -104,6 +115,7 @@ const detail = {
   last_summarized_at: EVENTS[0].last_summarized_at,
   early_signal_score: 0.8,
   evidence_score: 0.7,
+  locations: [],
   sources: [
     {
       signal_id: "11111111-1111-1111-1111-111111111111",
@@ -160,222 +172,321 @@ const detail = {
       version: 1,
       headline: EVENTS[0].headline,
       summary: EVENTS[0].summary,
-      status: "ongoing",
-      latest_development: "Two additional districts reported cases.",
-      uncertainties: null,
+      trajectory: "Increasing",
+      snapshot: ["68 confirmed cases", "Cacuaco"],
+      key_driver: "Ongoing local transmission.",
+      response: "Case investigation is underway.",
+      risk: "Risk remains regional.",
       model_id: "test-model",
       created_at: "2026-08-30T13:00:00Z",
     },
   ],
 } satisfies EventDetailResponse;
 
-describe("HomeShell", () => {
+const NOW = Date.parse("2026-08-31T12:00:00Z");
+
+describe("HomeShell UI v2", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+    vi.stubEnv(
+      "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
+      "https://stats.example/script.js",
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("defaults to Map, fills the full map view, and shows filtered stats", () => {
-    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
-
-    expect(screen.getByRole("button", { name: "Map" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(
-      screen.getByRole("region", { name: /event map/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Filtered event statistics"),
-    ).toHaveTextContent("2 EVENTS · 1 MAPPED · 2 COUNTRIES · 2 ACTIVE");
-    expect(screen.queryByText("Recent events")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/map_level|processing_status/i),
-    ).not.toBeInTheDocument();
-  });
-
-  it("selects a map marker and opens a floating detail panel", async () => {
-    vi.useRealTimers();
+    window.history.replaceState(null, "", "/");
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
     getEventDetail.mockResolvedValue(detail);
-    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Open marker" }));
-    expect(screen.getByTestId("selected-marker")).toHaveTextContent(
-      "EVT-2026-00001",
-    );
-    expect(
-      screen.getByRole("dialog", { name: /event details/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("dialog", { name: /event details/i })).getByText(
-        "Latest development",
-      ),
-    ).toBeInTheDocument();
+    track.mockReset();
+    window.umami = { track };
+  });
+  afterEach(() => {
+    cleanup();
+    delete window.umami;
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  it("opens a map preview with sources, closes with Escape and restores focus", async () => {
+    // The map opens on Today, so widen the window to reach the fixtures.
+    window.history.replaceState(null, "", "/?period=72h");
+    render(<HomeShell now={NOW} apiStatus="ready" eventFeed={ready} />);
+    const marker = screen.getByRole("button", { name: "Open marker" });
+    marker.focus();
+    fireEvent.click(marker);
+    const pane = screen.getByRole("dialog", { name: "Event details" });
     await waitFor(() =>
       expect(
-        screen.getByText("Two additional districts reported cases."),
-      ).toBeInTheDocument(),
-    );
-    const dialog = screen.getByRole("dialog", { name: /event details/i });
-    expect(dialog.querySelector(".event-detail-panel__summary")).toHaveClass(
-      "event-detail-panel__summary",
+        within(pane).getByRole("link", { name: /WHO AFRO cholera update/ }),
+      ).toHaveAttribute("href", "https://example.org/who-afro-cholera"),
     );
     expect(
-      within(dialog).getByRole("link", { name: /WHO AFRO/ }),
-    ).toHaveAttribute("target", "_blank");
-    expect(
-      within(dialog).getByRole("link", { name: /WHO AFRO/ }),
-    ).toHaveAttribute("href", "https://example.org/who-afro-cholera");
-    expect(
-      dialog.querySelectorAll(".event-detail-panel__source-links a"),
-    ).toHaveLength(3);
-    expect(within(dialog).getByText("+1 more sources")).toBeInTheDocument();
-
+      within(pane).getByRole("link", { name: "View full event" }),
+    ).toHaveAttribute("href", "/events/EVT-2026-00001?period=72h");
     fireEvent.click(
-      screen.getByRole("button", { name: "Close event details" }),
+      within(pane).getByRole("link", { name: "View full event" }),
     );
-    expect(
-      screen.queryByRole("dialog", { name: /event details/i }),
-    ).not.toBeInTheDocument();
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "full_event_open", data: {} }),
+    );
+    fireEvent.keyDown(pane, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(marker).toHaveFocus();
   });
 
-  it("combines region, disease, and time filters and preserves them in Calendar", () => {
-    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
+  it("tracks map selection and pane opening with controlled properties", () => {
+    window.history.replaceState(null, "", "/?period=72h");
+    render(<HomeShell now={NOW} apiStatus="ready" eventFeed={ready} />);
 
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "Thailand" },
-    });
-    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Cholera activity increasing in Cacuaco"),
-    ).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Open marker" }));
 
-    expect(screen.getByRole("button", { name: "7D" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "reading_pane_open",
+        data: {},
+      }),
     );
-    fireEvent.change(screen.getByLabelText("Region"), {
-      target: { value: "Asia" },
-    });
-    fireEvent.change(screen.getByLabelText("Disease"), {
-      target: { value: "Dengue" },
-    });
-    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Cholera activity increasing in Cacuaco"),
-    ).not.toBeInTheDocument();
-
-    expect(
-      screen.getByText(/1 EVENTS · 0 MAPPED · 1 COUNTRIES · 1 ACTIVE/),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
-    expect(
-      screen.getByRole("heading", { name: "Surveillance calendar" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("29 AUG 2026")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /open event: Dengue activity/i }),
-    ).toHaveAttribute("href", "/events/EVT-2026-00002");
-    expect(screen.getByLabelText("Region")).toHaveValue("Asia");
-    expect(screen.getByRole("button", { name: "7D" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "map_event_open",
+        data: {
+          disease_group: "enteric_food_waterborne",
+          host_sector: "human",
+        },
+      }),
     );
   });
-
-  it("passes the selected region to the map without changing it for other filters", () => {
-    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
-
-    expect(screen.getByTestId("map-region")).toHaveTextContent("");
-    fireEvent.change(screen.getByLabelText("Region"), {
-      target: { value: "Africa" },
-    });
-    expect(screen.getByTestId("map-region")).toHaveTextContent("Africa");
-
-    fireEvent.change(screen.getByLabelText("Disease"), {
-      target: { value: "Cholera" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "24H" }));
-    expect(screen.getByTestId("map-region")).toHaveTextContent("Africa");
+  it("renders a headline-first briefing and opens a reading pane", async () => {
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "The Briefing" })).toBeVisible();
+    fireEvent.click(screen.getByRole("link", { name: EVENTS[0].headline }));
+    expect(screen.getByRole("dialog", { name: "Event details" })).toBeVisible();
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "briefing_event_open",
+        data: {
+          disease_group: "enteric_food_waterborne",
+          host_sector: "human",
+          source_count_bucket: "1-5",
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Loading source links…"),
+      ).not.toBeInTheDocument(),
+    );
   });
-
-  it("supports 24H, 30D, Custom, and ASEAN region filtering", () => {
-    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "24H" }));
+  it("combines URL filters and includes both-sector events under Animal", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/briefing?period=7d&host=animal&disease_group=vector_borne&country=TH",
+    );
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
     expect(
-      screen.queryByText("Cholera activity increasing in Cacuaco"),
+      screen.getByRole("link", { name: EVENTS[1].headline }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: EVENTS[0].headline }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Dengue activity in Thailand"),
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "30D" }));
-    expect(
-      screen.getByText("Cholera activity increasing in Cacuaco"),
-    ).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Region"), {
-      target: { value: "ASEAN" },
+    expect(screen.getByLabelText("Host")).toHaveValue("animal");
+    fireEvent.change(screen.getByLabelText("Search"), {
+      target: { value: "no-such-event" },
     });
-    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
+    // Search commits on a pause rather than per keystroke.
+    await waitFor(() =>
+      expect(window.location.search).toContain("q=no-such-event"),
+    );
+    expect(screen.getByText("No events match these filters.")).toBeVisible();
+    window.history.replaceState(null, "", "/briefing?period=30d");
+    fireEvent.popState(window);
     expect(
-      screen.queryByText("Cholera activity increasing in Cacuaco"),
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    expect(screen.getByLabelText("From")).toBeInTheDocument();
+      screen.getByRole("link", { name: EVENTS[0].headline }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Host")).toHaveValue("");
+  });
+  it("supports UTC Today, rolling periods and inclusive custom dates", () => {
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Period"), {
+      target: { value: "today" },
+    });
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "filter_change",
+        data: { filter: "period" },
+      }),
+    );
+    expect(screen.getByText("No events match these filters.")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Period"), {
+      target: { value: "3d" },
+    });
+    expect(
+      screen.getByRole("link", { name: EVENTS[1].headline }),
+    ).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Period"), {
+      target: { value: "custom" },
+    });
     fireEvent.change(screen.getByLabelText("From"), {
       target: { value: "2026-08-29" },
     });
     fireEvent.change(screen.getByLabelText("To"), {
       target: { value: "2026-08-29" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-    expect(screen.getByText("Dengue activity in Thailand")).toBeInTheDocument();
-  });
-
-  it("renders newest calendar group before older group", () => {
-    render(<HomeShell apiStatus="ready" eventFeed={ready} />);
-    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
-
-    const content = screen.getByRole("main").textContent ?? "";
-    expect(content.indexOf("30 AUG 2026")).toBeLessThan(
-      content.indexOf("29 AUG 2026"),
+    expect(
+      screen.getByRole("link", { name: EVENTS[1].headline }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: EVENTS[0].headline }),
+    ).not.toBeInTheDocument();
+    expect(window.location.search).toContain("from=2026-08-29");
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-09-01" },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Choose a valid date range",
     );
   });
-
-  it("renders loading, unavailable, and empty states", () => {
-    const { rerender } = render(
+  it("searches country names and preserves query on full-event links", async () => {
+    render(
       <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Angola" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: EVENTS[0].headline }),
+      ).toHaveAttribute("href", "/events/EVT-2026-00001?q=Angola"),
+    );
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "search_used",
+        data: { results_bucket: "1-5" },
+      }),
+    );
+    expect(
+      screen.queryByRole("link", { name: EVENTS[1].headline }),
+    ).not.toBeInTheDocument();
+  });
+  it("keeps native modified-click navigation", () => {
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    fireEvent.click(screen.getByRole("link", { name: EVENTS[0].headline }), {
+      ctrlKey: true,
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("distinguishes unavailable, loading and empty feed", () => {
+    const view = render(
+      <HomeShell
+        now={NOW}
         apiStatus="loading"
         eventFeed={{ status: "loading", data: null }}
       />,
     );
-    expect(screen.getByText("Loading summarized events…")).toBeInTheDocument();
-
-    rerender(
+    expect(screen.getByText("Loading summarized events…")).toBeVisible();
+    view.rerender(
       <HomeShell
+        now={NOW}
         apiStatus="unavailable"
         eventFeed={{ status: "unavailable", data: null }}
       />,
     );
-    expect(
-      screen.getByText(/API could not load summaries/i),
-    ).toBeInTheDocument();
-
-    rerender(
+    expect(screen.getByText(/API could not load summaries/)).toBeVisible();
+    view.rerender(
       <HomeShell
+        now={NOW}
         apiStatus="ready"
         eventFeed={{ status: "ready", data: { items: [], total: 0 } }}
       />,
     );
+    expect(screen.getByText("No events match these filters.")).toBeVisible();
+  });
+
+  it("offers a way out of an empty result", () => {
+    window.history.replaceState(null, "", "/briefing?period=7d&country=ZZ");
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    expect(screen.getByText("No events match these filters.")).toBeVisible();
+
+    const emptyState = screen.getByRole("status");
+    fireEvent.click(
+      within(emptyState).getByRole("button", { name: "Reset filters" }),
+    );
+    expect(window.location.search).toBe("");
     expect(
-      screen.getByText("No events match these filters."),
-    ).toBeInTheDocument();
+      screen.getByRole("link", { name: EVENTS[0].headline }),
+    ).toBeVisible();
+  });
+
+  it("gives the map short Today-first windows and the briefing wider ranges", () => {
+    window.history.replaceState(null, "", "/");
+    const view = render(
+      <HomeShell now={NOW} apiStatus="ready" eventFeed={ready} />,
+    );
+    const mapPeriod = screen.getByLabelText("Period");
+    expect(mapPeriod).toHaveValue("today");
+    expect(
+      [...mapPeriod.querySelectorAll("option")].map((o) => o.value),
+    ).toEqual(["today", "24h", "48h", "72h", "custom"]);
+    view.unmount();
+
+    window.history.replaceState(null, "", "/briefing");
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    const briefingPeriod = screen.getByLabelText("Period");
+    expect(briefingPeriod).toHaveValue("7d");
+    expect(
+      [...briefingPeriod.querySelectorAll("option")].map((o) => o.value),
+    ).toEqual(["today", "24h", "3d", "7d", "30d", "custom"]);
   });
 });

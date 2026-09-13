@@ -26,7 +26,7 @@ def signal(title: str = "Dengue outbreak in Chiang Mai") -> TriageableSignal:
     return TriageableSignal(
         id=uuid4(),
         title=title,
-        excerpt="Officials reported 42 dengue cases in Chiang Mai province.",
+        article_content="Officials reported 42 dengue cases in Chiang Mai province.",
         source_name="Bangkok Post",
         url="https://example.com/dengue",
         published_at=NOW,

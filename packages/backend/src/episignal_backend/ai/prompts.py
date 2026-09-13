@@ -22,47 +22,163 @@ from episignal_backend.ai.schema import (
     triage_json_schema,
 )
 
-EXTRACTION_RULES = """You read one news article and return epidemiological facts as JSON.
+GEMINI_EXTRACTION_PROMPT = """You extract structured infectious-disease event metadata from one news
+article.
+Read both TITLE and ARTICLE.
+Return JSON only.
+Extract only:
+1. disease
+2. locations
+3. categories
+4. tags
+DISEASE
+Return the main disease or pathogen being reported.
+Use a sensible natural disease name.
+Examples:
+- measles
+- dengue
+- Nipah virus infection
+- H5N1 avian influenza
+- Salmonella Enteritidis
+Do not invent a disease.
+The disease does not need to match a predefined vocabulary.
+LOCATION
+Return locations where the reported disease or public-health event actually occurs.
+Each location contains:
+- town
+- country
+"town" means the most specific useful local event location available.
+It may therefore be a:
+- town
+- city
+- county
+- district
+- local region
+Examples:
+- Cebu
+- Cortland County
+- Frankfurt
+- Kozhikode district
+- Lancaster County
+If no useful local location is reported, town may be null.
+Multiple event locations are allowed.
+Reliable general geographic knowledge may be used to resolve an explicitly named place to its
+containing country.
+Examples:
+Cebu → Philippines
+North Carolina → United States
+NSW → Australia
+Dhaka → Bangladesh
+Do not infer event location from:
+- publisher location
+- publisher name
+- website domain
+- author location
+- organization headquarters
+- unrelated background geography
+Return only locations actually relevant to the reported event.
+If disease cannot be identified, return null.
+If event location cannot be identified, return an empty locations array.
+ CATEGORIES
+Return concise categories explicitly supported by the article. Omit this field
+when none are supported.
+ TAGS
+Use only tags from this list when explicitly supported; omit the field when none are supported:
+outbreak, cluster, human_cases, animal_cases, zoonotic, death, hospitalization,
+cross_border, surveillance, vaccination, control_measure, foodborne, waterborne,
+vector_borne, healthcare_associated, antimicrobial_resistance, unknown_pathogen.
+Do not infer tags from a disease name. Do not add a tag because it sounds plausible.
+Never return a prose summary, interpretation, recommendation, or risk commentary.
+Return exactly:
+{
+  "disease": string | null,
+  "locations": [
+    {
+      "town": string | null,
+      "country": string | null
+    }
+  ],
+  "categories": [string],
+  "tags": [string]
+}
+
+Input:
+
+TITLE:
+<title>
+ARTICLE:
+<clean article body>"""
+
+IDENTITY_REPAIR = """IDENTITY REPAIR
+The previous extraction omitted the disease and/or event country.
+Re-read TITLE first, then ARTICLE.
+TITLE is evidence.
+If disease or event geography is explicitly reported, populate it.
+Reliable geographic knowledge may resolve an explicitly named place to its country.
+Do not infer publisher or organization location.
+Return the complete extraction JSON."""
+
+CLASSIFICATION_RULES = """You decide whether one news item is relevant to infectious-disease
+public health.
 
 Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
-- Every count and every transmission flag must include source_span: a short
-  phrase copied word for word from the article that states it.
-- Copy every source_span in the article's own language. Do not translate a span.
-- Write title_english and every brief point in English. Translate rather than
-  transliterate. An article already in English keeps its own headline, with
-  whitespace collapsed.
-- Return exactly five brief points, one for each slot, in the order the schema
-  lists them: what_where, counts, timing, spread, reporting.
-- A slot the article does not address gets reported: false and one short line
-  saying what is not reported. Never fill a slot from outside the article.
-- If the article does not state something, return null. Never infer, never
-  estimate, never carry a number over from general knowledge.
-- Do not state that an outbreak is confirmed. Report what the article reports.
-- Do not include any person's name, telephone number, or address.
+- Return relevance, confidence, host_sector, and an optional short reason_code.
+- Do not identify disease, location, cases, deaths, or event type in this pass.
+- Relevant means the item reports, materially updates, investigates, confirms,
+  suspects, or responds to a real infectious-disease event affecting humans
+  and/or animals.
+- Relevant examples include an outbreak, cluster, unusual increase, confirmed,
+  probable, suspected, or possible infection, infectious-disease deaths or
+  hospitalizations, geographic spread, zoonotic spillover, an emerging
+  pathogen, a surveillance alert, an active outbreak investigation, or a
+  vaccination/control response to an active infectious event.
+- A disease name alone is never sufficient. The item must describe an actual
+  event or an active surveillance, investigation, or control development.
+- Mark irrelevant when the article is basic laboratory research, drug or
+  vaccine development without an active event, AI biological-weapons research,
+  gain-of-function discussion without an actual outbreak, historical reporting
+  with no current development, generic disease education, political discussion,
+  funding, hypothetical pandemic simulation, or an incidental disease mention.
+- If a disease was explicitly ruled out, do not treat it as a positive event.
+  For example, a passenger initially suspected of Ebola but later confirmed not
+  to have Ebola is irrelevant as an Ebola event.
+- An Anthropic report about misuse of AI for biological-weapons research remains
+  irrelevant even if it names chikungunya, avian influenza, or other pathogens;
+  those names do not make it an infectious-disease event.
+- Set host_sector to human only when the reported infection, cases, or event concerns people.
+- Set host_sector to animal only when it concerns animals and no relevant human
+  infection is reported.
+- Set host_sector to both only when the item explicitly reports relevant human
+  and animal infection or outbreak evidence.
+- Do not infer host_sector from a zoonotic disease name alone; use unknown when
+  evidence is insufficient.
+- host_sector must be one of: human, animal, both, unknown.
+- Do not classify a general public-health or health-system issue as relevant
+  unless it is tied to an active infectious-disease event.
 
 The object must match this JSON Schema exactly:
 """
 
-CLASSIFICATION_RULES = """You decide whether each news item concerns a public health event.
+TRIAGE_RULES = """You are classifying one infectious-disease/public-health news item.
 
 Rules:
 - Return one JSON object and nothing else. No prose, no code fence.
-- Return exactly one result for every id you are given, and no other id.
-- Copy each id back character for character.
-- When you are unsure, mark it relevant: a missed outbreak costs more than a
-  wasted extraction.
-
-The object must match this JSON Schema exactly:
-"""
-
-TRIAGE_RULES = """You read one news item and return structured metadata as JSON.
-
-Rules:
-- Return one JSON object and nothing else. No prose, no code fence.
-- Every field you are not certain of from the text you were given must be null.
-  Never guess a disease, a country, or a province.
-- country is a two-letter ISO 3166-1 alpha-2 code, or null.
+- Use TITLE and ARTICLE CONTENT as evidence.
+- Decide relevance, identify the disease being reported, and identify where the
+  reported event actually occurred in the supplied content.
+- TITLE counts as evidence. ARTICLE CONTENT counts as evidence.
+- country must be a two-letter ISO 3166-1 alpha-2 code, or null when uncertain.
+- admin1 is the first-level administrative region explicitly stated or clearly
+  supported by the supplied content, or null when uncertain.
+- location_text is the event location as reported in the supplied content.
+- Identify the event location, not every location mentioned in the article.
+- Ignore unrelated comparisons, related-story text, navigation, advertisements,
+  and boilerplate.
+- Do not infer location from the publisher or organization name. FDA, CDC, WHO,
+  HHS, NCDC, and similar organizations are not event-location evidence.
+- Every field you are not certain of from the supplied TITLE or ARTICLE CONTENT
+  must be null. Prefer null over an unsupported guess.
 - Judge relevance generously: when a headline might concern an outbreak, an
   unusual illness, or a public health response, mark it relevant. A missed
   outbreak costs more than a wasted look.
@@ -95,23 +211,33 @@ def truncate(text: str, limit: int) -> str:
 
 
 def extraction_prompt(signal: ExtractableSignal, *, max_characters: int) -> tuple[str, str]:
-    system = EXTRACTION_RULES + json.dumps(extraction_json_schema(), sort_keys=True)
-    user = f"TITLE: {signal.title}\n\nARTICLE:\n{truncate(signal.raw_text, max_characters)}"
-    return system, user
+    system = GEMINI_EXTRACTION_PROMPT.replace("<title>", signal.title).replace(
+        "<clean article body>", truncate(signal.raw_text, max_characters)
+    )
+    return system, "Return the extraction JSON."
 
 
-def classification_prompt(batch: Sequence[ClassifiableSignal]) -> tuple[str, str]:
-    """The title-only relevance gate.
+def identity_repair_prompt(signal: ExtractableSignal, *, max_characters: int) -> tuple[str, str]:
+    system, user = extraction_prompt(signal, max_characters=max_characters)
+    return system + "\n\n" + IDENTITY_REPAIR, user
 
-    The operator's call: relevance is decided from the headline alone, so an
-    irrelevant item leaves the funnel for the cost of a few tokens. Recall is
-    protected by the unsure-means-relevant rule above, and a headline that
-    hides a relevant story is caught one stage later by the full-text
-    extraction pass -- never by a guess at what the article might contain.
-    """
+
+CLASSIFICATION_SNIPPET_CHARACTERS = 400
+
+
+def classification_prompt(signal: ClassifiableSignal) -> tuple[str, str]:
+    """Build the cheap relevance request from discovery metadata only."""
     system = CLASSIFICATION_RULES + json.dumps(classification_json_schema(), sort_keys=True)
-    items = "\n\n".join(f"id: {signal.id}\ntitle: {signal.title}" for signal in batch)
-    return system, items
+    item = "\n".join(
+        (
+            f"TITLE: {signal.title}",
+            f"SNIPPET: {truncate(signal.excerpt, CLASSIFICATION_SNIPPET_CHARACTERS)}",
+            f"SOURCE: {signal.source_name}",
+            "PUBLISHED_AT: "
+            f"{signal.published_at.isoformat() if signal.published_at else 'unknown'}",
+        )
+    )
+    return system, item
 
 
 def triage_prompt(signal: TriageableSignal, *, max_characters: int) -> tuple[str, str]:
@@ -123,7 +249,7 @@ def triage_prompt(signal: TriageableSignal, *, max_characters: int) -> tuple[str
         f"PUBLISHED: {published}\n"
         f"URL: {signal.url}\n"
         f"LANGUAGE: {signal.language or 'unknown'}\n\n"
-        f"SNIPPET:\n{truncate(signal.excerpt, max_characters)}"
+        f"ARTICLE CONTENT:\n{truncate(signal.article_content, max_characters)}"
     )
     return system, user
 
@@ -148,6 +274,9 @@ Rules:
 - Every count and every transmission flag must include source_index: the number
   of the single article you read it from, and source_span: a short phrase
   copied word for word from THAT article.
+- Extract concrete response_actions and driver_or_barrier_evidence from any
+  member that reports them. Each item must contain concise English text, a
+  verbatim source_span, and source_index. Return an empty list when absent.
 - Never combine two articles into one number. If they disagree, report the
   figure from the article you judge most authoritative and cite that article.
 - Copy every source_span in its own article's language. Do not translate a span.

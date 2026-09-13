@@ -165,6 +165,29 @@ def test_story_cluster_properties():
     assert end == now
 
 
+def test_cluster_uses_exact_disease_from_any_member_when_representative_lacks_one() -> None:
+    disease_id = uuid4()
+    now = datetime.now(UTC)
+    without_disease = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=None,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        first_seen_at=now,
+    )
+    with_disease = SignalForMatching(
+        signal_id=uuid4(),
+        disease_id=disease_id,
+        source_id=uuid4(),
+        source_is_official=False,
+        credibility_tier=CredibilityTier.MEDIUM,
+        first_seen_at=now,
+    )
+
+    assert StoryCluster(signals=(without_disease, with_disease)).disease_id == disease_id
+
+
 def test_candidate_event():
     event_id = uuid4()
     disease_id = uuid4()

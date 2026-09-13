@@ -103,6 +103,7 @@ class OpenRouterChatModel:
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         last = ""
+        last_status: int | None = None
         current_payload = dict(payload)
         for attempt in range(self._max_attempts):
             try:
@@ -129,11 +130,12 @@ class OpenRouterChatModel:
                     body: dict[str, Any] = response.json()
                     return body
                 last = str(response.status_code)
+                last_status = response.status_code
 
             if attempt + 1 < self._max_attempts:
                 self._sleep(RETRY_DELAY_SECONDS)
 
-        raise ModelUnavailable(last)
+        raise ModelUnavailable(last, attempts=self._max_attempts, http_status=last_status)
 
 
 def _content(body: dict[str, Any]) -> str:

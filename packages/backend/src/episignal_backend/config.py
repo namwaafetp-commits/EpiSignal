@@ -1,9 +1,17 @@
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BeforeValidator,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -41,10 +49,16 @@ class Settings(BaseSettings):
         env_prefix="EPISIGNAL_",
         env_file="apps/api/.env",
         extra="ignore",
+        populate_by_name=True,
     )
 
     env: Literal["development", "test", "production"] = "development"
-    api_host: str = "127.0.0.1"
+    api_host: str = Field(
+        default="127.0.0.1",
+        # EPISIGNAL_API_HOST is a legacy compatibility alias; Compose routing
+        # requires EPISIGNAL_API_PUBLIC_HOST and never reads this alias.
+        validation_alias=AliasChoices("EPISIGNAL_API_BIND_HOST", "EPISIGNAL_API_HOST"),
+    )
     api_port: int = Field(default=8000, ge=1, le=65535)
     database_url: SecretStr
     # NoDecode stops pydantic-settings from JSON-decoding this sequence field
@@ -54,12 +68,35 @@ class Settings(BaseSettings):
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
+    telegram_bot_token: SecretStr = SecretStr("")
+    telegram_chat_id: SecretStr = SecretStr("")
+    # Required for notifications: choose a file on a persistent local mount.
+    telegram_state_path: Path | None = None
+
+    @field_validator("telegram_state_path", mode="before")
+    @classmethod
+    def blank_telegram_state_path(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("telegram_state_path")
+    @classmethod
+    def telegram_state_path_is_absolute(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_absolute():
+            raise ValueError("EPISIGNAL_TELEGRAM_STATE_PATH must be an absolute path")
+        return value
+
     gdelt_poll_interval_minutes: int = Field(default=15, ge=1, le=1440)
     gdelt_query_window_minutes: int = Field(default=20, ge=1, le=10080)
     gdelt_max_articles_per_run: int = Field(default=200, ge=1, le=5000)
     gdelt_request_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
     gdelt_article_delay_seconds: float = Field(default=1.0, ge=0.0, le=60.0)
     gdelt_article_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+    gdelt_ngram_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
+    gdelt_ngram_max_catchup_minutes: int = Field(default=360, ge=1, le=1440)
+    gdelt_ngram_max_batches: int = Field(default=64, ge=1, le=256)
+    gdelt_ngram_max_download_bytes: int = Field(
+        default=1_500_000_000, ge=1_000_000, le=10_000_000_000
+    )
     gdelt_max_retrieval_attempts: int = Field(default=3, ge=1, le=20)
     gdelt_retry_batch_size: int = Field(default=50, ge=0, le=1000)
     gdelt_user_agent: str = "EpiSignal/0.1 (+https://episignal.org)"

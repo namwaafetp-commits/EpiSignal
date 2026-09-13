@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import type { ReactNode } from "react";
+import { Suspense } from "react";
+import { TopNavigation } from "@/components/app-shell";
+import { SiteFooter } from "@/components/site-footer";
+import { PageViewTracker } from "@/components/page-view-tracker";
+import { themeScript } from "@/components/theme-toggle";
+import { UmamiScript } from "@/components/umami-script";
 import "./globals.css";
 
 const display = Fraunces({
@@ -25,8 +31,23 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en" className={`${display.variable} ${ui.variable}`}>
-      <body>{children}</body>
+    <html
+      lang="en"
+      className={`${display.variable} ${ui.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body>
+        <Suspense fallback={<div className="navigation-placeholder" />}>
+          <TopNavigation />
+        </Suspense>
+        {children}
+        <SiteFooter />
+        <PageViewTracker />
+        <UmamiScript />
+      </body>
     </html>
   );
 }

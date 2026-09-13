@@ -10,7 +10,6 @@ from episignal_backend.db.types import (
     CredibilityTier,
     LocationRole,
     Precision,
-    SignalType,
 )
 from episignal_backend.events.documents import LocationForMatching, SignalForMatching
 from episignal_backend.events.protocol import EventRepository
@@ -18,6 +17,7 @@ from episignal_backend.events.repository import (
     SqlAlchemyEventRepository,
     read_stored_extraction,
 )
+from episignal_backend.metadata_repository import event_display_location
 
 
 class FakeResult:
@@ -148,12 +148,37 @@ def test_events_awaiting_summary_deduplicates_signal_join_before_limit() -> None
     assert session.executed[0]._group_by_clauses
 
 
+def test_event_display_location_uses_admin1_and_country_names_from_local_data() -> None:
+    session = FakeSession(
+        [
+            FakeResult([("Wisconsin", Precision.ADMIN1)]),
+            FakeResult("United States"),
+        ]
+    )
+
+    assert event_display_location(session, country_code="US", admin1="WI") == (
+        "Wisconsin, United States"
+    )
+
+
+def test_event_display_location_uses_country_name_when_admin1_is_absent() -> None:
+    session = FakeSession([FakeResult([("United States", Precision.COUNTRY)])])
+
+    assert event_display_location(session, country_code="US", admin1=None) == "United States"
+
+
+def test_event_display_location_reports_unresolved_without_validated_country() -> None:
+    session = FakeSession()
+
+    assert event_display_location(session, country_code=None, admin1=None) == "Unresolved location"
+
+
 def test_it_satisfies_the_event_repository_boundary() -> None:
     repo = SqlAlchemyEventRepository(FakeSession())
     assert isinstance(repo, EventRepository)
 
 
-def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
+def test_signals_to_match_does_not_use_legacy_disease_metadata_without_extraction() -> None:
     sig_id = uuid4()
     disease_id = uuid4()
     src_id = uuid4()
@@ -169,27 +194,12 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
         credibility_tier=CredibilityTier.OFFICIAL,
         embedding=[1.0, 0.0],
         extraction={
-            "signal_type": "outbreak_report",
-            "title_english": "Outbreak in Beni",
-            "brief": [
-                {"slot": "what_where", "text": "Outbreak in Beni", "reported": True},
-                {"slot": "counts", "text": "No count", "reported": False},
-                {"slot": "timing", "text": "No date", "reported": False},
-                {"slot": "spread", "text": "No spread", "reported": False},
-                {"slot": "reporting", "text": "No reporting", "reported": False},
-            ],
-            "confidence": 0.95,
+            "extraction_schema_version": 5,
+            "disease": "cholera",
+            "locations": [{"town": "Beni", "country": "CD"}],
         },
     )
-    fake_loc = FakeLocation(signal_id=sig_id)
-
-    # First execute is signals select, second execute is locations select
-    session = FakeSession(
-        [
-            FakeResult([(fake_sig, True, CredibilityTier.OFFICIAL)]),
-            FakeResult([fake_loc]),
-        ]
-    )
+    session = FakeSession([FakeResult([(fake_sig, True, CredibilityTier.OFFICIAL)])])
 
     repo = SqlAlchemyEventRepository(session)
     signals = repo.signals_to_match(limit=10, stale=False)
@@ -197,18 +207,67 @@ def test_signals_to_match_queries_geocoded_signals_and_maps_locations() -> None:
     assert len(signals) == 1
     sig = signals[0]
     assert sig.signal_id == sig_id
-    assert sig.disease_id == disease_id
+    assert sig.disease_id is None
     assert sig.source_is_official is True
     assert sig.credibility_tier == CredibilityTier.OFFICIAL
-    assert len(sig.locations) == 1
     assert sig.locations[0].place_name == "Beni"
     assert sig.extraction is not None
-    assert sig.extraction.signal_type == SignalType.OUTBREAK_REPORT
-    assert sig.embedding == (1.0, 0.0)
+    assert sig.extraction.disease == "cholera"
+    assert sig.embedding is None
 
     # Assert executed statement checked processing_status
     stmt_str = str(session.executed[0])
     assert "processing_status" in stmt_str
+
+
+def test_signals_to_match_does_not_infer_metadata_from_headline_text() -> None:
+    sig_id = uuid4()
+    source_id = uuid4()
+    now = datetime.now(UTC)
+    fake_sig = FakeSignal(
+        signal_id=sig_id,
+        disease_id=None,
+        source_id=source_id,
+        published_at=now,
+        first_seen_at=now,
+        is_official=True,
+        credibility_tier=CredibilityTier.OFFICIAL,
+    )
+    fake_sig.title = "Measles Outbreak Grows to 98 Cases in Wisconsin"
+    fake_sig.raw_text = "Public health officials confirmed the outbreak."
+    disease = type(
+        "DiseaseRow",
+        (),
+        {
+            "id": uuid4(),
+            "canonical_name": "Measles",
+            "slug": "measles",
+            "synonyms": [],
+        },
+    )()
+    admin1 = type(
+        "Admin1Row",
+        (),
+        {
+            "name": "Wisconsin",
+            "country_code": "US",
+            "admin1_code": "WI",
+            "alternate_names": [],
+        },
+    )()
+    session = FakeSession(
+        [
+            FakeResult([(fake_sig, True, CredibilityTier.OFFICIAL)]),
+            FakeResult([disease]),
+            FakeResult([admin1]),
+            FakeResult(["US"]),
+        ]
+    )
+
+    signal = SqlAlchemyEventRepository(session).signals_to_match(limit=10)[0]
+
+    assert signal.disease_id is None
+    assert signal.locations == ()
 
 
 class FakeEvent:
@@ -255,13 +314,13 @@ class FakeEventLocation:
         self.longitude = longitude
 
 
-def test_candidate_events_spatial_narrowing_rule() -> None:
+def test_candidate_events_filters_by_country_without_geospatial_sql() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
     now = datetime.now(UTC)
 
-    # 1. Place precision -> ST_DWithin used in SQL
+    # Place precision does not invoke retired geospatial narrowing.
     loc_place = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.PLACE,
@@ -287,11 +346,9 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
 
     ev_id = uuid4()
     fake_ev = FakeEvent(ev_id, disease_id, now, now)
-    fake_ev_loc = FakeEventLocation(ev_id)
     session_place = FakeSession(
         [
             FakeResult([fake_ev]),
-            FakeResult([fake_ev_loc]),
         ]
     )
 
@@ -302,9 +359,9 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     assert cands_place[0].event_id == ev_id
     assert len(cands_place[0].locations) == 1
     sql_place = str(session_place.executed[0]).lower()
-    assert "st_dwithin" in sql_place
+    assert "st_dwithin" not in sql_place
 
-    # 2. Admin1 precision -> country_code equality used, ST_DWithin NOT used
+    # Admin1 precision uses the same country-level query.
     loc_admin1 = LocationForMatching(
         location_role=LocationRole.PRIMARY,
         precision=Precision.ADMIN1,
@@ -331,7 +388,6 @@ def test_candidate_events_spatial_narrowing_rule() -> None:
     session_admin1 = FakeSession(
         [
             FakeResult([fake_ev]),
-            FakeResult([fake_ev_loc]),
         ]
     )
     repo_admin1 = SqlAlchemyEventRepository(session_admin1)
@@ -357,27 +413,30 @@ def test_candidates_are_bounded_by_lookback_and_limit() -> None:
                 credibility_tier=CredibilityTier.OFFICIAL,
                 published_at=now,
                 first_seen_at=now,
-                locations=(),
+                locations=(
+                    LocationForMatching(
+                        location_role=LocationRole.PRIMARY,
+                        precision=Precision.COUNTRY,
+                        country_code="CD",
+                    ),
+                ),
             ),
         )
     )
     session = FakeSession([FakeResult([])])
-    before = datetime.now(UTC)
 
     SqlAlchemyEventRepository(session).candidate_events(cluster, lookback_days=7, limit=20)
 
-    after = datetime.now(UTC)
     statement = session.executed[0]
     parameters = statement.compile().params.values()
     cutoffs = [value for value in parameters if isinstance(value, datetime)]
     assert len(cutoffs) == 1
-    assert before - timedelta(days=7, seconds=1) <= cutoffs[0]
-    assert cutoffs[0] <= after - timedelta(days=7)
+    assert cutoffs[0] <= datetime.now(UTC) - timedelta(days=7)
     assert statement._limit_clause.value == 20
     assert "events.last_updated_at desc" in str(statement).lower()
 
 
-def test_a_different_disease_is_never_a_candidate() -> None:
+def test_candidate_query_is_constrained_to_the_cluster_disease() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
@@ -392,7 +451,13 @@ def test_a_different_disease_is_never_a_candidate() -> None:
                 credibility_tier=CredibilityTier.OFFICIAL,
                 published_at=now,
                 first_seen_at=now,
-                locations=(),
+                locations=(
+                    LocationForMatching(
+                        location_role=LocationRole.PRIMARY,
+                        precision=Precision.COUNTRY,
+                        country_code="CD",
+                    ),
+                ),
             ),
         )
     )
@@ -400,11 +465,10 @@ def test_a_different_disease_is_never_a_candidate() -> None:
 
     SqlAlchemyEventRepository(session).candidate_events(cluster, lookback_days=7, limit=20)
 
-    parameters = session.executed[0].compile().params.values()
-    assert disease_id in parameters
+    assert disease_id in session.executed[0].compile().params.values()
 
 
-def test_a_cluster_without_geography_still_gets_candidates() -> None:
+def test_a_cluster_without_geography_has_no_candidates() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
@@ -430,10 +494,11 @@ def test_a_cluster_without_geography_still_gets_candidates() -> None:
         cluster, lookback_days=7, limit=20
     )
 
-    assert [candidate.event_id for candidate in candidates] == [event.id]
+    assert candidates == ()
+    assert session.executed == []
 
 
-def test_candidate_events_map_the_primary_signal_embedding() -> None:
+def test_candidate_events_do_not_load_embeddings() -> None:
     from episignal_backend.events.documents import StoryCluster
 
     disease_id = uuid4()
@@ -462,17 +527,11 @@ def test_candidate_events_map_the_primary_signal_embedding() -> None:
         )
     )
     event = FakeEvent(uuid4(), disease_id, now, now)
-    session = FakeSession(
-        [
-            FakeResult([event]),
-            FakeResult([FakeEventLocation(event.id)]),
-            FakeResult([(event.id, [0.0, 1.0])]),
-        ]
-    )
+    session = FakeSession([FakeResult([event])])
 
     candidates = SqlAlchemyEventRepository(session).candidate_events(cluster)
 
-    assert candidates[0].representative_embedding == (0.0, 1.0)
+    assert candidates[0].representative_embedding is None
 
 
 def test_create_event_inserts_event_row_and_returns_candidate() -> None:
@@ -550,39 +609,18 @@ def test_attach_signal_inserts_event_signal_row() -> None:
     assert added_rel.is_primary is True
 
 
-def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> None:
-    from episignal_backend.ai.schema import (
-        BriefPoint,
-        BriefSlot,
-        Epidemiology,
-        Extraction,
-        GroundedCount,
-    )
+def test_record_observation_writes_only_simplified_material_facts() -> None:
+    from episignal_backend.ai.schema import Extraction
     from episignal_backend.models import EventObservation
 
-    ev_id = uuid4()
-    sig_id = uuid4()
+    event_id = uuid4()
+    signal_id = uuid4()
     now = datetime.now(UTC)
-
-    extraction = Extraction(
-        signal_type=SignalType.OUTBREAK_REPORT,
-        title_english="35 cases reported",
-        brief=(
-            BriefPoint(slot=BriefSlot.WHAT_WHERE, text="35 cases reported", reported=True),
-            BriefPoint(slot=BriefSlot.COUNTS, text="35 cases", reported=True),
-            BriefPoint(slot=BriefSlot.TIMING, text="No date", reported=False),
-            BriefPoint(slot=BriefSlot.SPREAD, text="No spread", reported=False),
-            BriefPoint(slot=BriefSlot.REPORTING, text="No reporting", reported=False),
-        ),
-        epidemiology=Epidemiology(
-            total_cases=GroundedCount(value=35, source_span="35 cases"),
-            # deaths is None, confirmed_cases is None!
-        ),
-        confidence=0.88,
-    )
-    sig = SignalForMatching(
-        signal_id=sig_id,
-        disease_id=uuid4(),
+    extraction = Extraction(disease="cholera", locations=())
+    signal = SignalForMatching(
+        signal_id=signal_id,
+        disease_id=None,
+        disease_text="cholera",
         source_id=uuid4(),
         source_is_official=False,
         credibility_tier=CredibilityTier.HIGH,
@@ -590,22 +628,11 @@ def test_record_observation_inserts_grounded_counts_and_preserves_nulls() -> Non
         first_seen_at=now,
         extraction=extraction,
     )
-
     session = FakeSession()
-    repo = SqlAlchemyEventRepository(session)
-    repo.record_observation(event_id=ev_id, signal=sig)
-
-    assert len(session.added) == 1
-    obs = session.added[0]
-    assert isinstance(obs, EventObservation)
-    assert obs.event_id == ev_id
-    assert obs.signal_id == sig_id
-    assert obs.total_cases == 35
-    # Crucial invariant: null counts must be None, NEVER 0
-    assert obs.deaths is None
-    assert obs.confirmed_cases is None
-    assert obs.suspected_cases is None
-    assert obs.extraction_confidence == 0.88
+    SqlAlchemyEventRepository(session).record_observation(event_id=event_id, signal=signal)
+    observation = session.added[0]
+    assert isinstance(observation, EventObservation)
+    assert observation.material_facts == {"disease_text": "cholera", "geographic_extent": []}
 
 
 def test_record_observation_is_idempotent_for_a_stale_rerun() -> None:
@@ -695,8 +722,7 @@ def test_apply_scores_executes_update_on_event() -> None:
     assert "verification_status" in stmt_str
 
 
-def test_store_summary_propagates_verdict_status_to_event() -> None:
-    from episignal_backend.db.types import EventStatus
+def test_store_summary_persists_structured_flash_brief_and_denormalized_text() -> None:
     from episignal_backend.models import EventSummary
 
     event_id = uuid4()
@@ -705,11 +731,13 @@ def test_store_summary_propagates_verdict_status_to_event() -> None:
 
     version = repo.store_summary(
         event_id=event_id,
-        headline="Dengue outbreak continues",
-        summary="Officials report an ongoing outbreak.",
-        status=EventStatus.ONGOING.value,
-        latest_development="Cases increased.",
-        uncertainties=[],
+        headline="Dengue Outbreak: Chiang Mai — Increasing",
+        summary="Dengue Outbreak: Chiang Mai — Increasing",
+        trajectory="Increasing",
+        snapshot=["68 confirmed cases"],
+        key_driver="Ongoing local transmission.",
+        response="Case investigation is underway.",
+        risk="Risk remains regional.",
         model_id="fake-summary-model",
         source_signal_ids=[],
         counts=None,
@@ -717,19 +745,14 @@ def test_store_summary_propagates_verdict_status_to_event() -> None:
 
     assert version == 1
     assert isinstance(session.added[0], EventSummary)
-    assert session.added[0].status is EventStatus.ONGOING
+    assert session.added[0].trajectory == "Increasing"
+    assert session.added[0].snapshot == ["68 confirmed cases"]
+    assert session.added[0].key_driver == "Ongoing local transmission."
     update_statement = session.executed[-1]
-    status_values = {
-        key.key: value.value
-        for key, value in update_statement._values.items()
-        if key.key == "status"
-    }
-    assert status_values == {"status": EventStatus.ONGOING}
+    assert "status" not in {key.key for key in update_statement._values}
 
 
 def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
-    from episignal_backend.db.types import EventStatus
-
     event_id = uuid4()
     signal_id = uuid4()
     session = FakeSession([FakeResult(None), FakeResult(1)])
@@ -737,11 +760,13 @@ def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
 
     repo.store_summary(
         event_id=event_id,
-        headline="Dengue outbreak continues",
-        summary="Officials report an ongoing outbreak.",
-        status=EventStatus.ONGOING.value,
-        latest_development="Cases increased.",
-        uncertainties=[],
+        headline="Dengue Outbreak: Chiang Mai — Increasing",
+        summary="Dengue Outbreak: Chiang Mai — Increasing",
+        trajectory="Increasing",
+        snapshot={"cases": "68 confirmed cases"},
+        key_driver="Ongoing local transmission.",
+        response="Case investigation is underway.",
+        risk="Risk remains regional.",
         model_id="fake-summary-model",
         source_signal_ids=[signal_id],
         counts=None,
@@ -752,44 +777,23 @@ def test_store_summary_serializes_source_signal_ids_for_jsonb() -> None:
 
 def test_a_stored_extraction_survives_its_version_key() -> None:
     payload = {
-        "signal_type": "outbreak_report",
-        "source_language": "en",
-        "title_english": "Cholera outbreak reported in Luanda",
-        "brief": [
-            {"slot": "what_where", "text": "Cholera in Luanda, Angola.", "reported": True},
-            {"slot": "counts", "text": "327 confirmed cases.", "reported": True},
-            {"slot": "timing", "text": "As of 25 August 2026.", "reported": True},
-            {"slot": "spread", "text": "Acquired locally.", "reported": True},
-            {"slot": "reporting", "text": "Reported by the health ministry.", "reported": True},
-        ],
-        "epidemiology": {"confirmed_cases": {"value": 327, "source_span": "327 confirmed cases"}},
-        "confidence": 0.9,
+        "disease": "Cholera",
+        "locations": [{"town": "Luanda", "country": "Angola"}],
         EXTRACTION_VERSION_KEY: EXTRACTION_SCHEMA_VERSION,
     }
 
     extraction = read_stored_extraction(payload)
 
     assert extraction is not None
-    assert extraction.epidemiology.confirmed_cases is not None
-    assert extraction.epidemiology.confirmed_cases.value == 327
+    assert extraction.disease == "Cholera"
+    assert extraction.locations[0].town == "Luanda"
 
 
 def test_an_unreadable_extraction_is_absence_rather_than_an_exception() -> None:
-    assert read_stored_extraction({"signal_type": "not_a_type"}) is None
+    assert read_stored_extraction({"locations": [{"town": 123, "country": None}]}) is None
 
 
-def test_open_review_updates_signal_and_persists_review_case() -> None:
-    from episignal_backend.db.types import ReviewReason, ReviewStatus
-    from episignal_backend.models.review import SignalReviewCase
+def test_event_repository_has_no_human_review_write_path() -> None:
+    repo = SqlAlchemyEventRepository(FakeSession())
 
-    sig_id = uuid4()
-    session = FakeSession(results=[FakeResult(None)])
-    repo = SqlAlchemyEventRepository(session)
-    repo.open_review(sig_id, reason=ReviewReason.EVENT_MATCH_AMBIGUOUS)
-
-    assert len(session.executed) == 2  # update signal, select existing case
-    cases = [obj for obj in session.added if isinstance(obj, SignalReviewCase)]
-    assert len(cases) == 1
-    assert cases[0].signal_id == sig_id
-    assert cases[0].reason is ReviewReason.EVENT_MATCH_AMBIGUOUS
-    assert cases[0].status is ReviewStatus.OPEN
+    assert not hasattr(repo, "open_review")

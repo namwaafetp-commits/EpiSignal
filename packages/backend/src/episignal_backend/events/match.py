@@ -6,12 +6,11 @@ and deciding whether to attach or create.
 This module imports neither SQLAlchemy nor httpx.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from uuid import UUID
 
 from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.events.cluster import (
-    haversine_distance_km,
     precision_weight,
     spatially_compatible,
 )
@@ -31,10 +30,6 @@ DEFAULT_MATCH_WEIGHTS: dict[str, float] = {
     "temporal": 0.20,
     "precision": 0.15,
 }
-
-SIMILARITY_WEIGHT = 0.15
-
-SimilarityFor = Callable[[StoryCluster, CandidateEvent], float | None]
 
 _PRECISION_RANK: dict[Precision, int] = {
     Precision.PLACE: 4,
@@ -94,29 +89,21 @@ def match_score(
     # 2. Spatial component
     loc_c = cluster.representative_location
     loc_cand = _candidate_representative_location(candidate)
-
     if loc_c is None or loc_cand is None:
         return 0.0
-
-    if not spatially_compatible(loc_c, loc_cand, distance_km=distance_km):
+    overlapping = [
+        (left, right)
+        for left in (loc for sig in cluster.signals for loc in sig.locations)
+        for right in candidate.locations
+        if spatially_compatible(left, right, distance_km=distance_km)
+    ]
+    if not overlapping:
         return 0.0
-
-    coarsest = min(loc_c.precision, loc_cand.precision, key=lambda p: _PRECISION_RANK[p])
-    if coarsest == Precision.PLACE:
-        assert loc_c.latitude is not None and loc_c.longitude is not None
-        assert loc_cand.latitude is not None and loc_cand.longitude is not None
-        d = haversine_distance_km(
-            loc_c.latitude, loc_c.longitude, loc_cand.latitude, loc_cand.longitude
-        )
-        spatial_score = max(0.5, 1.0 - 0.5 * (d / distance_km))
-    elif coarsest == Precision.ADMIN2:
-        spatial_score = 0.75
-    elif coarsest == Precision.ADMIN1:
-        spatial_score = 0.50
-    elif coarsest == Precision.COUNTRY:
-        spatial_score = 0.25
-    else:
-        spatial_score = 0.0
+    spatial_score = (
+        0.75
+        if any(left.place_name or left.admin2 or left.admin1 for left, _ in overlapping)
+        else 1.0
+    )
 
     # 3. Temporal component
     c_start, c_end = cluster.span
@@ -172,25 +159,17 @@ def _deterministic_rejection(
 
     cluster_location = cluster.representative_location
     candidate_location = _candidate_representative_location(candidate)
-    if (
-        cluster_location is not None
-        and candidate_location is not None
-        and cluster_location.admin1 is not None
-        and candidate_location.admin1 is not None
-        and cluster_location.admin1 != candidate_location.admin1
-    ):
-        return MatchRejection.CONFLICTING_ADMIN1
-
     if _temporal_gap_days(cluster, candidate) > recency_days:
         return MatchRejection.OUTSIDE_TIME_WINDOW
 
     if (
         cluster_location is None
         or candidate_location is None
-        or not spatially_compatible(
-            cluster_location,
-            candidate_location,
-            distance_km=distance_km,
+        or not any(
+            spatially_compatible(left, right, distance_km=distance_km)
+            for signal in cluster.signals
+            for left in signal.locations
+            for right in candidate.locations
         )
     ):
         return MatchRejection.TOO_FAR
@@ -207,7 +186,6 @@ def decide(
     weights: Mapping[str, float] = DEFAULT_MATCH_WEIGHTS,
     distance_km: float = 50.0,
     recency_days: float = 90.0,
-    similarity_for: SimilarityFor | None = None,
 ) -> MatchDecision:
     """Make the conservative matching decision for a story cluster.
 
@@ -218,8 +196,8 @@ def decide(
     - refuse: two or more candidate events score >= threshold; the caller
       creates a new event.
 
-    Deterministic guards run before ``similarity_for``. Similarity therefore
-    cannot be consulted for a refused pair and can only add to its score.
+    Deterministic guards are the complete matching boundary; no semantic
+    similarity or model judgement is consulted.
     """
     candidate_scores: dict[UUID, float] = {}
     candidate_rejections: dict[UUID, MatchRejection | None] = {}
@@ -247,9 +225,6 @@ def decide(
             distance_km=distance_km,
             recency_days=recency_days,
         )
-        similarity = similarity_for(cluster, cand) if similarity_for is not None else None
-        if similarity is not None:
-            score = min(1.0, score + SIMILARITY_WEIGHT * max(0.0, similarity))
         candidate_scores[cand.event_id] = score
         if score >= threshold:
             qualifiers.append((cand, score))

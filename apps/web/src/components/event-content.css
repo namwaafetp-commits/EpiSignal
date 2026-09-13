@@ -1,0 +1,268 @@
+.event-content {
+  width: min(100%, 74rem);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vw, 4rem) clamp(1rem, 5vw, 4.5rem) 5rem;
+  color: var(--ink);
+  font-family: var(--ui);
+}
+
+.event-content__hero {
+  max-width: 66rem;
+  padding: 2.7rem 0 2rem;
+}
+
+.event-content__kicker,
+.event-content__facts,
+.event-content h2,
+.event-content h3,
+.event-content__source-number {
+  font-family: var(--ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.event-content__kicker {
+  margin: 0;
+  color: var(--teal);
+}
+.event-content__place {
+  margin: 0.7rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+.event-content__hero h1 {
+  max-width: 21ch;
+  margin: 1.1rem 0;
+  font-family: var(--display);
+  font-size: clamp(2.75rem, 5vw, 3.5rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+.event-content__facts {
+  margin: 0;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+}
+.event-content__body {
+  display: grid;
+  gap: 2.5rem;
+  max-width: 66rem;
+  padding-top: 2.5rem;
+}
+.event-content__brief {
+  max-width: 55rem;
+}
+.event-content h2 {
+  margin: 0 0 1rem;
+  color: var(--ink-muted);
+}
+.event-content__brief > p,
+.event-content__brief li,
+.event-content__legacy-brief p {
+  max-width: 70ch;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.event-content__brief ul {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+/* display:grid drops the list-item marker, so draw it back explicitly. */
+.event-content__brief li {
+  position: relative;
+  padding-left: 1.25rem;
+}
+.event-content__brief li::before {
+  position: absolute;
+  left: 0.15rem;
+  color: var(--teal);
+  content: "\2022";
+}
+.event-content__takeaway {
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.event-content__takeaway span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.event-content__trajectory,
+.event-content__muted {
+  color: var(--ink-muted);
+}
+.event-content__legacy-brief {
+  display: grid;
+  gap: 0.2rem;
+}
+.event-content h3 {
+  margin: 1rem 0 0;
+  color: var(--teal);
+}
+.event-content__legacy-brief p {
+  margin: 0;
+}
+.event-content__section {
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
+}
+.event-content__sources {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-content__sources li {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.event-content__source-number {
+  color: var(--teal);
+}
+.event-content__sources a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.1rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+.event-content__sources a:hover {
+  color: var(--teal);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.event-content__sources svg {
+  flex: 0 0 auto;
+}
+.event-content__sources p {
+  margin: 0.35rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+}
+.event-content .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.event-content__more-sources {
+  margin-top: 1rem;
+}
+.event-content__more-sources summary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--teal);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.event-content__more-sources summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.event-content__related {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-content__related li {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.event-content__related a {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.1rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+.event-content__related a:hover {
+  color: var(--teal);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+@media (max-width: 620px) {
+  .event-content__hero {
+    padding-top: 1.5rem;
+  }
+  .event-content__hero h1 {
+    font-size: clamp(2.5rem, 13vw, 3.5rem);
+  }
+  .event-content__body {
+    gap: 2rem;
+    padding-top: 2rem;
+  }
+}
+
+/* Native <details> keeps one label; swap it so the control reads correctly
+   in both states. */
+.event-content__label-open {
+  display: none;
+}
+.event-content__more-sources[open] .event-content__label-closed {
+  display: none;
+}
+.event-content__more-sources[open] .event-content__label-open {
+  display: inline;
+}
+
+.event-content__glossary {
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
+}
+.event-content__glossary summary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.event-content__glossary summary:hover {
+  color: var(--teal);
+}
+.event-content__glossary dl {
+  max-width: 62ch;
+  margin: 0.5rem 0 0;
+}
+.event-content__glossary dt {
+  margin-top: 1rem;
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.event-content__glossary dd {
+  margin: 0.35rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}

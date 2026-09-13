@@ -441,7 +441,10 @@ def test_link_event_attaches_signal_and_resolves_case() -> None:
             FakeResult(candidate_row),
             FakeResult(True),
             FakeResult([]),  # locations
+            FakeResult(None),  # source
             FakeResult(None),  # latest brief
+            FakeResult([]),  # observation dedup
+            FakeResult([]),  # existing event locations
         ]
     )
     repo = SqlAlchemyReviewRepository(session)  # type: ignore[arg-type]
@@ -546,6 +549,8 @@ def test_create_event_creates_new_event_from_singleton_cluster_and_resolves_case
             FakeResult(signal),
             FakeResult([]),  # signal locations
             FakeResult(None),  # source
+            FakeResult([]),  # observation dedup
+            FakeResult([]),  # existing event locations
         ]
     )
     repo = SqlAlchemyReviewRepository(session)  # type: ignore[arg-type]

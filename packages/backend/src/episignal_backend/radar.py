@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from episignal_backend.ai.schema import (
     BACKFILL_MIN_SCHEMA_VERSION,
-    BRIEF_SLOT_COUNT,
     EXTRACTION_SCHEMA_VERSION,
     EXTRACTION_VERSION_KEY,
     BriefPoint,
@@ -366,8 +365,6 @@ def query_radar(
                 payload = StoredExtractionPayload.model_validate(row.ai_extraction)
             except Exception:
                 continue
-            if not payload.title_english or len(payload.brief) != BRIEF_SLOT_COUNT:
-                continue
             if not verify_content_hash(row.title, row.raw_text, row.content_hash):
                 logger.warning(
                     "Signal %s failed content hash integrity check; omitted from radar feed",
@@ -422,7 +419,7 @@ def query_radar(
         )
 
     items: list[RadarItem] = []
-    for row, payload in valid_rows_and_payloads:
+    for row, _payload in valid_rows_and_payloads:
         linked_events = events_by_signal.get(row.id, [])
         if len(linked_events) == 0:
             event_context_status = EventContextStatus.NONE
@@ -443,19 +440,17 @@ def query_radar(
             credibility_tier=row.source_credibility_tier,
         )
 
-        assert payload.title_english is not None
-
         items.append(
             RadarItem(
                 id=row.id,
-                title_english=payload.title_english,
-                brief=payload.brief,
+                title_english=row.title,
+                brief=(),
                 signal_type=row.signal_type,
                 processing_status=row.processing_status,
                 published_at=row.published_at,
                 first_seen_at=row.first_seen_at,
                 source=source,
-                extraction_confidence=payload.confidence,
+                extraction_confidence=0.0,
                 location=location,
                 event_context_status=event_context_status,
                 event=event,

@@ -311,12 +311,27 @@ export interface components {
             country_code: string | null;
             /** Disease */
             disease: string | null;
+            /**
+             * Disease Group
+             * @default unknown
+             */
+            disease_group: string;
+            /**
+             * Disease Group Label
+             * @default Unknown / unclassified
+             */
+            disease_group_label: string;
             /** Event Type */
             event_type: string;
             /** First Reported At */
             first_reported_at: string | null;
             /** Headline */
             headline: string;
+            /**
+             * Host Sector
+             * @default unknown
+             */
+            host_sector: string;
             /**
              * Last Summarized At
              * Format: date-time
@@ -338,6 +353,10 @@ export interface components {
             status: components["schemas"]["EventStatus"];
             /** Summary */
             summary: string;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** DashboardEventsResponse */
         DashboardEventsResponse: {
@@ -373,6 +392,16 @@ export interface components {
             country_code: string | null;
             /** Disease */
             disease: string | null;
+            /**
+             * Disease Group
+             * @default unknown
+             */
+            disease_group: string;
+            /**
+             * Disease Group Label
+             * @default Unknown / unclassified
+             */
+            disease_group_label: string;
             /** Early Signal Score */
             early_signal_score: number | null;
             /** Event Type */
@@ -383,6 +412,11 @@ export interface components {
             first_reported_at: string | null;
             /** Headline */
             headline: string | null;
+            /**
+             * Host Sector
+             * @default unknown
+             */
+            host_sector: string;
             /** Last Summarized At */
             last_summarized_at: string | null;
             /**
@@ -390,6 +424,8 @@ export interface components {
              * Format: date-time
              */
             latest_report_at: string;
+            /** Locations */
+            locations: components["schemas"]["EventLocationResponse"][];
             /** Observations */
             observations: components["schemas"]["EventObservationResponse"][];
             /** Public Id */
@@ -401,6 +437,10 @@ export interface components {
             summaries: components["schemas"]["EventSummaryResponse"][];
             /** Summary */
             summary: string | null;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
             verification_status: components["schemas"]["VerificationStatus"];
         };
         /** EventListItemResponse */
@@ -415,12 +455,27 @@ export interface components {
             country_code: string | null;
             /** Disease */
             disease: string | null;
+            /**
+             * Disease Group
+             * @default unknown
+             */
+            disease_group: string;
+            /**
+             * Disease Group Label
+             * @default Unknown / unclassified
+             */
+            disease_group_label: string;
             /** Event Type */
             event_type: string;
             /** First Reported At */
             first_reported_at: string | null;
             /** Headline */
             headline: string | null;
+            /**
+             * Host Sector
+             * @default unknown
+             */
+            host_sector: string;
             /** Last Summarized At */
             last_summarized_at: string | null;
             /**
@@ -433,6 +488,10 @@ export interface components {
             status: components["schemas"]["EventStatus"];
             /** Summary */
             summary: string | null;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
             verification_status: components["schemas"]["VerificationStatus"];
         };
         /** EventListResponse */
@@ -446,32 +505,42 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** EventLocationResponse */
+        EventLocationResponse: {
+            /** Admin1 */
+            admin1: string | null;
+            /** Admin2 */
+            admin2: string | null;
+            /** Country Code */
+            country_code: string | null;
+            /** Latitude */
+            latitude: number | null;
+            /** Location Role */
+            location_role: string;
+            /** Longitude */
+            longitude: number | null;
+            /** Place Name */
+            place_name: string | null;
+            /** Precision */
+            precision: string;
+        };
         /** EventObservationResponse */
         EventObservationResponse: {
-            /** Confirmed Cases */
-            confirmed_cases: number | null;
-            /** Deaths */
-            deaths: number | null;
-            /** Extraction Confidence */
-            extraction_confidence: number | null;
-            /** Hospitalizations */
-            hospitalizations: number | null;
-            /** New Cases */
-            new_cases: number | null;
-            /** New Deaths */
-            new_deaths: number | null;
+            /** Material Facts */
+            material_facts: {
+                [key: string]: unknown;
+            } | null;
             /** Notes */
             notes: string | null;
             /** Observation Date */
             observation_date: string | null;
-            /** Probable Cases */
-            probable_cases: number | null;
             /** Reported At */
             reported_at: string | null;
-            /** Suspected Cases */
-            suspected_cases: number | null;
-            /** Total Cases */
-            total_cases: number | null;
+            /**
+             * Signal Id
+             * Format: uuid
+             */
+            signal_id: string;
         };
         /** EventSourceResponse */
         EventSourceResponse: {
@@ -516,15 +585,24 @@ export interface components {
             created_at: string;
             /** Headline */
             headline: string;
-            /** Latest Development */
-            latest_development: string | null;
+            /** Key Driver */
+            key_driver: string | null;
             /** Model Id */
             model_id: string;
-            status: components["schemas"]["EventStatus"];
+            /** Response */
+            response: string | null;
+            /** Risk */
+            risk: string | null;
+            /** Snapshot */
+            snapshot: string[] | null;
             /** Summary */
             summary: string;
-            /** Uncertainties */
-            uncertainties: string[] | null;
+            /** Summary Payload */
+            summary_payload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Trajectory */
+            trajectory: string;
             /** Version */
             version: number;
         };
@@ -971,7 +1049,7 @@ export interface components {
          * @description One step of the pipeline. Never a rung of the model ladder: that is a tier.
          * @enum {string}
          */
-        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
+        StageName: "ingest_who" | "ingest_ecdc" | "discover" | "retrieve" | "story_group" | "classify" | "dedupe" | "triage" | "embed" | "pregroup" | "extract" | "geocode" | "match" | "summarize";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1142,6 +1220,8 @@ export interface operations {
                 verification_status?: string | null;
                 start_date?: string | null;
                 end_date?: string | null;
+                host_sector?: string | null;
+                disease_group?: string | null;
             };
             header?: never;
             path?: never;
@@ -1171,7 +1251,10 @@ export interface operations {
     };
     dashboard_events_api_v1_events_dashboard_get: {
         parameters: {
-            query?: never;
+            query?: {
+                host_sector?: string | null;
+                disease_group?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1185,6 +1268,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

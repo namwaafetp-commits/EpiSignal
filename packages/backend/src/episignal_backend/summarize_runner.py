@@ -22,9 +22,13 @@ from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     configure_summary,
-    pick_representative_sources,
+    has_usable_summary_source,
+    legacy_summary_fields,
+    render_event_flash_brief,
     run_summary,
     should_resummarize,
+    summary_payload,
+    summary_title,
     unique_summary_candidates,
 )
 
@@ -67,6 +71,9 @@ def _run(arguments: Arguments) -> dict[str, int]:
 
         examined = 0
         skipped = 0
+        skipped_no_change = 0
+        skipped_no_model = 0
+        skipped_no_sources = 0
         summarized = 0
         failed = 0
         unavailable = 0
@@ -83,18 +90,24 @@ def _run(arguments: Arguments) -> dict[str, int]:
                 new_article_count=settings.resummary_new_article_count,
             ):
                 skipped += 1
+                skipped_no_change += 1
+                continue
+
+            sources = event.sources
+            if not has_usable_summary_source(sources):
+                skipped += 1
+                skipped_no_sources += 1
                 continue
 
             if wiring.model is None or wiring.spec is None:
                 # No summarizer configured: the event keeps its current
                 # narrative. Counted as skipped rather than failed.
                 skipped += 1
+                skipped_no_model += 1
                 continue
 
-            sources = pick_representative_sources(
-                event.sources,
-                max_sources=settings.summary_max_sources,
-            )
+            # The contract requires consolidated evidence from every linked
+            # source; representative-source caps belong to the old summary.
             result = run_summary(
                 wiring.model,
                 wiring.spec,
@@ -112,17 +125,23 @@ def _run(arguments: Arguments) -> dict[str, int]:
                     )
                 )
             if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
+                trajectory, snapshot, key_driver, response, risk = legacy_summary_fields(
+                    result.verdict
+                )
                 repository.store_summary(
                     event_id=event.event_id,
-                    headline=result.verdict.headline,
-                    summary=result.verdict.summary,
-                    status=result.verdict.status.value,
-                    latest_development=result.verdict.latest_development,
-                    uncertainties=list(result.verdict.uncertainties),
+                    headline=summary_title(result.verdict),
+                    summary=render_event_flash_brief(result.verdict),
+                    trajectory=trajectory,
+                    snapshot=snapshot,
+                    key_driver=key_driver,
+                    response=response,
+                    risk=risk,
                     model_id=wiring.spec.model_id,
                     source_signal_ids=[source.signal_id for source in sources],
                     counts=event.latest_observation,
                     now=now,
+                    summary_payload=summary_payload(result.verdict),
                 )
                 summarized += 1
             elif result.outcome is SummaryOutcome.UNAVAILABLE:
@@ -135,6 +154,9 @@ def _run(arguments: Arguments) -> dict[str, int]:
     return {
         "examined": examined,
         "skipped": skipped,
+        "skipped_no_change": skipped_no_change,
+        "skipped_no_model": skipped_no_model,
+        "skipped_no_sources": skipped_no_sources,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,
@@ -156,6 +178,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"examined={counts['examined']} skipped={counts['skipped']} "
+        f"skipped_no_change={counts['skipped_no_change']} "
+        f"skipped_no_model={counts['skipped_no_model']} "
+        f"skipped_no_sources={counts['skipped_no_sources']} "
         f"summarized={counts['summarized']} failed={counts['failed']} "
         f"unavailable={counts['unavailable']}"
     )

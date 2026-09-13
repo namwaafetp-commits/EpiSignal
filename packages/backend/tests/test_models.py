@@ -12,6 +12,7 @@ EXPECTED_TABLES = {
     "event_observations",
     "event_locations",
     "gdelt_query_rules",
+    "gdelt_discovery_state",
     "filter_rules",
     "rejected_sightings",
     "ai_models",
@@ -20,6 +21,7 @@ EXPECTED_TABLES = {
     "geocode_cache",
     "signal_locations",
     "pipeline_runs",
+    "pipeline_health_runs",
     "story_groups",
     "story_group_members",
     "signal_review_cases",
@@ -47,6 +49,7 @@ def test_observations_preserve_event_and_signal_provenance() -> None:
     targets = {foreign_key.target_fullname for foreign_key in table.foreign_keys}
     assert "events.id" in targets
     assert "signals.id" in targets
+    assert table.c.material_facts.nullable
 
 
 def test_signal_versions_are_unique_by_url_and_content_hash() -> None:
@@ -97,7 +100,7 @@ def test_enum_columns_persist_vocabulary_values_not_member_names() -> None:
         for column in table.c
         if isinstance(column.type, Enum)
     ]
-    assert len(enum_columns) == 28
+    assert len(enum_columns) == 30
 
     for column in enum_columns:
         enum_class = column.type.enum_class
