@@ -369,3 +369,16 @@ Evidence: [event summary gate correction report](docs/reports/2026-09-12-event-s
 Verified implementation baseline: `f816cf1`; Alembic head is
 `20260912_0025`. No production database or deployment changes were made.
 Evidence: [event-summary roster migration report](docs/reports/2026-09-12-event-summary-roster-migration-report.md).
+
+## Task ledger — UI v2 (2026-09-13)
+
+Current request: UI-only editorial redesign; building on codex/next-iteration.
+Plan: [UI v2](docs/superpowers/plans/2026-09-13-ui-v2.md).
+
+- [ ] Theme and shared navigation.
+- [ ] Briefing and URL filters.
+- [ ] Map preview and reading pane.
+- [ ] Event detail, sources and observation history.
+- [ ] Responsive map and accessibility.
+- [ ] Independent review, visual QA and full verification.
+- [ ] Completion report, commit and push; no deployment.
