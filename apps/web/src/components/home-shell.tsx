@@ -29,6 +29,13 @@ import { EventBrief, SourceList } from "./event-content";
 import { EventMap } from "./event-map";
 import { FilterBar } from "./event-filters";
 import { BriefingFeed } from "./briefing-feed";
+import {
+  diseaseGroupValue,
+  hostSectorValue,
+  countBucket,
+  trackEvent,
+  trackSearchUsed,
+} from "../lib/analytics";
 
 export type ApiShellStatus = "loading" | "ready" | "unavailable";
 type View = "map" | "briefing";
@@ -146,6 +153,19 @@ export function HomeShell({
       else window.history.pushState(null, "", url);
       return next;
     });
+    if (
+      key === "period" ||
+      key === "disease_group" ||
+      key === "host" ||
+      key === "country"
+    ) {
+      trackEvent({ name: "filter_change", properties: { filter: key } });
+    }
+    if (key === "q") {
+      trackSearchUsed(
+        filterEvents(allEvents, { ...filters, q: value }, now).length,
+      );
+    }
     setSelectedId(null);
   }
 
@@ -162,6 +182,27 @@ export function HomeShell({
         : null;
     setDetailState(null);
     setSelectedId(id);
+    const event = allEvents.find((item) => item.public_id === id);
+    trackEvent({ name: "reading_pane_open", properties: {} });
+    if (event && view === "map") {
+      trackEvent({
+        name: "map_event_open",
+        properties: {
+          disease_group: diseaseGroupValue(event.disease_group),
+          host_sector: hostSectorValue(event.host_sector),
+        },
+      });
+    }
+    if (event && view === "briefing") {
+      trackEvent({
+        name: "briefing_event_open",
+        properties: {
+          disease_group: diseaseGroupValue(event.disease_group),
+          host_sector: hostSectorValue(event.host_sector),
+          source_count_bucket: countBucket(event.article_count),
+        },
+      });
+    }
   }
 
   function closePane() {
@@ -254,6 +295,9 @@ export function HomeShell({
               <Link
                 key={event.public_id}
                 href={`/events/${encodeURIComponent(event.public_id)}${query}`}
+                onClick={() =>
+                  trackEvent({ name: "full_event_open", properties: {} })
+                }
               >
                 {event.headline}
                 <span>{eventLocation(event)}</span>
@@ -355,6 +399,7 @@ function ReadingPane({
       <Link
         className="primary-action"
         href={`/events/${encodeURIComponent(event.public_id)}${query}`}
+        onClick={() => trackEvent({ name: "full_event_open", properties: {} })}
       >
         View full event
       </Link>

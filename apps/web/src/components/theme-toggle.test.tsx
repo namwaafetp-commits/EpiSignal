@@ -4,8 +4,13 @@ import { ThemeToggle } from "./theme-toggle";
 
 let systemDark = false;
 let change: (() => void) | undefined;
+const track = vi.fn();
 beforeEach(() => {
   localStorage.clear();
+  vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+  vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "https://stats.example/script.js");
+  track.mockReset();
+  window.umami = { track };
   systemDark = false;
   vi.stubGlobal("matchMedia", () => ({
     get matches() {
@@ -19,6 +24,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  delete window.umami;
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
@@ -61,4 +68,17 @@ it("labels every icon-only option for assistive technology", () => {
   for (const label of ["Light", "Dark", "System"]) {
     expect(option(label)).toHaveAttribute("title", `${label} theme`);
   }
+});
+
+it("tracks an approved theme change without preference details", () => {
+  render(<ThemeToggle />);
+
+  fireEvent.click(option("Dark"));
+
+  expect(track).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: "theme_change",
+      data: { theme: "dark" },
+    }),
+  );
 });

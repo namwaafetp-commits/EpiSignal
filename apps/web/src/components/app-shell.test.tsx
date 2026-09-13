@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TopNavigation } from "./app-shell";
 
@@ -7,7 +7,13 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("period=3d&country=TH"),
 }));
 
+const track = vi.fn();
+
 beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+  vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "https://stats.example/script.js");
+  track.mockReset();
+  window.umami = { track };
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -16,6 +22,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  delete window.umami;
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
@@ -50,4 +58,26 @@ it("carries the brand mark on the home link without duplicating its label", () =
   for (const mark of marks) {
     expect(mark).toHaveAttribute("alt", "");
   }
+});
+
+it("tracks Map and Briefing view switches", () => {
+  render(<TopNavigation />);
+
+  fireEvent.click(screen.getByRole("link", { name: "Map" }));
+  fireEvent.click(screen.getByRole("link", { name: "Briefing" }));
+
+  expect(track).toHaveBeenNthCalledWith(1, {
+    website: "website-id",
+    url: "/",
+    title: "EpiSignal — Map",
+    name: "view_switch",
+    data: { view: "map" },
+  });
+  expect(track).toHaveBeenNthCalledWith(2, {
+    website: "website-id",
+    url: "/",
+    title: "EpiSignal — Map",
+    name: "view_switch",
+    data: { view: "briefing" },
+  });
 });

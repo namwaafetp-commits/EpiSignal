@@ -12,6 +12,7 @@ import type { EventDetailResponse } from "../lib/api-events";
 import { HomeShell } from "./home-shell";
 
 const getEventDetail = vi.fn();
+const track = vi.fn();
 vi.mock("../lib/api-events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/api-events")>()),
   getEventDetail: (...args: unknown[]) => getEventDetail(...args),
@@ -186,6 +187,11 @@ const NOW = Date.parse("2026-08-31T12:00:00Z");
 
 describe("HomeShell UI v2", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+    vi.stubEnv(
+      "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
+      "https://stats.example/script.js",
+    );
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
     window.history.replaceState(null, "", "/");
@@ -195,9 +201,13 @@ describe("HomeShell UI v2", () => {
       removeEventListener: vi.fn(),
     }));
     getEventDetail.mockResolvedValue(detail);
+    track.mockReset();
+    window.umami = { track };
   });
   afterEach(() => {
     cleanup();
+    delete window.umami;
+    vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -217,9 +227,38 @@ describe("HomeShell UI v2", () => {
     expect(
       within(pane).getByRole("link", { name: "View full event" }),
     ).toHaveAttribute("href", "/events/EVT-2026-00001?period=72h");
+    fireEvent.click(
+      within(pane).getByRole("link", { name: "View full event" }),
+    );
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "full_event_open", data: {} }),
+    );
     fireEvent.keyDown(pane, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(marker).toHaveFocus();
+  });
+
+  it("tracks map selection and pane opening with controlled properties", () => {
+    window.history.replaceState(null, "", "/?period=72h");
+    render(<HomeShell now={NOW} apiStatus="ready" eventFeed={ready} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open marker" }));
+
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "reading_pane_open",
+        data: {},
+      }),
+    );
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "map_event_open",
+        data: {
+          disease_group: "enteric_food_waterborne",
+          host_sector: "human",
+        },
+      }),
+    );
   });
   it("renders a headline-first briefing and opens a reading pane", async () => {
     render(
@@ -233,6 +272,16 @@ describe("HomeShell UI v2", () => {
     expect(screen.getByRole("heading", { name: "The Briefing" })).toBeVisible();
     fireEvent.click(screen.getByRole("link", { name: EVENTS[0].headline }));
     expect(screen.getByRole("dialog", { name: "Event details" })).toBeVisible();
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "briefing_event_open",
+        data: {
+          disease_group: "enteric_food_waterborne",
+          host_sector: "human",
+          source_count_bucket: "1-5",
+        },
+      }),
+    );
     await waitFor(() =>
       expect(
         screen.queryByText("Loading source links…"),
@@ -287,6 +336,12 @@ describe("HomeShell UI v2", () => {
     fireEvent.change(screen.getByLabelText("Period"), {
       target: { value: "today" },
     });
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "filter_change",
+        data: { filter: "period" },
+      }),
+    );
     expect(screen.getByText("No events match these filters.")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Period"), {
       target: { value: "3d" },
@@ -333,6 +388,12 @@ describe("HomeShell UI v2", () => {
       expect(
         screen.getByRole("link", { name: EVENTS[0].headline }),
       ).toHaveAttribute("href", "/events/EVT-2026-00001?q=Angola"),
+    );
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "search_used",
+        data: { results_bucket: "1-5" },
+      }),
     );
     expect(
       screen.queryByRole("link", { name: EVENTS[1].headline }),

@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 
 type Theme = "light" | "dark" | "system";
 
@@ -52,6 +53,7 @@ function selectTheme(next: Theme) {
     /* Preference still applies for this session. */
   }
   window.dispatchEvent(new Event("episignal-theme"));
+  trackEvent({ name: "theme_change", properties: { theme: next } });
 }
 
 export const themeScript = `(function(){var t='system';try{t=localStorage.getItem('episignal-theme')||t}catch(e){}var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.style.colorScheme=d?'dark':'light'})()`;

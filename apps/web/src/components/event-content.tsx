@@ -1,9 +1,12 @@
+"use client";
+
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import type { RelatedEvent } from "@/lib/related-events";
 import type { EventDetailResponse } from "@/lib/api-events";
 import { dateLabel } from "@/lib/api-events";
 import type { DashboardEvent } from "@/lib/api-dashboard";
+import { sourceDomain, trackEvent } from "@/lib/analytics";
 import "./event-content.css";
 
 const LEAD_SOURCE_COUNT = 3;
@@ -141,7 +144,17 @@ function SourceRow({
         {String(index + 1).padStart(2, "0")}
       </span>
       <div>
-        <a href={source.url} target="_blank" rel="noreferrer">
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() =>
+            trackEvent({
+              name: "source_click",
+              properties: { source_domain: sourceDomain(source.url) },
+            })
+          }
+        >
           {source.title}
           <ExternalLink aria-hidden="true" size={14} strokeWidth={1.75} />
           <span className="sr-only"> (opens in a new tab)</span>

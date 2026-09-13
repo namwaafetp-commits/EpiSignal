@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryFlag, countryName } from "../lib/country";
 import { relativeTimeLabel } from "../lib/api-events";
@@ -201,7 +202,12 @@ function EventHeadline({
     <h3>
       <Link
         href={`/events/${encodeURIComponent(event.public_id)}${query}`}
-        onClick={(e) => row.onClick(e, event.public_id)}
+        onClick={(e) => {
+          if (!opensReadingPane(e)) {
+            trackEvent({ name: "full_event_open", properties: {} });
+          }
+          row.onClick(e, event.public_id);
+        }}
         onKeyDown={(e) => row.onKeyDown(e, event.public_id)}
         aria-current={selectedId === event.public_id ? "true" : undefined}
         aria-keyshortcuts="j k"

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventDetailResponse } from "@/lib/api-events";
 import * as apiEvents from "@/lib/api-events";
 import * as apiDashboard from "@/lib/api-dashboard";
@@ -62,13 +62,27 @@ const detail = {
   ],
 } satisfies EventDetailResponse;
 
+const track = vi.fn();
+
 describe("EventPage", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+    vi.stubEnv(
+      "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
+      "https://stats.example/script.js",
+    );
+    track.mockReset();
+    window.umami = { track };
     vi.spyOn(apiEvents, "getEventDetail").mockResolvedValue(detail);
     vi.spyOn(apiDashboard, "getDashboardEvents").mockResolvedValue({
       status: "unavailable",
       data: null,
     });
+  });
+
+  afterEach(() => {
+    delete window.umami;
+    vi.unstubAllEnvs();
   });
 
   it("renders one editorial headline, compact provenance, and direct source links", async () => {
@@ -96,6 +110,24 @@ describe("EventPage", () => {
       screen.queryByRole("heading", { name: "EVENT TIMELINE" }),
     ).toBeNull();
     expect(screen.queryByText("First seen")).toBeNull();
+  });
+
+  it("tracks source clicks with only the normalized domain", async () => {
+    const page = await EventPage({
+      params: Promise.resolve({ publicId: detail.public_id }),
+    });
+    render(page);
+
+    fireEvent.click(
+      screen.getByRole("link", { name: /WHO AFRO cholera update/i }),
+    );
+
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "source_click",
+        data: { source_domain: "other" },
+      }),
+    );
   });
 
   it("renders legacy structured brief content under The Brief", async () => {

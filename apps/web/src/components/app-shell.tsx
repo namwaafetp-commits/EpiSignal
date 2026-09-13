@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 import { ThemeToggle } from "./theme-toggle";
 
 export function TopNavigation() {
@@ -47,12 +48,21 @@ export function TopNavigation() {
           <Link
             href={`/${suffix}`}
             aria-current={pathname === "/" ? "page" : undefined}
+            onClick={() =>
+              trackEvent({ name: "view_switch", properties: { view: "map" } })
+            }
           >
             Map
           </Link>
           <Link
             href={`/briefing${suffix}`}
             aria-current={onBriefing ? "page" : undefined}
+            onClick={() =>
+              trackEvent({
+                name: "view_switch",
+                properties: { view: "briefing" },
+              })
+            }
           >
             Briefing
           </Link>

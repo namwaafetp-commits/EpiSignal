@@ -270,6 +270,25 @@ Completion report:
   1,505 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
   build passed. Alembic head remains `20260911_0024`.
 
+## Task ledger — privacy-preserving Umami analytics (2026-09-13)
+
+- [x] Added optional, non-blocking root-layout Umami script with safe disabled
+  behavior and no hardcoded production values.
+- [x] Added one typed analytics boundary with approved event names, controlled
+  values, bounded count/domain buckets, and privacy-safe object payloads.
+- [x] Added sanitized manual page views for `/`, `/briefing`, and
+  `/events/:public_id`; automatic URL/title collection is disabled.
+- [x] Instrumented navigation, theme, filters, search, map/briefing opens,
+  reading/full-event opens, and source links without sending private content.
+- [x] Added disabled/enabled/custom-event/privacy/UI/page-view tests and the
+  manual [Umami operations guide](docs/operations/umami.md).
+- [x] Final `corepack pnpm verify`: web 157 passed across 20 files; Python
+  1,533 passed, 2 skipped, 2 warnings; typecheck, lint, contracts, and build
+  passed. Alembic head remains `20260912_0025`.
+
+Completion report:
+[Umami analytics report](docs/reports/2026-09-13-umami-analytics-report.md).
+
 ## Task ledger — additive surveillance dimensions and flexible summaries (2026-09-08)
 
 - [x] Map all 30 seeded diseases to the explicit additive disease-group taxonomy with unknown fallback.
