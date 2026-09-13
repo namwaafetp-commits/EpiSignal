@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Clock3,
   SlidersHorizontal,
@@ -21,6 +21,8 @@ import {
   type FilterView,
 } from "../lib/event-filters";
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 export function FilterBar({
   events,
   filters,
@@ -36,6 +38,25 @@ export function FilterBar({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [countryDraft, setCountryDraft] = useState("");
+
+  // Typing re-filters the whole feed and rewrites history, so commit on a
+  // pause rather than per keystroke. The ref lets outside changes (reset,
+  // back/forward, a shared URL) resync without clobbering in-flight typing.
+  const [searchDraft, setSearchDraft] = useState(filters.q);
+  const committedSearch = useRef(filters.q);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (filters.q !== committedSearch.current) {
+      committedSearch.current = filters.q;
+      setSearchDraft(filters.q);
+    }
+  }, [filters.q]);
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    [],
+  );
   const countries = [
     ...new Set([
       ...events.map((e) => e.country_code).filter((c): c is string => !!c),
@@ -166,8 +187,16 @@ export function FilterBar({
             id="event-search"
             type="search"
             placeholder="Disease, place, headline…"
-            value={filters.q}
-            onChange={(e) => onChange("q", e.target.value)}
+            value={searchDraft}
+            onChange={(e) => {
+              const typed = e.target.value;
+              setSearchDraft(typed);
+              if (searchTimer.current) clearTimeout(searchTimer.current);
+              searchTimer.current = setTimeout(() => {
+                committedSearch.current = typed;
+                onChange("q", typed);
+              }, SEARCH_DEBOUNCE_MS);
+            }}
           />
         </label>
       </div>

@@ -9,6 +9,9 @@ export type RelatedEvent = {
 
 const NEARBY_REPORTING_DAYS = 14;
 
+/** Same disease group (3) + country (2) + area (1) + host (1) + window (1). */
+export const MAX_RELATED_SCORE = 8;
+
 /**
  * Ranks other reported events by shared metadata only — disease group, place,
  * host and reporting window. This is a navigation aid, never a claim that the

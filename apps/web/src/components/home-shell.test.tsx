@@ -239,7 +239,7 @@ describe("HomeShell UI v2", () => {
       ).not.toBeInTheDocument(),
     );
   });
-  it("combines URL filters and includes both-sector events under Animal", () => {
+  it("combines URL filters and includes both-sector events under Animal", async () => {
     window.history.replaceState(
       null,
       "",
@@ -263,7 +263,10 @@ describe("HomeShell UI v2", () => {
     fireEvent.change(screen.getByLabelText("Search"), {
       target: { value: "no-such-event" },
     });
-    expect(window.location.search).toContain("q=no-such-event");
+    // Search commits on a pause rather than per keystroke.
+    await waitFor(() =>
+      expect(window.location.search).toContain("q=no-such-event"),
+    );
     expect(screen.getByText("No events match these filters.")).toBeVisible();
     window.history.replaceState(null, "", "/briefing?period=30d");
     fireEvent.popState(window);
@@ -314,7 +317,7 @@ describe("HomeShell UI v2", () => {
       "Choose a valid date range",
     );
   });
-  it("searches country names and preserves query on full-event links", () => {
+  it("searches country names and preserves query on full-event links", async () => {
     render(
       <HomeShell
         now={NOW}
@@ -326,9 +329,11 @@ describe("HomeShell UI v2", () => {
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "Angola" },
     });
-    expect(
-      screen.getByRole("link", { name: EVENTS[0].headline }),
-    ).toHaveAttribute("href", "/events/EVT-2026-00001?q=Angola");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: EVENTS[0].headline }),
+      ).toHaveAttribute("href", "/events/EVT-2026-00001?q=Angola"),
+    );
     expect(
       screen.queryByRole("link", { name: EVENTS[1].headline }),
     ).not.toBeInTheDocument();

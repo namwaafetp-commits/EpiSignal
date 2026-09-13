@@ -683,13 +683,17 @@ select {
 .shelf-track {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(15rem, 1fr);
+  /* Capped rather than 1fr, so an overflowing track lets the next item peek
+     past the edge instead of dividing evenly and hiding that it scrolls. */
+  grid-auto-columns: minmax(14rem, 20rem);
   gap: 1.5rem;
   margin: 0;
   padding: 0 0 0.9rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
   list-style: none;
 }
 .shelf-item {
@@ -1019,4 +1023,16 @@ select {
 }
 .feed-message__reset:hover {
   border-color: var(--ink);
+}
+
+/* Raise separator and secondary-text contrast when the reader asks for it. */
+@media (prefers-contrast: more) {
+  :root {
+    --ink-muted: #46443f;
+    --line: #b4b0a7;
+  }
+  :root[data-theme="dark"] {
+    --ink-muted: #cfcfca;
+    --line: #4d4d4d;
+  }
 }

@@ -1,6 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
-import type { RelatedEvent } from "@/lib/related-events";
+import { MAX_RELATED_SCORE, type RelatedEvent } from "@/lib/related-events";
 import type { EventDetailResponse } from "@/lib/api-events";
 import { dateLabel } from "@/lib/api-events";
 import type { DashboardEvent } from "@/lib/api-dashboard";
@@ -215,10 +215,16 @@ export function RelatedReporting({ related }: { related: RelatedEvent[] }) {
               {event.headline}
             </Link>
             <p>
-              <span className="event-content__match" aria-hidden="true">
+              <span
+                className="event-content__match"
+                aria-hidden="true"
+                title={`Match score  out of `}
+              >
                 {score}
               </span>
-              <span className="sr-only">Match score {score}. </span>
+              <span className="sr-only">
+                Match score {score} out of {MAX_RELATED_SCORE}.{" "}
+              </span>
               {reasons.join(" · ")}
             </p>
           </li>
