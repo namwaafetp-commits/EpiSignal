@@ -12,6 +12,7 @@
   --shadow: 0 20px 60px rgb(25 22 16/0.12);
   --accent: #b9660a;
   --signal-fresh: #c1121f;
+  --surface-selected: #f1efe8;
   --display: var(--font-display), Georgia, serif;
   --ui: var(--font-ui), system-ui, sans-serif;
   --header-height: 64px;
@@ -28,6 +29,7 @@
   --teal: #66aaa3;
   --accent: #fd8e03;
   --signal-fresh: #f4623a;
+  --surface-selected: #1c1c1c;
   --focus: #e2a756;
   --shadow: 0 24px 70px rgb(0 0 0/0.7);
 }
@@ -610,8 +612,10 @@ select {
 .briefing-row__tag--disease svg {
   color: var(--disease);
 }
+/* paper-raised is #0a0a0a on true black, which is imperceptible. The open row
+   needs a surface you can actually see in both themes. */
 .briefing-row.is-selected {
-  background: var(--paper-raised);
+  background: var(--surface-selected);
 }
 .briefing-row__overline {
   display: flex;
