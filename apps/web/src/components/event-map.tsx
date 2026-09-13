@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { RotateCcw, X } from "lucide-react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
-import { formatCountryLocation } from "../lib/country";
+import { countryName } from "../lib/country";
 
 export type EventMapRegion =
   | ""
@@ -60,10 +61,31 @@ export interface EventMapProps {
   selectedId: string | null;
   onSelect: (publicId: string) => void;
   onReset?: () => void;
+  theme?: "light" | "dark";
 }
 
+const CARTO_LIGHT_STYLE =
+  "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const CARTO_DARK_STYLE =
   "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+const MAP_STYLE = { light: CARTO_LIGHT_STYLE, dark: CARTO_DARK_STYLE };
+const MAP_MOVE_DURATION = 700;
+
+// Points are graded by how recently the event was reported: newest reads red,
+// and the ramp cools to yellow as reporting ages.
+export const RECENCY_RAMP_HOURS = 168;
+export const RECENCY_COLORS = [
+  "#c1121f",
+  "#e05a17",
+  "#dfa520",
+  "#d9cb4f",
+] as const;
+
+function mapMoveDuration() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ? 0
+    : MAP_MOVE_DURATION;
+}
 
 function isMappedEvent(
   event: DashboardEvent,
@@ -71,11 +93,26 @@ function isMappedEvent(
   return (
     (event.map_level === "admin1" || event.map_level === "country") &&
     typeof event.latitude === "number" &&
-    typeof event.longitude === "number"
+    typeof event.longitude === "number" &&
+    Number.isFinite(event.latitude) &&
+    Number.isFinite(event.longitude) &&
+    event.latitude >= -90 &&
+    event.latitude <= 90 &&
+    event.longitude >= -180 &&
+    event.longitude <= 180
   );
 }
 
-export function toGeoJson(events: readonly DashboardEvent[]) {
+function reportAgeHours(reportedAt: string, now: number) {
+  const timestamp = Date.parse(reportedAt);
+  if (!Number.isFinite(timestamp)) return RECENCY_RAMP_HOURS;
+  return Math.max(0, (now - timestamp) / 3_600_000);
+}
+
+export function toGeoJson(
+  events: readonly DashboardEvent[],
+  now: number = Date.now(),
+) {
   return {
     type: "FeatureCollection" as const,
     features: events.filter(isMappedEvent).map((event) => ({
@@ -86,8 +123,10 @@ export function toGeoJson(events: readonly DashboardEvent[]) {
       },
       properties: {
         id: event.public_id,
+        disease_group: event.disease_group ?? "unknown",
+        age_hours: reportAgeHours(event.latest_report_at, now),
         headline: event.headline,
-        location: formatCountryLocation(event.admin1, event.country_code),
+        location: mapLocation(event.admin1, event.country_code),
       },
     })),
   };
@@ -112,19 +151,100 @@ function tooltipContent(headline: string, location: string) {
   return content;
 }
 
+function mapLocation(admin1: string | null, countryCode: string | null) {
+  const country = countryName(countryCode);
+  return admin1 ? `${admin1}, ${country}` : country;
+}
+
 function applyRegionViewport(map: maplibregl.Map, region: EventMapRegion) {
+  const duration = mapMoveDuration();
   if (!region) {
     map.easeTo({
       ...DEFAULT_MAP_VIEWPORT,
-      duration: 700,
+      duration,
     });
     return;
   }
 
   map.fitBounds(REGION_BOUNDS[region], {
     padding: 40,
-    duration: 700,
+    duration,
     maxZoom: 6,
+  });
+}
+
+function addEventLayers(
+  map: maplibregl.Map,
+  events: readonly DashboardEvent[],
+  selectedId: string | null,
+) {
+  map.addSource("events", {
+    type: "geojson",
+    data: toGeoJson(events),
+    cluster: true,
+    clusterRadius: 50,
+    clusterMaxZoom: 8,
+  });
+  map.addLayer({
+    id: "events-clusters",
+    type: "circle",
+    source: "events",
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-color": [
+        "step",
+        ["get", "point_count"],
+        "#718087",
+        10,
+        "#8a826f",
+        30,
+        "#8f706b",
+      ],
+      "circle-radius": ["step", ["get", "point_count"], 18, 10, 24, 30, 30],
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#f4f1e8",
+    },
+  });
+  map.addLayer({
+    id: "events-cluster-count",
+    type: "symbol",
+    source: "events",
+    filter: ["has", "point_count"],
+    layout: {
+      "text-field": ["get", "point_count_abbreviated"],
+      "text-size": 12,
+    },
+    paint: { "text-color": "#252525" },
+  });
+  map.addLayer({
+    id: "events-circles",
+    type: "circle",
+    source: "events",
+    filter: ["!", ["has", "point_count"]],
+    paint: {
+      "circle-radius": ["case", ["==", ["get", "id"], selectedId || ""], 10, 6],
+      "circle-color": [
+        "interpolate",
+        ["linear"],
+        ["get", "age_hours"],
+        0,
+        RECENCY_COLORS[0],
+        24,
+        RECENCY_COLORS[1],
+        72,
+        RECENCY_COLORS[2],
+        RECENCY_RAMP_HOURS,
+        RECENCY_COLORS[3],
+      ],
+      "circle-opacity": 0.92,
+      "circle-stroke-width": [
+        "case",
+        ["==", ["get", "id"], selectedId || ""],
+        3,
+        1.5,
+      ],
+      "circle-stroke-color": "#f4f1e8",
+    },
   });
 }
 
@@ -134,6 +254,7 @@ export function EventMap({
   selectedId,
   onSelect,
   onReset,
+  theme = "light",
 }: EventMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -142,6 +263,7 @@ export function EventMap({
   const onResetRef = useRef(onReset);
   const eventsRef = useRef(events);
   const selectedIdRef = useRef(selectedId);
+  const themeRef = useRef(theme);
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [overlapEvents, setOverlapEvents] = useState<DashboardEvent[]>([]);
@@ -159,7 +281,7 @@ export function EventMap({
     try {
       const map = new maplibregl.Map({
         container: mapContainerRef.current,
-        style: CARTO_DARK_STYLE,
+        style: MAP_STYLE[themeRef.current],
         ...DEFAULT_MAP_VIEWPORT,
         minZoom: 1,
         maxZoom: 14,
@@ -167,77 +289,7 @@ export function EventMap({
       map.addControl(new maplibregl.NavigationControl(), "top-right");
       map.on("load", () => {
         setIsLoaded(true);
-        map.addSource("events", {
-          type: "geojson",
-          data: toGeoJson(eventsRef.current),
-          cluster: true,
-          clusterRadius: 50,
-          clusterMaxZoom: 8,
-        });
-        map.addLayer({
-          id: "events-clusters",
-          type: "circle",
-          source: "events",
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": [
-              "step",
-              ["get", "point_count"],
-              "#41d5d0",
-              10,
-              "#f1b45f",
-              30,
-              "#e86d5d",
-            ],
-            "circle-radius": [
-              "step",
-              ["get", "point_count"],
-              18,
-              10,
-              24,
-              30,
-              30,
-            ],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#b8fffa",
-          },
-        });
-        map.addLayer({
-          id: "events-cluster-count",
-          type: "symbol",
-          source: "events",
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": ["get", "point_count_abbreviated"],
-            "text-size": 12,
-          },
-          paint: {
-            "text-color": "#101b2d",
-          },
-        });
-        map.addLayer({
-          id: "events-circles",
-          type: "circle",
-          source: "events",
-          filter: ["!", ["has", "point_count"]],
-          paint: {
-            "circle-radius": [
-              "case",
-              ["==", ["get", "id"], selectedIdRef.current || ""],
-              10,
-              6,
-            ],
-            "circle-color": "#41d5d0",
-            "circle-opacity": 0.92,
-            "circle-stroke-width": [
-              "case",
-              ["==", ["get", "id"], selectedIdRef.current || ""],
-              3,
-              1.5,
-            ],
-            "circle-stroke-color": "#b8fffa",
-          },
-        });
+        addEventLayers(map, eventsRef.current, selectedIdRef.current);
 
         map.on("click", "events-clusters", async (event) => {
           const feature = event.features?.[0];
@@ -250,7 +302,7 @@ export function EventMap({
           map.easeTo({
             center: [event.lngLat.lng, event.lngLat.lat],
             zoom,
-            duration: 700,
+            duration: mapMoveDuration(),
           });
         });
         map.on("click", "events-circles", (event) => {
@@ -330,6 +382,18 @@ export function EventMap({
   }, [events, isLoaded]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isLoaded || themeRef.current === theme) return;
+    themeRef.current = theme;
+    map.setStyle(MAP_STYLE[theme]);
+    map.once("style.load", () => {
+      if (mapRef.current === map && themeRef.current === theme) {
+        addEventLayers(map, eventsRef.current, selectedIdRef.current);
+      }
+    });
+  }, [isLoaded, theme]);
+
+  useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
     applyRegionViewport(mapRef.current, region);
   }, [isLoaded, region]);
@@ -358,7 +422,7 @@ export function EventMap({
       map.flyTo({
         center: [selectedEvent.longitude, selectedEvent.latitude],
         zoom: Math.max(map.getZoom(), 4),
-        duration: 700,
+        duration: mapMoveDuration(),
       });
     }
   }, [isLoaded, selectedId]);
@@ -374,9 +438,9 @@ export function EventMap({
         {events.length} total.
       </div>
       <div className="map-legend">
-        <span className="map-legend__dot" aria-hidden="true" />
-        {mappedCount} mapped · {locationCount} locations · {events.length}{" "}
-        events
+        <span>Newest</span>
+        <span className="map-legend__ramp" aria-hidden="true" />
+        <span>Older</span>
       </div>
       <button
         type="button"
@@ -393,7 +457,7 @@ export function EventMap({
           }
         }}
       >
-        Reset view
+        <RotateCcw aria-hidden="true" size={18} />
       </button>
       {overlapEvents.length > 1 && (
         <div
@@ -408,7 +472,7 @@ export function EventMap({
               aria-label="Close events at this location"
               onClick={() => setOverlapEvents([])}
             >
-              ×
+              <X aria-hidden="true" size={18} />
             </button>
           </div>
           <div className="event-map-overlap__list">
@@ -422,9 +486,7 @@ export function EventMap({
                 }}
               >
                 <strong>{event.headline}</strong>
-                <span>
-                  {formatCountryLocation(event.admin1, event.country_code)}
-                </span>
+                <span>{mapLocation(event.admin1, event.country_code)}</span>
               </button>
             ))}
           </div>
@@ -432,7 +494,7 @@ export function EventMap({
       )}
       {mapError ? (
         <div className="map-fallback">
-          Map unavailable. All events remain accessible in Calendar view.
+          Map unavailable. All events remain accessible in Briefing view.
         </div>
       ) : (
         <div ref={mapContainerRef} className="event-map__canvas" />

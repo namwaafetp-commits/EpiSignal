@@ -59,7 +59,7 @@ describe("event filter links", () => {
     );
     expect(hostSectorLabel("human")).toBe("Human");
     expect(hostSectorLabel("animal")).toBe("Animal");
-    expect(hostSectorLabel("both")).toBe("Human + Animal");
+    expect(hostSectorLabel("both")).toBe("Human / Animal");
     expect(hostSectorLabel("unknown")).toBe("Unknown");
   });
 });

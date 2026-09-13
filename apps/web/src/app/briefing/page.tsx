@@ -3,7 +3,7 @@ import { getApiStatus } from "@/lib/api-health";
 import { getDashboardEvents } from "@/lib/api-dashboard";
 import { currentTimestamp } from "@/lib/event-filters";
 
-export default async function Home({
+export default async function Briefing({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -20,6 +20,7 @@ export default async function Home({
   ).toString();
   return (
     <HomeShell
+      view="briefing"
       apiStatus={apiStatus}
       eventFeed={eventFeed}
       initialQuery={query}

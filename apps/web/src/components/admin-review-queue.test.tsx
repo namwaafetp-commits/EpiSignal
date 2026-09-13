@@ -247,6 +247,7 @@ describe("AdminReviewQueue component", () => {
     const dependencyKeys = Object.keys(pkg.dependencies).sort();
     expect(dependencyKeys).toEqual([
       "@episignal/contracts",
+      "lucide-react",
       "maplibre-gl",
       "next",
       "react",

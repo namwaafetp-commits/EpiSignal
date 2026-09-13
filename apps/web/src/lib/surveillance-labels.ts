@@ -37,7 +37,7 @@ export function hostSectorLabel(value: string | null | undefined): string {
     case "animal":
       return "Animal";
     case "both":
-      return "Human + Animal";
+      return "Human / Animal";
     default:
       return "Unknown";
   }

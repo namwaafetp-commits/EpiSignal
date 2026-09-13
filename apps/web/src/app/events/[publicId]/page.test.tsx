@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventDetailResponse } from "@/lib/api-events";
 import * as apiEvents from "@/lib/api-events";
+import * as apiDashboard from "@/lib/api-dashboard";
+import type { DashboardEvent } from "@/lib/api-dashboard";
 import EventPage from "./page";
 
 vi.mock("next/navigation", () => ({
@@ -63,31 +65,46 @@ const detail = {
 describe("EventPage", () => {
   beforeEach(() => {
     vi.spyOn(apiEvents, "getEventDetail").mockResolvedValue(detail);
+    vi.spyOn(apiDashboard, "getDashboardEvents").mockResolvedValue({
+      status: "unavailable",
+      data: null,
+    });
   });
 
-  it("uses homepage dark theme, readable location, and direct source links", async () => {
+  it("renders one editorial headline, compact provenance, and direct source links", async () => {
     const page = await EventPage({
       params: Promise.resolve({ publicId: detail.public_id }),
     });
     render(page);
 
-    expect(screen.getByRole("main")).toHaveClass("event-page");
-    expect(screen.getByText("Cacuaco, 🇦🇴 Angola")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveClass("event-content");
+    expect(screen.getByText("Cacuaco, Angola")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("heading", { name: detail.headline }),
+    ).toHaveLength(1);
+    expect(screen.getByText("THE BRIEF")).toBeVisible();
     expect(
       screen.getByRole("link", { name: /WHO AFRO cholera update/i }),
     ).toHaveAttribute("target", "_blank");
-    expect(screen.getByRole("link", { name: /Back to map/i })).toHaveAttribute(
-      "href",
-      "/",
-    );
+    expect(screen.getByText("01")).toBeVisible();
+    // The top navigation carries the way back now.
+    expect(
+      screen.queryByRole("link", { name: /Back to briefing/i }),
+    ).toBeNull();
+    // Removed in favour of the headline and brief carrying the page.
+    expect(
+      screen.queryByRole("heading", { name: "EVENT TIMELINE" }),
+    ).toBeNull();
+    expect(screen.queryByText("First seen")).toBeNull();
   });
 
-  it("renders the latest structured flash brief sections and values", async () => {
+  it("renders legacy structured brief content under The Brief", async () => {
     const page = await EventPage({
       params: Promise.resolve({ publicId: detail.public_id }),
     });
     render(page);
 
+    expect(screen.getByRole("heading", { name: "THE BRIEF" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "The Snapshot" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Key Driver" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Response" })).toBeVisible();
@@ -143,11 +160,12 @@ describe("EventPage", () => {
     });
     render(page);
 
+    expect(screen.getByRole("heading", { name: "THE BRIEF" })).toBeVisible();
     expect(
-      screen.getByRole("heading", {
+      screen.queryByRole("heading", {
         name: "Dengue activity is being monitored",
       }),
-    ).toBeVisible();
+    ).toBeNull();
     expect(
       screen.getByText("Cases were reported in the affected area."),
     ).toBeVisible();
@@ -155,5 +173,77 @@ describe("EventPage", () => {
       screen.getByText(/Watch for evidence of wider transmission/),
     ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "The Snapshot" })).toBeNull();
+  });
+
+  it("leads with three sources and collapses the rest of the trail", async () => {
+    vi.spyOn(apiEvents, "getEventDetail").mockResolvedValueOnce({
+      ...detail,
+      sources: Array.from({ length: 7 }, (_, i) => ({
+        ...detail.sources[0],
+        signal_id: `0000000${i}-1111-1111-1111-111111111111`,
+        title: `Linked report ${i + 1}`,
+        url: `https://example.org/report-${i + 1}`,
+      })),
+    });
+
+    const page = await EventPage({
+      params: Promise.resolve({ publicId: detail.public_id }),
+    });
+    render(page);
+
+    expect(screen.getByRole("heading", { name: "SOURCES · 7" })).toBeVisible();
+    // All seven stay in the DOM and keep their numbering; four are collapsed.
+    expect(screen.getAllByRole("link", { name: /Linked report/ })).toHaveLength(
+      7,
+    );
+    expect(screen.getByText("Show 4 more sources")).toBeVisible();
+    expect(screen.getByText("03")).toBeVisible();
+    expect(screen.getByText("04")).not.toBeVisible();
+  });
+
+  it("ranks related reporting on shared metadata without claiming linkage", async () => {
+    const sibling = {
+      public_id: "EVT-2026-00002",
+      headline: "Cholera cases reported in a neighbouring district",
+      summary: "More cholera reporting.",
+      disease: "Cholera",
+      disease_group: "enteric_food_waterborne",
+      disease_group_label: "Enteric / food- & water-borne infections",
+      host_sector: "human",
+      event_type: "outbreak",
+      status: "ongoing",
+      country_code: "AO",
+      admin1: "Cacuaco",
+      first_reported_at: "2026-08-02T00:00:00Z",
+      latest_report_at: "2026-08-29T10:00:00Z",
+      article_count: 2,
+      last_summarized_at: "2026-08-29T13:00:00Z",
+      latitude: null,
+      longitude: null,
+      map_level: null,
+    } as DashboardEvent;
+
+    vi.spyOn(apiDashboard, "getDashboardEvents").mockResolvedValueOnce({
+      status: "ready",
+      data: { items: [sibling], total: 1 },
+    });
+
+    const page = await EventPage({
+      params: Promise.resolve({ publicId: detail.public_id }),
+    });
+    render(page);
+
+    expect(
+      screen.getByRole("heading", { name: "RELATED REPORTING" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: sibling.headline }),
+    ).toHaveAttribute("href", "/events/EVT-2026-00002");
+    expect(
+      screen.getByText(/not confirmed to be epidemiologically linked/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Same disease group · Same country · Same area/),
+    ).toBeVisible();
   });
 });

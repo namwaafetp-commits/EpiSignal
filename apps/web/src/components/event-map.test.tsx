@@ -5,13 +5,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardEvent } from "../lib/api-dashboard";
 
 type MockMapInstance = {
   fitBounds: ReturnType<typeof vi.fn>;
   easeTo: ReturnType<typeof vi.fn>;
   flyTo: ReturnType<typeof vi.fn>;
+  setStyle: ReturnType<typeof vi.fn>;
   handlers: Map<string, (event?: unknown) => void>;
   layers: Array<Record<string, unknown>>;
   queryRenderedFeatures: ReturnType<typeof vi.fn>;
@@ -29,6 +30,7 @@ type MockMapInstance = {
 
 const mapState = vi.hoisted(() => ({
   instances: [] as MockMapInstance[],
+  options: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("maplibre-gl", () => {
@@ -36,13 +38,15 @@ vi.mock("maplibre-gl", () => {
     fitBounds = vi.fn();
     easeTo = vi.fn();
     flyTo = vi.fn();
+    setStyle = vi.fn();
     handlers = new Map<string, (event?: unknown) => void>();
     layers: Array<Record<string, unknown>> = [];
     queryRenderedFeatures = vi.fn(() => []);
     sources: MockMapInstance["sources"] = {};
 
-    constructor() {
+    constructor(options: Record<string, unknown>) {
       mapState.instances.push(this);
+      mapState.options.push(options);
     }
 
     addControl() {}
@@ -56,6 +60,13 @@ vi.mock("maplibre-gl", () => {
           `${event}:${layer}`,
           handler as (event?: unknown) => void,
         );
+      }
+      return this;
+    }
+
+    once(event: string, handler: unknown) {
+      if (typeof handler === "function") {
+        this.handlers.set(`${event}:map`, handler as (event?: unknown) => void);
       }
       return this;
     }
@@ -144,7 +155,10 @@ function event(
 describe("EventMap regional viewport", () => {
   beforeEach(() => {
     mapState.instances.length = 0;
+    mapState.options.length = 0;
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it("applies the selected region on mount, region changes, and global reset only", () => {
     const { rerender } = render(
@@ -237,7 +251,10 @@ describe("EventMap regional viewport", () => {
 describe("EventMap coverage and interaction", () => {
   beforeEach(() => {
     mapState.instances.length = 0;
+    mapState.options.length = 0;
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it("keeps collocated mapped events in GeoJSON and counts unique locations", () => {
     const data = [event("one"), event("two"), event("three", null)];
@@ -246,6 +263,94 @@ describe("EventMap coverage and interaction", () => {
       toGeoJson(data).features.map((feature) => feature.properties.id),
     ).toEqual(["one", "two"]);
     expect(getMapCounts(data)).toEqual({ mappedCount: 2, locationCount: 1 });
+  });
+
+  it("keeps only valid world coordinates and carries disease groups into map features", () => {
+    const valid = { ...event("valid"), disease_group: "vector_borne" };
+    const invalid = { ...event("invalid"), latitude: 100, longitude: 200 };
+
+    expect(toGeoJson([valid, invalid]).features).toEqual([
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          id: "valid",
+          disease_group: "vector_borne",
+        }),
+      }),
+    ]);
+  });
+
+  it("uses the light Carto style by default and safely reloads layers when theme changes", () => {
+    const { rerender } = render(
+      <EventMap
+        events={[event("one")]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+
+    expect(mapState.options[0]).toMatchObject({
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    });
+
+    rerender(
+      <EventMap
+        events={[event("one")]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+        theme="dark"
+      />,
+    );
+
+    expect(mapState.instances).toHaveLength(1);
+    expect(map.setStyle).toHaveBeenCalledWith(
+      "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    );
+
+    act(() => map.trigger("style.load"));
+    expect(
+      map.layers.filter((layer) => layer.id === "events-circles"),
+    ).toHaveLength(2);
+  });
+
+  it("removes map movement animation when reduced motion is preferred", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    render(
+      <EventMap
+        events={events}
+        region="Africa"
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+
+    expect(map.fitBounds).toHaveBeenCalledWith(
+      REGION_BOUNDS.Africa,
+      expect.objectContaining({ duration: 0 }),
+    );
+  });
+
+  it("keeps map-unavailable events discoverable from Briefing", () => {
+    render(
+      <EventMap
+        events={events}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+
+    act(() => map.trigger("error"));
+
+    expect(
+      screen.getByText(/all events remain accessible in briefing view/i),
+    ).toBeInTheDocument();
   });
 
   it("configures native clustering and renders a cluster count layer", () => {
@@ -424,8 +529,12 @@ describe("EventMap coverage and interaction", () => {
     expect(
       screen.getByRole("button", { name: "Reset map view" }),
     ).toHaveAttribute("title", "Reset view");
+    // Counts moved to the live region; the visible legend now keys the
+    // recency colour ramp instead of repeating numbers over the map.
     expect(
-      screen.getByText("2 mapped · 1 locations · 3 events"),
+      screen.getByText("2 mapped events across 1 locations, 3 total."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Newest")).toBeInTheDocument();
+    expect(screen.getByText("Older")).toBeInTheDocument();
   });
 });
