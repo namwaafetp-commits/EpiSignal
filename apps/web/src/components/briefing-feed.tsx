@@ -72,7 +72,8 @@ function useFeedTraversal(feedRef: RefObject<HTMLDivElement | null>) {
 
       event.preventDefault();
       links[next].focus();
-      links[next].scrollIntoView({ block: "nearest" });
+      // Absent in jsdom, and never essential: focus() already reveals the row.
+      links[next].scrollIntoView?.({ block: "nearest" });
     }
 
     document.addEventListener("keydown", onKeyDown);
