@@ -81,10 +81,6 @@ vi.mock("maplibre-gl", () => {
 
     remove() {}
 
-    removeLayer(id: string) {
-      this.layers = this.layers.filter((layer) => layer.id !== id);
-    }
-
     addSource(id: string, source: { data: unknown; [key: string]: unknown }) {
       const entry = {
         data: source.data as MockFeatureCollection,
@@ -506,7 +502,7 @@ describe("EventMap coverage and interaction", () => {
     );
 
     act(() => map.trigger("style.load"));
-    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circle-one"]);
+    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circles"]);
   });
 
   it("removes map movement animation when reduced motion is preferred", () => {
@@ -546,7 +542,7 @@ describe("EventMap coverage and interaction", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders canonical source data with one filtered layer per event", () => {
+  it("renders one source and one unclustered circle layer", () => {
     render(
       <EventMap
         events={[event("one"), event("two")]}
@@ -564,14 +560,13 @@ describe("EventMap coverage and interaction", () => {
       features: expect.any(Array),
     });
     expect(map.sources.events.options.cluster).not.toBe(true);
-    expect(map.layers.map((layer) => layer.id)).toEqual([
-      "events-circle-one",
-      "events-circle-two",
-    ]);
-    expect(map.layers.every((layer) => layer.filter)).toBe(true);
-    expect(map.sources.events.data.features[0].geometry.coordinates).toEqual([
-      13.66, -8.58,
-    ]);
+    expect(Object.keys(map.sources)).toEqual(["events"]);
+    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circles"]);
+    expect(map.layers[0]).not.toHaveProperty("filter");
+    expect(map.sources.events.data.features[0].properties).toMatchObject({
+      canonical_latitude: -8.58,
+      canonical_longitude: 13.66,
+    });
   });
 
   it("supports hover and click for every screen-deconflicted event", () => {
@@ -598,7 +593,7 @@ describe("EventMap coverage and interaction", () => {
 
     for (const publicId of ["one", "two", "three"]) {
       act(() =>
-        map.trigger("mouseenter", `events-circle-${publicId}`, {
+        map.trigger("mouseenter", "events-circles", {
           features: [
             {
               properties: {
@@ -616,7 +611,7 @@ describe("EventMap coverage and interaction", () => {
       );
 
       act(() =>
-        map.trigger("click", `events-circle-${publicId}`, {
+        map.trigger("click", "events-circles", {
           features: [{ properties: { id: publicId } }],
         }),
       );
@@ -643,20 +638,84 @@ describe("EventMap coverage and interaction", () => {
 
     act(() => map.trigger("load"));
     const source = map.sources.events;
-    expect(source.data.features[1].geometry.coordinates).toEqual([
+    expect(source.data.features[1].geometry.coordinates).not.toEqual([
       nearby.longitude,
       nearby.latitude,
     ]);
 
     map.pixelsPerDegree = 10;
-    act(() => map.trigger("zoom"));
-    const translated = map.layers.find(
-      (layer) => layer.id === "events-circle-nearby",
-    )?.paint as Record<string, unknown>;
-    expect(translated["circle-translate"]).toEqual([0, 0]);
+    act(() => map.trigger("zoomend"));
+    expect(source.data.features[1].geometry.coordinates).toEqual([
+      nearby.longitude,
+      nearby.latitude,
+    ]);
   });
 
-  it("preserves selected state on an individually rendered event", () => {
+  it("updates one source without accumulating layers when event set changes", () => {
+    const { rerender } = render(
+      <EventMap
+        events={[event("one"), event("two")]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+    expect(
+      map.sources.events.data.features[0].geometry.coordinates,
+    ).not.toEqual([13.66, -8.58]);
+
+    rerender(
+      <EventMap
+        events={[event("three")]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(Object.keys(map.sources)).toEqual(["events"]);
+    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circles"]);
+    expect(map.sources.events.data.features).toHaveLength(1);
+    expect(map.sources.events.data.features[0].geometry.coordinates).toEqual([
+      13.66, -8.58,
+    ]);
+  });
+
+  it("recomputes display positions after a coalesced resize", () => {
+    const frame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+    const nearby = event("nearby", [18.66, -8.58]);
+    render(
+      <EventMap
+        events={[event("one"), nearby]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+
+    map.pixelsPerDegree = 10;
+    act(() => {
+      map.trigger("resize");
+      map.trigger("resize");
+    });
+
+    expect(frame).toHaveBeenCalledOnce();
+    expect(map.sources.events.data.features[1].geometry.coordinates).toEqual([
+      nearby.longitude,
+      nearby.latitude,
+    ]);
+  });
+
+  it("preserves selected state in the shared circle layer", () => {
     render(
       <EventMap
         events={[event("one"), event("two")]}
@@ -668,11 +727,26 @@ describe("EventMap coverage and interaction", () => {
     const map = mapState.instances[0];
     act(() => map.trigger("load"));
     expect(
-      (
-        map.layers.find((layer) => layer.id === "events-circle-two")
-          ?.paint as Record<string, unknown>
-      )["circle-radius"],
-    ).toBe(10);
+      (map.layers[0].paint as Record<string, unknown>)["circle-radius"],
+    ).toEqual(["case", ["==", ["get", "id"], "two"], 10, 6]);
+  });
+
+  it("flies to selected event canonical coordinates", () => {
+    const selected = event("selected", [18.66, -8.58]);
+    render(
+      <EventMap
+        events={[event("one"), selected]}
+        region=""
+        selectedId="selected"
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+
+    expect(map.flyTo).toHaveBeenCalledWith(
+      expect.objectContaining({ center: [18.66, -8.58] }),
+    );
   });
 
   it("resets the world viewport", () => {

@@ -2,10 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
-import maplibregl, {
-  type CircleLayerSpecification,
-  type GeoJSONSource,
-} from "maplibre-gl";
+import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryName } from "../lib/country";
@@ -251,14 +248,19 @@ export function displayCoordinates(
 export function toGeoJson(
   events: readonly DashboardEvent[],
   now: number = Date.now(),
+  projection?: DisplayProjection,
 ) {
+  const positions = displayCoordinates(events, projection);
   return {
     type: "FeatureCollection" as const,
     features: events.filter(isMappedEvent).map((event) => ({
       type: "Feature" as const,
       geometry: {
         type: "Point" as const,
-        coordinates: [event.longitude, event.latitude],
+        coordinates: positions.get(event.public_id) ?? [
+          event.longitude,
+          event.latitude,
+        ],
       },
       properties: {
         id: event.public_id,
@@ -314,100 +316,57 @@ function applyRegionViewport(map: maplibregl.Map, region: EventMapRegion) {
   });
 }
 
-function eventLayerId(publicId: string) {
-  return `events-circle-${encodeURIComponent(publicId)}`;
-}
-
-function eventLayerPaint(
-  selected: boolean,
-  translate: [number, number],
-): CircleLayerSpecification["paint"] {
-  return {
-    "circle-radius": selected ? 10 : 6,
-    "circle-color": [
-      "interpolate",
-      ["linear"],
-      ["get", "age_hours"],
-      0,
-      RECENCY_COLORS[0],
-      24,
-      RECENCY_COLORS[1],
-      72,
-      RECENCY_COLORS[2],
-      RECENCY_RAMP_HOURS,
-      RECENCY_COLORS[3],
-    ],
-    "circle-opacity": 0.92,
-    "circle-stroke-width": selected ? 3 : 1.5,
-    "circle-stroke-color": "#f4f1e8",
-    "circle-translate": translate,
-  };
-}
-
 function addEventLayers(
   map: maplibregl.Map,
   events: readonly DashboardEvent[],
   selectedId: string | null,
 ) {
-  if (!map.getSource("events")) {
+  const source = map.getSource("events") as GeoJSONSource | undefined;
+  const data = toGeoJson(events, Date.now(), mapDisplayProjection(map));
+  if (source) {
+    source.setData(data);
+  } else {
     map.addSource("events", {
       type: "geojson",
-      // Canonical coordinates stay in the source. Display deconfliction is
-      // applied below as a screen-space paint translation.
-      data: toGeoJson(events),
+      data,
     });
-  } else {
-    (map.getSource("events") as GeoJSONSource).setData(toGeoJson(events));
   }
 
-  const mappedIds = new Set(
-    events.filter(isMappedEvent).map((event) => event.public_id),
-  );
-  for (const event of events.filter(isMappedEvent)) {
-    const id = eventLayerId(event.public_id);
-    if (!map.getLayer(id)) {
-      map.addLayer({
-        id,
-        type: "circle",
-        source: "events",
-        filter: ["==", ["get", "id"], event.public_id],
-        paint: eventLayerPaint(event.public_id === selectedId, [0, 0]),
-      });
-    }
-    map.setPaintProperty(
-      id,
-      "circle-radius",
-      event.public_id === selectedId ? 10 : 6,
-    );
-    map.setPaintProperty(
-      id,
-      "circle-stroke-width",
-      event.public_id === selectedId ? 3 : 1.5,
-    );
-  }
-
-  for (const event of events) {
-    const id = eventLayerId(event.public_id);
-    if (!mappedIds.has(event.public_id) && map.getLayer(id)) {
-      map.removeLayer(id);
-    }
-  }
-}
-
-function updateDisplayTranslations(
-  map: maplibregl.Map,
-  events: readonly DashboardEvent[],
-) {
-  const positions = displayCoordinates(events, mapDisplayProjection(map));
-  for (const event of events.filter(isMappedEvent)) {
-    const canonical = map.project([event.longitude, event.latitude]);
-    const display = positions.get(event.public_id);
-    if (!display) continue;
-    const translated = map.project(display);
-    map.setPaintProperty(eventLayerId(event.public_id), "circle-translate", [
-      translated.x - canonical.x,
-      translated.y - canonical.y,
-    ]);
+  if (!map.getLayer("events-circles")) {
+    map.addLayer({
+      id: "events-circles",
+      type: "circle",
+      source: "events",
+      paint: {
+        "circle-radius": [
+          "case",
+          ["==", ["get", "id"], selectedId || ""],
+          10,
+          6,
+        ],
+        "circle-color": [
+          "interpolate",
+          ["linear"],
+          ["get", "age_hours"],
+          0,
+          RECENCY_COLORS[0],
+          24,
+          RECENCY_COLORS[1],
+          72,
+          RECENCY_COLORS[2],
+          RECENCY_RAMP_HOURS,
+          RECENCY_COLORS[3],
+        ],
+        "circle-opacity": 0.92,
+        "circle-stroke-width": [
+          "case",
+          ["==", ["get", "id"], selectedId || ""],
+          3,
+          1.5,
+        ],
+        "circle-stroke-color": "#f4f1e8",
+      },
+    });
   }
 }
 
@@ -427,7 +386,6 @@ export function EventMap({
   const eventsRef = useRef(events);
   const selectedIdRef = useRef(selectedId);
   const themeRef = useRef(theme);
-  const boundInteractionLayersRef = useRef(new Set<string>());
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const { mappedCount, locationCount } = getMapCounts(events);
@@ -453,12 +411,23 @@ export function EventMap({
       map.on("load", () => {
         setIsLoaded(true);
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
-        const refreshDisplayPositions = () =>
-          updateDisplayTranslations(map, eventsRef.current);
-        map.on("move", refreshDisplayPositions);
-        map.on("zoom", refreshDisplayPositions);
-        map.on("resize", refreshDisplayPositions);
-        refreshDisplayPositions();
+        const refreshDisplayPositions = () => {
+          const source = map.getSource("events") as GeoJSONSource | undefined;
+          source?.setData(
+            toGeoJson(eventsRef.current, Date.now(), mapDisplayProjection(map)),
+          );
+        };
+        let refreshFrame: number | null = null;
+        const scheduleDisplayRefresh = () => {
+          if (refreshFrame !== null) return;
+          refreshFrame = window.requestAnimationFrame(() => {
+            refreshFrame = null;
+            refreshDisplayPositions();
+          });
+        };
+        map.on("moveend", refreshDisplayPositions);
+        map.on("zoomend", refreshDisplayPositions);
+        map.on("resize", scheduleDisplayRefresh);
       });
       map.on("error", () => setMapError(true));
       mapRef.current = map;
@@ -476,47 +445,43 @@ export function EventMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isLoaded) return;
-    for (const event of events.filter(isMappedEvent)) {
-      const layerId = eventLayerId(event.public_id);
-      if (boundInteractionLayersRef.current.has(layerId)) continue;
-      boundInteractionLayersRef.current.add(layerId);
-      map.on("click", layerId, (mapEvent) => {
-        const publicId = mapEvent.features?.[0]?.properties?.id;
-        if (typeof publicId === "string") onSelectRef.current(publicId);
-      });
-      map.on("mouseenter", layerId, (mapEvent) => {
-        map.getCanvas().style.cursor = "pointer";
-        const feature = mapEvent.features?.[0];
-        const properties = feature?.properties;
-        if (!properties || !mapEvent.lngLat) return;
-        popupRef.current?.remove();
-        popupRef.current = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 12,
-          className: "event-map-popup",
-        })
-          .setLngLat(mapEvent.lngLat)
-          .setDOMContent(
-            tooltipContent(
-              String(properties.headline ?? "Event"),
-              String(properties.location ?? "Location unresolved"),
-            ),
-          )
-          .addTo(map);
-      });
-      map.on("mouseleave", layerId, () => {
-        map.getCanvas().style.cursor = "";
-        popupRef.current?.remove();
-        popupRef.current = null;
-      });
-    }
-  }, [events, isLoaded]);
+    map.on("click", "events-circles", (event) => {
+      const publicId = event.features?.[0]?.properties?.id;
+      if (typeof publicId === "string") onSelectRef.current(publicId);
+    });
+    map.on("mouseenter", "events-circles", (event) => {
+      map.getCanvas().style.cursor = "pointer";
+      const feature = event.features?.[0];
+      const properties = feature?.properties;
+      if (!properties || !event.lngLat) return;
+      popupRef.current?.remove();
+      popupRef.current = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 12,
+        className: "event-map-popup",
+      })
+        .setLngLat(event.lngLat)
+        .setDOMContent(
+          tooltipContent(
+            String(properties.headline ?? "Event"),
+            String(properties.location ?? "Location unresolved"),
+          ),
+        )
+        .addTo(map);
+    });
+    map.on("mouseleave", "events-circles", () => {
+      map.getCanvas().style.cursor = "";
+      popupRef.current?.remove();
+      popupRef.current = null;
+    });
+  }, [isLoaded]);
 
   useEffect(() => {
-    if (!mapRef.current || !isLoaded) return;
-    addEventLayers(mapRef.current, events, selectedIdRef.current);
-    updateDisplayTranslations(mapRef.current, events);
+    const map = mapRef.current;
+    if (!map || !isLoaded) return;
+    const source = map.getSource("events") as GeoJSONSource | undefined;
+    source?.setData(toGeoJson(events, Date.now(), mapDisplayProjection(map)));
   }, [events, isLoaded]);
 
   useEffect(() => {
@@ -527,7 +492,6 @@ export function EventMap({
     map.once("style.load", () => {
       if (mapRef.current === map && themeRef.current === theme) {
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
-        updateDisplayTranslations(map, eventsRef.current);
       }
     });
   }, [isLoaded, theme]);
@@ -540,8 +504,20 @@ export function EventMap({
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
     const map = mapRef.current;
-    addEventLayers(map, eventsRef.current, selectedId);
-    updateDisplayTranslations(map, eventsRef.current);
+    if (map.getLayer("events-circles")) {
+      map.setPaintProperty("events-circles", "circle-radius", [
+        "case",
+        ["==", ["get", "id"], selectedId || ""],
+        10,
+        6,
+      ]);
+      map.setPaintProperty("events-circles", "circle-stroke-width", [
+        "case",
+        ["==", ["get", "id"], selectedId || ""],
+        3,
+        1.5,
+      ]);
+    }
     const selectedEvent = eventsRef.current.find(
       (event) => event.public_id === selectedId,
     );
