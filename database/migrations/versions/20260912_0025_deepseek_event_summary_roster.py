@@ -21,6 +21,7 @@ down_revision: str | None = "20260911_0024"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+
 def upgrade() -> None:
     # Keep the historical row for request-ledger traceability, but prevent the
     # old route from remaining an active candidate after this revision.
