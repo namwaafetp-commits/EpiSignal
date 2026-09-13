@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import type { MouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryFlag, countryName } from "../lib/country";
@@ -19,6 +25,61 @@ import {
  */
 export const SHELF_THRESHOLD = 10;
 
+function isTypingTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  return (
+    el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName ?? "")
+  );
+}
+
+/**
+ * Moves focus between headlines so the feed can be worked through without a
+ * mouse. Enter needs no handling: focusing a headline and pressing it fires the
+ * same click path as a left click, which opens the reading pane.
+ *
+ * j and k work anywhere on the page because neither scrolls. The arrow keys
+ * only take over once focus is already in the feed, so ordinary page scrolling
+ * is never hijacked.
+ */
+function useFeedTraversal(feedRef: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target)) return;
+
+      const links = [
+        ...(feedRef.current?.querySelectorAll<HTMLAnchorElement>(
+          "[data-event-link]",
+        ) ?? []),
+      ];
+      if (!links.length) return;
+
+      const current = links.indexOf(
+        document.activeElement as HTMLAnchorElement,
+      );
+      const inFeed = current !== -1;
+      const forward =
+        event.key === "j" || (inFeed && event.key === "ArrowDown");
+      const back = event.key === "k" || (inFeed && event.key === "ArrowUp");
+      if (!forward && !back) return;
+
+      const next = !inFeed
+        ? forward
+          ? 0
+          : links.length - 1
+        : Math.min(links.length - 1, Math.max(0, current + (forward ? 1 : -1)));
+
+      event.preventDefault();
+      links[next].focus();
+      links[next].scrollIntoView({ block: "nearest" });
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [feedRef]);
+}
+
 type RowProps = {
   event: DashboardEvent;
   selectedId: string | null;
@@ -27,19 +88,41 @@ type RowProps = {
   now: number;
 };
 
+/**
+ * The reading pane only takes over a plain desktop activation. Modified clicks,
+ * middle clicks and mobile all fall through to the link so opening in a new tab
+ * and navigating still work.
+ */
+function opensReadingPane(e: {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}) {
+  return (
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.shiftKey &&
+    !e.altKey &&
+    !window.matchMedia("(max-width: 700px)").matches
+  );
+}
+
 function useRowSelect(onSelect: (id: string) => void) {
-  return function select(e: MouseEvent<HTMLAnchorElement>, id: string) {
-    if (
-      e.metaKey ||
-      e.ctrlKey ||
-      e.shiftKey ||
-      e.altKey ||
-      e.button !== 0 ||
-      window.matchMedia("(max-width: 700px)").matches
-    )
-      return;
-    e.preventDefault();
-    onSelect(id);
+  return {
+    onClick(e: MouseEvent<HTMLAnchorElement>, id: string) {
+      if (e.button !== 0 || !opensReadingPane(e)) return;
+      e.preventDefault();
+      onSelect(id);
+    },
+    // Handled explicitly rather than leaning on the anchor default, so Enter
+    // behaves the same everywhere. preventDefault suppresses the native click,
+    // so the pane cannot open twice.
+    onKeyDown(e: ReactKeyboardEvent<HTMLAnchorElement>, id: string) {
+      if (e.key !== "Enter" || !opensReadingPane(e)) return;
+      e.preventDefault();
+      onSelect(id);
+    },
   };
 }
 
@@ -112,13 +195,16 @@ function EventHeadline({
   onSelect,
   query,
 }: Omit<RowProps, "now">) {
-  const select = useRowSelect(onSelect);
+  const row = useRowSelect(onSelect);
   return (
     <h3>
       <Link
         href={`/events/${encodeURIComponent(event.public_id)}${query}`}
-        onClick={(e) => select(e, event.public_id)}
+        onClick={(e) => row.onClick(e, event.public_id)}
+        onKeyDown={(e) => row.onKeyDown(e, event.public_id)}
         aria-current={selectedId === event.public_id ? "true" : undefined}
+        aria-keyshortcuts="j k"
+        data-event-link=""
       >
         {event.headline}
         <ArrowUpRight size={17} aria-hidden="true" />
@@ -141,6 +227,15 @@ function BriefingRow(props: RowProps) {
   );
 }
 
+function FeedShortcutHint() {
+  return (
+    <p className="feed-shortcuts">
+      Press <kbd>J</kbd> and <kbd>K</kbd> to move through events,{" "}
+      <kbd>Enter</kbd> to open.
+    </p>
+  );
+}
+
 export function BriefingFeed({
   events,
   selectedId,
@@ -155,10 +250,13 @@ export function BriefingFeed({
   now: number;
 }) {
   const asShelves = events.length > SHELF_THRESHOLD;
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  useFeedTraversal(feedRef);
 
   if (asShelves) {
     return (
-      <div className="briefing-feed briefing-feed--shelves">
+      <div className="briefing-feed briefing-feed--shelves" ref={feedRef}>
+        <FeedShortcutHint />
         {groupByDisease(events).map(([group, rows]) => (
           <section
             className="briefing-shelf"
@@ -199,7 +297,8 @@ export function BriefingFeed({
   }
 
   return (
-    <div className="briefing-feed">
+    <div className="briefing-feed" ref={feedRef}>
+      <FeedShortcutHint />
       {groupByDay(events).map(([day, rows]) => (
         <section className="briefing-section" key={day}>
           <h2 className="date-heading">

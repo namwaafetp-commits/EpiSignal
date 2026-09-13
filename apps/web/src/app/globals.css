@@ -1092,3 +1092,25 @@ select {
 :root[data-theme="dark"] .filter-hint {
   color: #e9868f;
 }
+
+/* A shortcut nobody knows about is not a feature. Shown only where a keyboard
+   is the likely input; hidden entirely on touch-first devices. */
+.feed-shortcuts {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .feed-shortcuts {
+    display: block;
+    margin: 0 0 0.4rem;
+    color: var(--ink-muted);
+    font-size: 0.72rem;
+  }
+}
+.feed-shortcuts kbd {
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface-raised);
+  font-family: var(--ui);
+  font-size: 0.7rem;
+}

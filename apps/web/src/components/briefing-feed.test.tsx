@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { BriefingFeed, SHELF_THRESHOLD } from "./briefing-feed";
@@ -92,5 +98,106 @@ describe("BriefingFeed", () => {
     renderFeed([buildEvent(1, { host_sector: "both" })]);
     expect(screen.getByTitle("Human / Animal")).toBeInTheDocument();
     expect(screen.getByText("Human / Animal")).toHaveClass("sr-only");
+  });
+
+  describe("keyboard traversal", () => {
+    const headlines = () =>
+      screen.getAllByRole("link").map((a) => a.textContent?.trim());
+
+    it("walks the feed with j and k from anywhere on the page", () => {
+      renderFeed([buildEvent(1), buildEvent(2), buildEvent(3)]);
+
+      fireEvent.keyDown(document, { key: "j" });
+      expect(document.activeElement).toHaveTextContent("Reported event 1");
+
+      fireEvent.keyDown(document, { key: "j" });
+      expect(document.activeElement).toHaveTextContent("Reported event 2");
+
+      fireEvent.keyDown(document, { key: "k" });
+      expect(document.activeElement).toHaveTextContent("Reported event 1");
+
+      // Stops at the ends rather than wrapping.
+      fireEvent.keyDown(document, { key: "k" });
+      expect(document.activeElement).toHaveTextContent("Reported event 1");
+      expect(headlines()).toHaveLength(3);
+    });
+
+    it("leaves typing alone", () => {
+      const { container } = renderFeed([buildEvent(1)]);
+      const input = document.createElement("input");
+      container.append(input);
+      input.focus();
+
+      fireEvent.keyDown(input, { key: "j" });
+      expect(document.activeElement).toBe(input);
+    });
+
+    it("ignores shortcuts held with a modifier", () => {
+      renderFeed([buildEvent(1), buildEvent(2)]);
+      fireEvent.keyDown(document, { key: "j", metaKey: true });
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it("takes the arrow keys only once focus is already in the feed", () => {
+      renderFeed([buildEvent(1), buildEvent(2)]);
+
+      // Outside the feed the page keeps its normal scrolling.
+      const outside = fireEvent.keyDown(document, { key: "ArrowDown" });
+      expect(outside).toBe(true);
+      expect(document.activeElement).toBe(document.body);
+
+      fireEvent.keyDown(document, { key: "j" });
+      expect(document.activeElement).toHaveTextContent("Reported event 1");
+
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      expect(document.activeElement).toHaveTextContent("Reported event 2");
+    });
+
+    it("opens the reading pane on Enter without letting the link fire twice", () => {
+      const onSelect = vi.fn();
+      render(
+        <BriefingFeed
+          events={[buildEvent(1), buildEvent(2)]}
+          selectedId={null}
+          onSelect={onSelect}
+          query=""
+          now={NOW}
+        />,
+      );
+
+      fireEvent.keyDown(document, { key: "j" });
+      const focused = document.activeElement as HTMLAnchorElement;
+      const notDefaultPrevented = fireEvent.keyDown(focused, { key: "Enter" });
+
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith("EVT-00001");
+      // preventDefault suppresses the browser click, so the pane opens once.
+      expect(notDefaultPrevented).toBe(false);
+    });
+
+    it("lets a modified Enter follow the link instead", () => {
+      const onSelect = vi.fn();
+      render(
+        <BriefingFeed
+          events={[buildEvent(1)]}
+          selectedId={null}
+          onSelect={onSelect}
+          query=""
+          now={NOW}
+        />,
+      );
+
+      fireEvent.keyDown(document, { key: "j" });
+      fireEvent.keyDown(document.activeElement!, {
+        key: "Enter",
+        metaKey: true,
+      });
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("tells the reader the shortcuts exist", () => {
+      renderFeed([buildEvent(1)]);
+      expect(screen.getByText(/to move through events/)).toBeInTheDocument();
+    });
   });
 });
