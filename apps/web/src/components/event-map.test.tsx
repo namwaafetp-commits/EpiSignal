@@ -13,13 +13,21 @@ type MockMapInstance = {
   sources: Record<
     string,
     {
-      data: unknown;
+      data: MockFeatureCollection;
       getClusterExpansionZoom: ReturnType<typeof vi.fn>;
       options: Record<string, unknown>;
       setData: ReturnType<typeof vi.fn>;
     }
   >;
   trigger: (event: string, layer?: string, payload?: unknown) => void;
+  pixelsPerDegree: number;
+};
+
+type MockFeatureCollection = {
+  features: Array<{
+    geometry: { coordinates: [number, number] };
+    properties: { id: string };
+  }>;
 };
 
 const mapState = vi.hoisted(() => ({
@@ -38,6 +46,7 @@ vi.mock("maplibre-gl", () => {
     layers: Array<Record<string, unknown>> = [];
     queryRenderedFeatures = vi.fn(() => []);
     sources: MockMapInstance["sources"] = {};
+    pixelsPerDegree = 2;
 
     constructor(options: Record<string, unknown>) {
       mapState.instances.push(this);
@@ -72,13 +81,20 @@ vi.mock("maplibre-gl", () => {
 
     remove() {}
 
+    removeLayer(id: string) {
+      this.layers = this.layers.filter((layer) => layer.id !== id);
+    }
+
     addSource(id: string, source: { data: unknown; [key: string]: unknown }) {
-      this.sources[id] = {
-        data: source.data,
+      const entry = {
+        data: source.data as MockFeatureCollection,
         getClusterExpansionZoom: vi.fn().mockResolvedValue(5),
         options: source,
-        setData: vi.fn(),
+        setData: vi.fn((data: unknown) => {
+          entry.data = data as MockFeatureCollection;
+        }),
       };
+      this.sources[id] = entry;
     }
 
     getSource(id: string) {
@@ -86,17 +102,40 @@ vi.mock("maplibre-gl", () => {
     }
 
     addLayer(layer: Record<string, unknown>) {
-      this.layers.push(layer);
+      this.layers.push({ ...layer, paint: { ...(layer.paint as object) } });
     }
 
-    getLayer() {
-      return {};
+    getLayer(id: string) {
+      return this.layers.find((layer) => layer.id === id);
     }
 
-    setPaintProperty() {}
+    setPaintProperty(id: string, property: string, value: unknown) {
+      const layer = this.layers.find((candidate) => candidate.id === id);
+      if (layer) {
+        layer.paint = {
+          ...(layer.paint as object),
+          [property]: value,
+        };
+      }
+    }
 
     getZoom() {
       return 2;
+    }
+
+    project(coordinate: [number, number]) {
+      return {
+        x: coordinate[0] * this.pixelsPerDegree,
+        y: coordinate[1] * this.pixelsPerDegree,
+      };
+    }
+
+    unproject(point: { x: number; y: number } | [number, number]) {
+      const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
+      return {
+        lng: x / this.pixelsPerDegree,
+        lat: y / this.pixelsPerDegree,
+      };
     }
 
     getCanvas() {
@@ -147,8 +186,32 @@ import {
   REGION_BOUNDS,
   getMapCounts,
   toGeoJson,
+  displayCoordinates,
   type EventMapRegion,
 } from "./event-map";
+
+type ScreenPoint = { x: number; y: number };
+
+function screenProjection(pixelsPerDegree: number) {
+  return {
+    project([longitude, latitude]: [number, number]): ScreenPoint {
+      return { x: longitude * pixelsPerDegree, y: latitude * pixelsPerDegree };
+    },
+    unproject({ x, y }: ScreenPoint) {
+      return { lng: x / pixelsPerDegree, lat: y / pixelsPerDegree };
+    },
+  };
+}
+
+function screenDistance(
+  left: [number, number],
+  right: [number, number],
+  pixelsPerDegree: number,
+) {
+  const dx = (left[0] - right[0]) * pixelsPerDegree;
+  const dy = (left[1] - right[1]) * pixelsPerDegree;
+  return Math.hypot(dx, dy);
+}
 
 const events: DashboardEvent[] = [];
 
@@ -281,15 +344,87 @@ describe("EventMap coverage and interaction", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("fans out collocated mapped events without changing source event data", () => {
+  it("keeps canonical GeoJSON coordinates and separates exact points in screen space", () => {
+    const projector = screenProjection(2);
+    const data = [event("one"), event("two")];
+    const features = toGeoJson(data, 0).features;
+    const positions = [...displayCoordinates(data, projector).values()];
+
+    expect(
+      screenDistance(positions[0], positions[1], 2),
+    ).toBeGreaterThanOrEqual(16);
+    expect(features.map((feature) => feature.geometry.coordinates)).toEqual([
+      [13.66, -8.58],
+      [13.66, -8.58],
+    ]);
+    expect(displayCoordinates([event("two"), event("one")], projector)).toEqual(
+      displayCoordinates([event("one"), event("two")], projector),
+    );
+  });
+
+  it("separates three exact-coordinate events deterministically in screen space", () => {
+    const projector = screenProjection(2);
+    const input = [event("three"), event("one"), event("two")];
+    const first = [...displayCoordinates(input, projector).values()];
+    const second = [...displayCoordinates(input, projector).values()];
+    const positions = first;
+
+    for (let left = 0; left < positions.length; left += 1) {
+      for (let right = left + 1; right < positions.length; right += 1) {
+        expect(
+          screenDistance(positions[left], positions[right], 2),
+        ).toBeGreaterThanOrEqual(16);
+      }
+    }
+    expect(first).toEqual(second);
+    expect(input.every((item) => item.longitude === 13.66)).toBe(true);
+  });
+
+  it("returns nearby points to canonical positions when zoom separates them", () => {
+    const nearby = event("nearby", [18.66, -8.58]);
+    const worldProjector = screenProjection(2);
+    const zoomedProjector = screenProjection(10);
+    const worldPosition = displayCoordinates(
+      [event("one"), nearby],
+      worldProjector,
+    ).get("nearby");
+    const zoomedPosition = displayCoordinates(
+      [event("one"), nearby],
+      zoomedProjector,
+    ).get("nearby");
+
+    expect(worldPosition).not.toEqual([nearby.longitude, nearby.latitude]);
+    expect(zoomedPosition).toEqual([nearby.longitude, nearby.latitude]);
+  });
+
+  it("keeps a fanned group separated from a neighboring singleton", () => {
+    const projector = screenProjection(1);
+    const neighbor = event("edge", [21.66, 7.42]);
+    const positions = [
+      ...displayCoordinates(
+        [event("one"), event("two"), neighbor],
+        projector,
+      ).values(),
+    ];
+
+    for (let left = 0; left < positions.length; left += 1) {
+      for (let right = left + 1; right < positions.length; right += 1) {
+        expect(
+          screenDistance(positions[left], positions[right], 1),
+        ).toBeGreaterThanOrEqual(16);
+      }
+    }
+  });
+
+  it("keeps collocated source event data canonical", () => {
     const data = [event("one"), event("two"), event("three", null)];
-    const features = toGeoJson(data).features;
+    const features = toGeoJson(data, 0).features;
 
     expect(features.map((feature) => feature.properties.id)).toEqual([
       "one",
       "two",
     ]);
-    expect(features[0].geometry.coordinates).not.toEqual(
+    expect(features[0].geometry.coordinates).toEqual(
       features[1].geometry.coordinates,
     );
     expect(data[0].longitude).toBe(13.66);
@@ -297,30 +432,29 @@ describe("EventMap coverage and interaction", () => {
     expect(getMapCounts(data)).toEqual({ mappedCount: 2, locationCount: 1 });
   });
 
-  it("fans out nearby and three-way exact-coordinate events deterministically", () => {
+  it("keeps screen-space positions stable and canonical source positions unchanged", () => {
     const nearby = event("nearby", [13.9, -8.58]);
     const input = [event("one"), nearby, event("two"), event("three")];
+    const projector = screenProjection(2);
 
-    const nearbyFeatures = toGeoJson([event("one"), nearby]).features;
-    const exactFeatures = toGeoJson([
-      event("one"),
-      event("two"),
-      event("three"),
-    ]).features;
-    const first = toGeoJson(input).features;
-    const second = toGeoJson(input).features;
-
-    expect(nearbyFeatures[0].geometry.coordinates).not.toEqual(
-      nearbyFeatures[1].geometry.coordinates,
+    const nearbyPositions = displayCoordinates(
+      [event("one"), nearby],
+      projector,
     );
-    expect(
-      new Set(
-        exactFeatures.map((feature) => feature.geometry.coordinates.join(",")),
-      ),
-    ).toHaveLength(3);
+    const exactPositions = displayCoordinates(
+      [event("one"), event("two"), event("three")],
+      projector,
+    );
+    const first = toGeoJson(input, 0).features;
+    const second = toGeoJson(input, 0).features;
+
+    expect(nearbyPositions.get("one")).not.toEqual(
+      nearbyPositions.get("nearby"),
+    );
+    expect(new Set(exactPositions.values())).toHaveLength(3);
     expect(
       new Set(first.map((feature) => feature.geometry.coordinates.join(","))),
-    ).toHaveLength(4);
+    ).toHaveLength(2);
     expect(first.map((feature) => feature.geometry.coordinates)).toEqual(
       second.map((feature) => feature.geometry.coordinates),
     );
@@ -372,9 +506,7 @@ describe("EventMap coverage and interaction", () => {
     );
 
     act(() => map.trigger("style.load"));
-    expect(
-      map.layers.filter((layer) => layer.id === "events-circles"),
-    ).toHaveLength(2);
+    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circle-one"]);
   });
 
   it("removes map movement animation when reduced motion is preferred", () => {
@@ -414,7 +546,7 @@ describe("EventMap coverage and interaction", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders one unclustered event layer", () => {
+  it("renders canonical source data with one filtered layer per event", () => {
     render(
       <EventMap
         events={[event("one"), event("two")]}
@@ -432,11 +564,17 @@ describe("EventMap coverage and interaction", () => {
       features: expect.any(Array),
     });
     expect(map.sources.events.options.cluster).not.toBe(true);
-    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circles"]);
-    expect(map.layers[0]).not.toHaveProperty("filter");
+    expect(map.layers.map((layer) => layer.id)).toEqual([
+      "events-circle-one",
+      "events-circle-two",
+    ]);
+    expect(map.layers.every((layer) => layer.filter)).toBe(true);
+    expect(map.sources.events.data.features[0].geometry.coordinates).toEqual([
+      13.66, -8.58,
+    ]);
   });
 
-  it("supports hover and click for every displaced event", () => {
+  it("supports hover and click for every screen-deconflicted event", () => {
     const onSelect = vi.fn();
     render(
       <EventMap
@@ -449,9 +587,18 @@ describe("EventMap coverage and interaction", () => {
     const map = mapState.instances[0];
     act(() => map.trigger("load"));
 
+    expect(map.sources.events.data.features).toHaveLength(3);
+    expect(
+      new Set(
+        map.sources.events.data.features.map(
+          (feature: { properties: { id: string } }) => feature.properties.id,
+        ),
+      ),
+    ).toHaveLength(3);
+
     for (const publicId of ["one", "two", "three"]) {
       act(() =>
-        map.trigger("mouseenter", "events-circles", {
+        map.trigger("mouseenter", `events-circle-${publicId}`, {
           features: [
             {
               properties: {
@@ -469,7 +616,7 @@ describe("EventMap coverage and interaction", () => {
       );
 
       act(() =>
-        map.trigger("click", "events-circles", {
+        map.trigger("click", `events-circle-${publicId}`, {
           features: [{ properties: { id: publicId } }],
         }),
       );
@@ -480,6 +627,33 @@ describe("EventMap coverage and interaction", () => {
       "two",
       "three",
     ]);
+  });
+
+  it("recomputes display positions after zoom changes", () => {
+    const nearby = event("nearby", [18.66, -8.58]);
+    render(
+      <EventMap
+        events={[event("one"), nearby]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+
+    act(() => map.trigger("load"));
+    const source = map.sources.events;
+    expect(source.data.features[1].geometry.coordinates).toEqual([
+      nearby.longitude,
+      nearby.latitude,
+    ]);
+
+    map.pixelsPerDegree = 10;
+    act(() => map.trigger("zoom"));
+    const translated = map.layers.find(
+      (layer) => layer.id === "events-circle-nearby",
+    )?.paint as Record<string, unknown>;
+    expect(translated["circle-translate"]).toEqual([0, 0]);
   });
 
   it("preserves selected state on an individually rendered event", () => {
@@ -494,8 +668,11 @@ describe("EventMap coverage and interaction", () => {
     const map = mapState.instances[0];
     act(() => map.trigger("load"));
     expect(
-      (map.layers[0].paint as Record<string, unknown>)["circle-radius"],
-    ).toEqual(["case", ["==", ["get", "id"], "two"], 10, 6]);
+      (
+        map.layers.find((layer) => layer.id === "events-circle-two")
+          ?.paint as Record<string, unknown>
+      )["circle-radius"],
+    ).toBe(10);
   });
 
   it("resets the world viewport", () => {

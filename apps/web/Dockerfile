@@ -40,6 +40,7 @@ RUN groupadd --system --gid 10001 episignal \
 
 COPY --from=builder --chown=episignal:episignal /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=episignal:episignal /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=episignal:episignal /app/apps/web/public ./apps/web/public
 
 USER episignal
 

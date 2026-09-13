@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
-import maplibregl, { type GeoJSONSource } from "maplibre-gl";
+import maplibregl, {
+  type CircleLayerSpecification,
+  type GeoJSONSource,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryName } from "../lib/country";
@@ -109,59 +112,137 @@ function reportAgeHours(reportedAt: string, now: number) {
   return Math.max(0, (now - timestamp) / 3_600_000);
 }
 
-const DISPLAY_COLLISION_DISTANCE_DEGREES = 0.4;
-const DISPLAY_FAN_OUT_RADIUS_DEGREES = 0.35;
+export const MIN_DISPLAY_SEPARATION_PX = 16;
 
 type MappedEvent = DashboardEvent & { latitude: number; longitude: number };
 
-function coordinateDistanceSquared(left: MappedEvent, right: MappedEvent) {
-  return (
-    (left.longitude - right.longitude) ** 2 +
-    (left.latitude - right.latitude) ** 2
-  );
+export interface DisplayProjection {
+  project(coordinate: [number, number]): { x: number; y: number };
+  unproject(point: { x: number; y: number }): { lng: number; lat: number };
 }
 
-/** Give colliding display points stable visual positions without changing API data. */
-export function displayCoordinates(events: readonly DashboardEvent[]) {
+function mapDisplayProjection(map: maplibregl.Map): DisplayProjection {
+  return {
+    project: (coordinate) => {
+      const point = map.project(coordinate);
+      return { x: point.x, y: point.y };
+    },
+    unproject: (point) => {
+      const coordinate = map.unproject([point.x, point.y]);
+      return { lng: coordinate.lng, lat: coordinate.lat };
+    },
+  };
+}
+
+type ScreenPoint = { x: number; y: number };
+
+function screenDistanceSquared(left: ScreenPoint, right: ScreenPoint) {
+  return (left.x - right.x) ** 2 + (left.y - right.y) ** 2;
+}
+
+/** Give colliding display points stable screen-space positions without changing API data. */
+export function displayCoordinates(
+  events: readonly DashboardEvent[],
+  projection?: DisplayProjection,
+) {
   const mapped = events.filter(isMappedEvent);
   const groups: MappedEvent[][] = [];
-  const thresholdSquared = DISPLAY_COLLISION_DISTANCE_DEGREES ** 2;
+  const canonicalScreens = new Map<string, ScreenPoint>();
+  const positions = new Map<string, [number, number]>();
 
-  for (const current of [...mapped].sort((left, right) =>
-    left.public_id.localeCompare(right.public_id),
-  )) {
-    const group = groups.find((candidate) =>
-      candidate.some(
-        (member) =>
-          coordinateDistanceSquared(member, current) <= thresholdSquared,
-      ),
-    );
-    if (group) group.push(current);
-    else groups.push([current]);
+  if (!projection) {
+    for (const event of mapped) {
+      positions.set(event.public_id, [event.longitude, event.latitude]);
+    }
+    return positions;
   }
 
-  const positions = new Map<string, [number, number]>();
-  for (const group of groups) {
-    if (group.length === 1) {
-      const only = group[0];
-      positions.set(only.public_id, [only.longitude, only.latitude]);
-      continue;
-    }
-
-    const center = group.reduce(
-      (sum, member) => [sum[0] + member.longitude, sum[1] + member.latitude],
-      [0, 0],
+  for (const event of mapped) {
+    canonicalScreens.set(
+      event.public_id,
+      projection.project([event.longitude, event.latitude]),
     );
-    center[0] /= group.length;
-    center[1] /= group.length;
+  }
 
-    group.forEach((member, index) => {
-      const angle = -Math.PI / 2 + (2 * Math.PI * index) / group.length;
-      positions.set(member.public_id, [
-        center[0] + Math.cos(angle) * DISPLAY_FAN_OUT_RADIUS_DEGREES,
-        center[1] + Math.sin(angle) * DISPLAY_FAN_OUT_RADIUS_DEGREES,
-      ]);
-    });
+  for (const event of [...mapped].sort((left, right) =>
+    left.public_id.localeCompare(right.public_id),
+  )) {
+    groups.push([event]);
+  }
+
+  const thresholdSquared = MIN_DISPLAY_SEPARATION_PX ** 2;
+  const groupPositions = new Map<string, ScreenPoint>();
+
+  const recomputeGroupPositions = () => {
+    groupPositions.clear();
+    for (const group of groups) {
+      if (group.length === 1) {
+        groupPositions.set(
+          group[0].public_id,
+          canonicalScreens.get(group[0].public_id)!,
+        );
+        continue;
+      }
+
+      const center = group.reduce(
+        (sum, member) => {
+          const point = canonicalScreens.get(member.public_id)!;
+          return [sum[0] + point.x, sum[1] + point.y];
+        },
+        [0, 0],
+      );
+      center[0] /= group.length;
+      center[1] /= group.length;
+      const radius =
+        MIN_DISPLAY_SEPARATION_PX /
+        (2 * Math.sin(Math.PI / Math.max(group.length, 2)));
+
+      group.forEach((member, index) => {
+        const angle = -Math.PI / 2 + (2 * Math.PI * index) / group.length;
+        groupPositions.set(member.public_id, {
+          x: center[0] + Math.cos(angle) * radius,
+          y: center[1] + Math.sin(angle) * radius,
+        });
+      });
+    }
+  };
+
+  // Fan-out can push a point into a neighboring group. Merge those groups and
+  // recompute until every final rendered position is collision-free.
+  while (true) {
+    recomputeGroupPositions();
+    let mergeLeft = -1;
+    let mergeRight = -1;
+    for (let left = 0; left < groups.length && mergeLeft < 0; left += 1) {
+      for (let right = left + 1; right < groups.length; right += 1) {
+        const collides = groups[left].some((leftMember) =>
+          groups[right].some(
+            (rightMember) =>
+              screenDistanceSquared(
+                groupPositions.get(leftMember.public_id)!,
+                groupPositions.get(rightMember.public_id)!,
+              ) < thresholdSquared,
+          ),
+        );
+        if (collides) {
+          mergeLeft = left;
+          mergeRight = right;
+          break;
+        }
+      }
+    }
+    if (mergeLeft < 0) break;
+
+    groups[mergeLeft] = [...groups[mergeLeft], ...groups[mergeRight]].sort(
+      (left, right) => left.public_id.localeCompare(right.public_id),
+    );
+    groups.splice(mergeRight, 1);
+  }
+
+  for (const event of mapped) {
+    const displayPoint = groupPositions.get(event.public_id)!;
+    const coordinate = projection.unproject(displayPoint);
+    positions.set(event.public_id, [coordinate.lng, coordinate.lat]);
   }
 
   return positions;
@@ -171,17 +252,13 @@ export function toGeoJson(
   events: readonly DashboardEvent[],
   now: number = Date.now(),
 ) {
-  const positions = displayCoordinates(events);
   return {
     type: "FeatureCollection" as const,
     features: events.filter(isMappedEvent).map((event) => ({
       type: "Feature" as const,
       geometry: {
         type: "Point" as const,
-        coordinates: positions.get(event.public_id) ?? [
-          event.longitude,
-          event.latitude,
-        ],
+        coordinates: [event.longitude, event.latitude],
       },
       properties: {
         id: event.public_id,
@@ -237,44 +314,101 @@ function applyRegionViewport(map: maplibregl.Map, region: EventMapRegion) {
   });
 }
 
+function eventLayerId(publicId: string) {
+  return `events-circle-${encodeURIComponent(publicId)}`;
+}
+
+function eventLayerPaint(
+  selected: boolean,
+  translate: [number, number],
+): CircleLayerSpecification["paint"] {
+  return {
+    "circle-radius": selected ? 10 : 6,
+    "circle-color": [
+      "interpolate",
+      ["linear"],
+      ["get", "age_hours"],
+      0,
+      RECENCY_COLORS[0],
+      24,
+      RECENCY_COLORS[1],
+      72,
+      RECENCY_COLORS[2],
+      RECENCY_RAMP_HOURS,
+      RECENCY_COLORS[3],
+    ],
+    "circle-opacity": 0.92,
+    "circle-stroke-width": selected ? 3 : 1.5,
+    "circle-stroke-color": "#f4f1e8",
+    "circle-translate": translate,
+  };
+}
+
 function addEventLayers(
   map: maplibregl.Map,
   events: readonly DashboardEvent[],
   selectedId: string | null,
 ) {
-  map.addSource("events", {
-    type: "geojson",
-    data: toGeoJson(events),
-  });
-  map.addLayer({
-    id: "events-circles",
-    type: "circle",
-    source: "events",
-    paint: {
-      "circle-radius": ["case", ["==", ["get", "id"], selectedId || ""], 10, 6],
-      "circle-color": [
-        "interpolate",
-        ["linear"],
-        ["get", "age_hours"],
-        0,
-        RECENCY_COLORS[0],
-        24,
-        RECENCY_COLORS[1],
-        72,
-        RECENCY_COLORS[2],
-        RECENCY_RAMP_HOURS,
-        RECENCY_COLORS[3],
-      ],
-      "circle-opacity": 0.92,
-      "circle-stroke-width": [
-        "case",
-        ["==", ["get", "id"], selectedId || ""],
-        3,
-        1.5,
-      ],
-      "circle-stroke-color": "#f4f1e8",
-    },
-  });
+  if (!map.getSource("events")) {
+    map.addSource("events", {
+      type: "geojson",
+      // Canonical coordinates stay in the source. Display deconfliction is
+      // applied below as a screen-space paint translation.
+      data: toGeoJson(events),
+    });
+  } else {
+    (map.getSource("events") as GeoJSONSource).setData(toGeoJson(events));
+  }
+
+  const mappedIds = new Set(
+    events.filter(isMappedEvent).map((event) => event.public_id),
+  );
+  for (const event of events.filter(isMappedEvent)) {
+    const id = eventLayerId(event.public_id);
+    if (!map.getLayer(id)) {
+      map.addLayer({
+        id,
+        type: "circle",
+        source: "events",
+        filter: ["==", ["get", "id"], event.public_id],
+        paint: eventLayerPaint(event.public_id === selectedId, [0, 0]),
+      });
+    }
+    map.setPaintProperty(
+      id,
+      "circle-radius",
+      event.public_id === selectedId ? 10 : 6,
+    );
+    map.setPaintProperty(
+      id,
+      "circle-stroke-width",
+      event.public_id === selectedId ? 3 : 1.5,
+    );
+  }
+
+  for (const event of events) {
+    const id = eventLayerId(event.public_id);
+    if (!mappedIds.has(event.public_id) && map.getLayer(id)) {
+      map.removeLayer(id);
+    }
+  }
+}
+
+function updateDisplayTranslations(
+  map: maplibregl.Map,
+  events: readonly DashboardEvent[],
+) {
+  const positions = displayCoordinates(events, mapDisplayProjection(map));
+  for (const event of events.filter(isMappedEvent)) {
+    const canonical = map.project([event.longitude, event.latitude]);
+    const display = positions.get(event.public_id);
+    if (!display) continue;
+    const translated = map.project(display);
+    map.setPaintProperty(eventLayerId(event.public_id), "circle-translate", [
+      translated.x - canonical.x,
+      translated.y - canonical.y,
+    ]);
+  }
 }
 
 export function EventMap({
@@ -293,6 +427,7 @@ export function EventMap({
   const eventsRef = useRef(events);
   const selectedIdRef = useRef(selectedId);
   const themeRef = useRef(theme);
+  const boundInteractionLayersRef = useRef(new Set<string>());
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const { mappedCount, locationCount } = getMapCounts(events);
@@ -318,37 +453,12 @@ export function EventMap({
       map.on("load", () => {
         setIsLoaded(true);
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
-
-        map.on("click", "events-circles", (event) => {
-          const publicId = event.features?.[0]?.properties?.id;
-          if (typeof publicId === "string") onSelectRef.current(publicId);
-        });
-        map.on("mouseenter", "events-circles", (event) => {
-          map.getCanvas().style.cursor = "pointer";
-          const feature = event.features?.[0];
-          const properties = feature?.properties;
-          if (!properties || !event.lngLat) return;
-          popupRef.current?.remove();
-          popupRef.current = new maplibregl.Popup({
-            closeButton: false,
-            closeOnClick: false,
-            offset: 12,
-            className: "event-map-popup",
-          })
-            .setLngLat(event.lngLat)
-            .setDOMContent(
-              tooltipContent(
-                String(properties.headline ?? "Event"),
-                String(properties.location ?? "Location unresolved"),
-              ),
-            )
-            .addTo(map);
-        });
-        map.on("mouseleave", "events-circles", () => {
-          map.getCanvas().style.cursor = "";
-          popupRef.current?.remove();
-          popupRef.current = null;
-        });
+        const refreshDisplayPositions = () =>
+          updateDisplayTranslations(map, eventsRef.current);
+        map.on("move", refreshDisplayPositions);
+        map.on("zoom", refreshDisplayPositions);
+        map.on("resize", refreshDisplayPositions);
+        refreshDisplayPositions();
       });
       map.on("error", () => setMapError(true));
       mapRef.current = map;
@@ -364,10 +474,49 @@ export function EventMap({
   }, []);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isLoaded) return;
+    for (const event of events.filter(isMappedEvent)) {
+      const layerId = eventLayerId(event.public_id);
+      if (boundInteractionLayersRef.current.has(layerId)) continue;
+      boundInteractionLayersRef.current.add(layerId);
+      map.on("click", layerId, (mapEvent) => {
+        const publicId = mapEvent.features?.[0]?.properties?.id;
+        if (typeof publicId === "string") onSelectRef.current(publicId);
+      });
+      map.on("mouseenter", layerId, (mapEvent) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = mapEvent.features?.[0];
+        const properties = feature?.properties;
+        if (!properties || !mapEvent.lngLat) return;
+        popupRef.current?.remove();
+        popupRef.current = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 12,
+          className: "event-map-popup",
+        })
+          .setLngLat(mapEvent.lngLat)
+          .setDOMContent(
+            tooltipContent(
+              String(properties.headline ?? "Event"),
+              String(properties.location ?? "Location unresolved"),
+            ),
+          )
+          .addTo(map);
+      });
+      map.on("mouseleave", layerId, () => {
+        map.getCanvas().style.cursor = "";
+        popupRef.current?.remove();
+        popupRef.current = null;
+      });
+    }
+  }, [events, isLoaded]);
+
+  useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
-    const source = mapRef.current.getSource("events") as
-      GeoJSONSource | undefined;
-    source?.setData(toGeoJson(events));
+    addEventLayers(mapRef.current, events, selectedIdRef.current);
+    updateDisplayTranslations(mapRef.current, events);
   }, [events, isLoaded]);
 
   useEffect(() => {
@@ -378,6 +527,7 @@ export function EventMap({
     map.once("style.load", () => {
       if (mapRef.current === map && themeRef.current === theme) {
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
+        updateDisplayTranslations(map, eventsRef.current);
       }
     });
   }, [isLoaded, theme]);
@@ -390,20 +540,8 @@ export function EventMap({
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
     const map = mapRef.current;
-    if (map.getLayer("events-circles")) {
-      map.setPaintProperty("events-circles", "circle-radius", [
-        "case",
-        ["==", ["get", "id"], selectedId || ""],
-        10,
-        6,
-      ]);
-      map.setPaintProperty("events-circles", "circle-stroke-width", [
-        "case",
-        ["==", ["get", "id"], selectedId || ""],
-        3,
-        1.5,
-      ]);
-    }
+    addEventLayers(map, eventsRef.current, selectedId);
+    updateDisplayTranslations(map, eventsRef.current);
     const selectedEvent = eventsRef.current.find(
       (event) => event.public_id === selectedId,
     );
