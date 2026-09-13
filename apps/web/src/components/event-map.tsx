@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, X } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import maplibregl, { type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
@@ -109,20 +109,84 @@ function reportAgeHours(reportedAt: string, now: number) {
   return Math.max(0, (now - timestamp) / 3_600_000);
 }
 
+const DISPLAY_COLLISION_DISTANCE_DEGREES = 0.4;
+const DISPLAY_FAN_OUT_RADIUS_DEGREES = 0.35;
+
+type MappedEvent = DashboardEvent & { latitude: number; longitude: number };
+
+function coordinateDistanceSquared(left: MappedEvent, right: MappedEvent) {
+  return (
+    (left.longitude - right.longitude) ** 2 +
+    (left.latitude - right.latitude) ** 2
+  );
+}
+
+/** Give colliding display points stable visual positions without changing API data. */
+export function displayCoordinates(events: readonly DashboardEvent[]) {
+  const mapped = events.filter(isMappedEvent);
+  const groups: MappedEvent[][] = [];
+  const thresholdSquared = DISPLAY_COLLISION_DISTANCE_DEGREES ** 2;
+
+  for (const current of [...mapped].sort((left, right) =>
+    left.public_id.localeCompare(right.public_id),
+  )) {
+    const group = groups.find((candidate) =>
+      candidate.some(
+        (member) =>
+          coordinateDistanceSquared(member, current) <= thresholdSquared,
+      ),
+    );
+    if (group) group.push(current);
+    else groups.push([current]);
+  }
+
+  const positions = new Map<string, [number, number]>();
+  for (const group of groups) {
+    if (group.length === 1) {
+      const only = group[0];
+      positions.set(only.public_id, [only.longitude, only.latitude]);
+      continue;
+    }
+
+    const center = group.reduce(
+      (sum, member) => [sum[0] + member.longitude, sum[1] + member.latitude],
+      [0, 0],
+    );
+    center[0] /= group.length;
+    center[1] /= group.length;
+
+    group.forEach((member, index) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * index) / group.length;
+      positions.set(member.public_id, [
+        center[0] + Math.cos(angle) * DISPLAY_FAN_OUT_RADIUS_DEGREES,
+        center[1] + Math.sin(angle) * DISPLAY_FAN_OUT_RADIUS_DEGREES,
+      ]);
+    });
+  }
+
+  return positions;
+}
+
 export function toGeoJson(
   events: readonly DashboardEvent[],
   now: number = Date.now(),
 ) {
+  const positions = displayCoordinates(events);
   return {
     type: "FeatureCollection" as const,
     features: events.filter(isMappedEvent).map((event) => ({
       type: "Feature" as const,
       geometry: {
         type: "Point" as const,
-        coordinates: [event.longitude, event.latitude] as [number, number],
+        coordinates: positions.get(event.public_id) ?? [
+          event.longitude,
+          event.latitude,
+        ],
       },
       properties: {
         id: event.public_id,
+        canonical_latitude: event.latitude,
+        canonical_longitude: event.longitude,
         disease_group: event.disease_group ?? "unknown",
         age_hours: reportAgeHours(event.latest_report_at, now),
         headline: event.headline,
@@ -181,46 +245,11 @@ function addEventLayers(
   map.addSource("events", {
     type: "geojson",
     data: toGeoJson(events),
-    cluster: true,
-    clusterRadius: 50,
-    clusterMaxZoom: 8,
-  });
-  map.addLayer({
-    id: "events-clusters",
-    type: "circle",
-    source: "events",
-    filter: ["has", "point_count"],
-    paint: {
-      "circle-color": [
-        "step",
-        ["get", "point_count"],
-        "#718087",
-        10,
-        "#8a826f",
-        30,
-        "#8f706b",
-      ],
-      "circle-radius": ["step", ["get", "point_count"], 18, 10, 24, 30, 30],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#f4f1e8",
-    },
-  });
-  map.addLayer({
-    id: "events-cluster-count",
-    type: "symbol",
-    source: "events",
-    filter: ["has", "point_count"],
-    layout: {
-      "text-field": ["get", "point_count_abbreviated"],
-      "text-size": 12,
-    },
-    paint: { "text-color": "#252525" },
   });
   map.addLayer({
     id: "events-circles",
     type: "circle",
     source: "events",
-    filter: ["!", ["has", "point_count"]],
     paint: {
       "circle-radius": ["case", ["==", ["get", "id"], selectedId || ""], 10, 6],
       "circle-color": [
@@ -266,7 +295,6 @@ export function EventMap({
   const themeRef = useRef(theme);
   const [mapError, setMapError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [overlapEvents, setOverlapEvents] = useState<DashboardEvent[]>([]);
   const { mappedCount, locationCount } = getMapCounts(events);
 
   useEffect(() => {
@@ -291,47 +319,8 @@ export function EventMap({
         setIsLoaded(true);
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
 
-        map.on("click", "events-clusters", async (event) => {
-          const feature = event.features?.[0];
-          const clusterId = feature?.properties?.cluster_id;
-          const source = map.getSource("events") as GeoJSONSource | undefined;
-          if (typeof clusterId !== "number" || !source || !event.lngLat) {
-            return;
-          }
-          const zoom = await source.getClusterExpansionZoom(clusterId);
-          map.easeTo({
-            center: [event.lngLat.lng, event.lngLat.lat],
-            zoom,
-            duration: mapMoveDuration(),
-          });
-        });
         map.on("click", "events-circles", (event) => {
-          const features = map.queryRenderedFeatures(event.point, {
-            layers: ["events-circles"],
-          });
-          const ids = [
-            ...new Set(
-              features
-                .map((feature) => feature.properties?.id)
-                .filter((id): id is string => typeof id === "string"),
-            ),
-          ];
-          if (ids.length === 0) {
-            const publicId = event.features?.[0]?.properties?.id;
-            if (typeof publicId === "string") ids.push(publicId);
-          }
-          const selectedEvents = ids
-            .map((id) =>
-              eventsRef.current.find((item) => item.public_id === id),
-            )
-            .filter((event): event is DashboardEvent => event !== undefined);
-          if (selectedEvents.length > 1) {
-            popupRef.current?.remove();
-            popupRef.current = null;
-            setOverlapEvents(selectedEvents);
-            return;
-          }
-          const publicId = selectedEvents[0]?.public_id ?? ids[0];
+          const publicId = event.features?.[0]?.properties?.id;
           if (typeof publicId === "string") onSelectRef.current(publicId);
         });
         map.on("mouseenter", "events-circles", (event) => {
@@ -450,7 +439,6 @@ export function EventMap({
         onClick={() => {
           popupRef.current?.remove();
           popupRef.current = null;
-          setOverlapEvents([]);
           onResetRef.current?.();
           if (mapRef.current && isLoaded) {
             applyRegionViewport(mapRef.current, region);
@@ -459,39 +447,6 @@ export function EventMap({
       >
         <RotateCcw aria-hidden="true" size={18} />
       </button>
-      {overlapEvents.length > 1 && (
-        <div
-          className="event-map-overlap"
-          role="dialog"
-          aria-label="Events at this location"
-        >
-          <div className="event-map-overlap__header">
-            <strong>{overlapEvents.length} events at this location</strong>
-            <button
-              type="button"
-              aria-label="Close events at this location"
-              onClick={() => setOverlapEvents([])}
-            >
-              <X aria-hidden="true" size={18} />
-            </button>
-          </div>
-          <div className="event-map-overlap__list">
-            {overlapEvents.map((event) => (
-              <button
-                type="button"
-                key={event.public_id}
-                onClick={() => {
-                  setOverlapEvents([]);
-                  onSelectRef.current(event.public_id);
-                }}
-              >
-                <strong>{event.headline}</strong>
-                <span>{mapLocation(event.admin1, event.country_code)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       {mapError ? (
         <div className="map-fallback">
           Map unavailable. All events remain accessible in Briefing view.

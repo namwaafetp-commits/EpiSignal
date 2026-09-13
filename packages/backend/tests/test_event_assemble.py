@@ -374,6 +374,77 @@ def test_one_resolved_story_location_represents_unresolved_peers() -> None:
     assert repo.attached_signals[0][0] == existing_event.event_id
 
 
+def test_same_country_country_and_town_reconcile_to_country_or_more_specific() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    country = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="BD",
+    )
+    dhaka = country.model_copy(update={"place_name": "Dhaka"})
+    signals = [
+        _make_signal(disease_id=disease_id, loc=country, published_at=now),
+        _make_signal(disease_id=disease_id, loc=dhaka, published_at=now + timedelta(minutes=1)),
+    ]
+
+    repo = FakeAssemblyRepository(signals)
+    _run_story_group(signals, repo)
+
+    location = repo.created_events[0].locations[0]
+    assert location.country_code == "BD"
+    assert location.place_name == "Dhaka"
+
+
+def test_same_country_conflicting_towns_coarsen_to_country() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    dhaka = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="BD",
+        place_name="Dhaka",
+    )
+    chattogram = dhaka.model_copy(update={"place_name": "Chattogram"})
+    signals = [
+        _make_signal(disease_id=disease_id, loc=dhaka, published_at=now),
+        _make_signal(
+            disease_id=disease_id,
+            loc=chattogram,
+            published_at=now + timedelta(minutes=1),
+        ),
+    ]
+
+    repo = FakeAssemblyRepository(signals)
+    _run_story_group(signals, repo)
+
+    location = repo.created_events[0].locations[0]
+    assert location.country_code == "BD"
+    assert location.admin1 is None
+    assert location.admin2 is None
+    assert location.place_name is None
+
+
+def test_australia_country_agreement_survives_kangaroo_island_specificity() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    australia = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.COUNTRY,
+        country_code="AU",
+    )
+    island = australia.model_copy(update={"place_name": "Kangaroo Island"})
+    signals = [
+        _make_signal(disease_id=disease_id, loc=island, published_at=now),
+        _make_signal(disease_id=disease_id, loc=australia, published_at=now + timedelta(minutes=1)),
+    ]
+
+    repo = FakeAssemblyRepository(signals)
+    _run_story_group(signals, repo)
+
+    assert repo.created_events[0].locations[0].country_code == "AU"
+
+
 def test_evenly_conflicting_story_locations_remain_unresolved() -> None:
     now = datetime.now(UTC)
     disease_id = uuid4()

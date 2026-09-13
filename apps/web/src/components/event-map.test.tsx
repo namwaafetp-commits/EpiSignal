@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardEvent } from "../lib/api-dashboard";
 
@@ -31,6 +25,7 @@ type MockMapInstance = {
 const mapState = vi.hoisted(() => ({
   instances: [] as MockMapInstance[],
   options: [] as Array<Record<string, unknown>>,
+  popups: [] as Array<{ content: Node | null }>,
 }));
 
 vi.mock("maplibre-gl", () => {
@@ -109,11 +104,39 @@ vi.mock("maplibre-gl", () => {
     }
   }
 
+  class MockPopup {
+    content: Node | null = null;
+
+    constructor() {
+      mapState.popups.push(this);
+    }
+
+    setLngLat() {
+      return this;
+    }
+
+    setDOMContent(content: Node) {
+      this.content = content;
+      return this;
+    }
+
+    addTo() {
+      return this;
+    }
+
+    remove() {}
+  }
+
   class MockNavigationControl {}
 
   return {
-    default: { Map: MockMap, NavigationControl: MockNavigationControl },
+    default: {
+      Map: MockMap,
+      Popup: MockPopup,
+      NavigationControl: MockNavigationControl,
+    },
     Map: MockMap,
+    Popup: MockPopup,
     NavigationControl: MockNavigationControl,
   };
 });
@@ -156,6 +179,7 @@ describe("EventMap regional viewport", () => {
   beforeEach(() => {
     mapState.instances.length = 0;
     mapState.options.length = 0;
+    mapState.popups.length = 0;
   });
 
   afterEach(() => vi.unstubAllGlobals());
@@ -252,17 +276,54 @@ describe("EventMap coverage and interaction", () => {
   beforeEach(() => {
     mapState.instances.length = 0;
     mapState.options.length = 0;
+    mapState.popups.length = 0;
   });
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps collocated mapped events in GeoJSON and counts unique locations", () => {
+  it("fans out collocated mapped events without changing source event data", () => {
     const data = [event("one"), event("two"), event("three", null)];
+    const features = toGeoJson(data).features;
 
-    expect(
-      toGeoJson(data).features.map((feature) => feature.properties.id),
-    ).toEqual(["one", "two"]);
+    expect(features.map((feature) => feature.properties.id)).toEqual([
+      "one",
+      "two",
+    ]);
+    expect(features[0].geometry.coordinates).not.toEqual(
+      features[1].geometry.coordinates,
+    );
+    expect(data[0].longitude).toBe(13.66);
+    expect(data[1].longitude).toBe(13.66);
     expect(getMapCounts(data)).toEqual({ mappedCount: 2, locationCount: 1 });
+  });
+
+  it("fans out nearby and three-way exact-coordinate events deterministically", () => {
+    const nearby = event("nearby", [13.9, -8.58]);
+    const input = [event("one"), nearby, event("two"), event("three")];
+
+    const nearbyFeatures = toGeoJson([event("one"), nearby]).features;
+    const exactFeatures = toGeoJson([
+      event("one"),
+      event("two"),
+      event("three"),
+    ]).features;
+    const first = toGeoJson(input).features;
+    const second = toGeoJson(input).features;
+
+    expect(nearbyFeatures[0].geometry.coordinates).not.toEqual(
+      nearbyFeatures[1].geometry.coordinates,
+    );
+    expect(
+      new Set(
+        exactFeatures.map((feature) => feature.geometry.coordinates.join(",")),
+      ),
+    ).toHaveLength(3);
+    expect(
+      new Set(first.map((feature) => feature.geometry.coordinates.join(","))),
+    ).toHaveLength(4);
+    expect(first.map((feature) => feature.geometry.coordinates)).toEqual(
+      second.map((feature) => feature.geometry.coordinates),
+    );
   });
 
   it("keeps only valid world coordinates and carries disease groups into map features", () => {
@@ -353,7 +414,7 @@ describe("EventMap coverage and interaction", () => {
     ).toBeInTheDocument();
   });
 
-  it("configures native clustering and renders a cluster count layer", () => {
+  it("renders one unclustered event layer", () => {
     render(
       <EventMap
         events={[event("one"), event("two")]}
@@ -370,58 +431,16 @@ describe("EventMap coverage and interaction", () => {
       type: "FeatureCollection",
       features: expect.any(Array),
     });
-    expect(map.sources.events.options).toMatchObject({
-      cluster: true,
-      clusterRadius: 50,
-      clusterMaxZoom: 8,
-    });
-    expect(map.layers.map((layer) => layer.id)).toEqual([
-      "events-clusters",
-      "events-cluster-count",
-      "events-circles",
-    ]);
-    expect(map.layers[0]).toMatchObject({
-      filter: ["has", "point_count"],
-    });
-    expect(map.layers[2]).toMatchObject({
-      filter: ["!", ["has", "point_count"]],
-    });
+    expect(map.sources.events.options.cluster).not.toBe(true);
+    expect(map.layers.map((layer) => layer.id)).toEqual(["events-circles"]);
+    expect(map.layers[0]).not.toHaveProperty("filter");
   });
 
-  it("zooms to expand a clicked cluster", async () => {
-    render(
-      <EventMap
-        events={[event("one"), event("two")]}
-        region=""
-        selectedId={null}
-        onSelect={vi.fn()}
-      />,
-    );
-    const map = mapState.instances[0];
-    act(() => map.trigger("load"));
-    map.sources.events.getClusterExpansionZoom.mockResolvedValue(6);
-
-    act(() =>
-      map.trigger("click", "events-clusters", {
-        features: [{ properties: { cluster_id: 12 } }],
-        lngLat: { lng: 13.66, lat: -8.58 },
-      }),
-    );
-
-    await waitFor(() =>
-      expect(map.easeTo).toHaveBeenLastCalledWith({
-        center: [13.66, -8.58],
-        zoom: 6,
-        duration: 700,
-      }),
-    );
-  });
-
-  it("shows every event at an exact-coordinate collision and preserves selection", () => {
+  it("supports hover and click for every displaced event", () => {
     const onSelect = vi.fn();
     render(
       <EventMap
-        events={[event("one"), event("two")]}
+        events={[event("one"), event("two"), event("three")]}
         region=""
         selectedId={null}
         onSelect={onSelect}
@@ -429,37 +448,57 @@ describe("EventMap coverage and interaction", () => {
     );
     const map = mapState.instances[0];
     act(() => map.trigger("load"));
-    map.queryRenderedFeatures.mockReturnValue([
-      { properties: { id: "one" } },
-      { properties: { id: "two" } },
+
+    for (const publicId of ["one", "two", "three"]) {
+      act(() =>
+        map.trigger("mouseenter", "events-circles", {
+          features: [
+            {
+              properties: {
+                id: publicId,
+                headline: `Event ${publicId}`,
+                location: "Angola",
+              },
+            },
+          ],
+          lngLat: { lng: 13.66, lat: -8.58 },
+        }),
+      );
+      expect(mapState.popups.at(-1)?.content?.textContent).toContain(
+        `Event ${publicId}`,
+      );
+
+      act(() =>
+        map.trigger("click", "events-circles", {
+          features: [{ properties: { id: publicId } }],
+        }),
+      );
+    }
+
+    expect(onSelect.mock.calls.map(([publicId]) => publicId)).toEqual([
+      "one",
+      "two",
+      "three",
     ]);
-
-    act(() =>
-      map.trigger("click", "events-circles", {
-        point: { x: 20, y: 20 },
-        features: [{ properties: { id: "one" } }],
-      }),
-    );
-
-    expect(
-      screen.getByRole("dialog", { name: /events at this location/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /event one/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /event two/i }),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /event two/i }));
-
-    expect(onSelect).toHaveBeenCalledWith("two");
-    expect(
-      screen.queryByRole("dialog", { name: /events at this location/i }),
-    ).not.toBeInTheDocument();
   });
 
-  it("resets the world viewport, clears selection, and closes overlap UI", () => {
+  it("preserves selected state on an individually rendered event", () => {
+    render(
+      <EventMap
+        events={[event("one"), event("two")]}
+        region=""
+        selectedId="two"
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+    expect(
+      (map.layers[0].paint as Record<string, unknown>)["circle-radius"],
+    ).toEqual(["case", ["==", ["get", "id"], "two"], 10, 6]);
+  });
+
+  it("resets the world viewport", () => {
     const onReset = vi.fn();
     render(
       <EventMap
@@ -472,16 +511,6 @@ describe("EventMap coverage and interaction", () => {
     );
     const map = mapState.instances[0];
     act(() => map.trigger("load"));
-    map.queryRenderedFeatures.mockReturnValue([
-      { properties: { id: "one" } },
-      { properties: { id: "two" } },
-    ]);
-    act(() =>
-      map.trigger("click", "events-circles", {
-        point: { x: 20, y: 20 },
-      }),
-    );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /reset map view/i }));
 
@@ -490,7 +519,6 @@ describe("EventMap coverage and interaction", () => {
       ...DEFAULT_MAP_VIEWPORT,
       duration: 700,
     });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it.each(["Asia", "ASEAN"] as const)(

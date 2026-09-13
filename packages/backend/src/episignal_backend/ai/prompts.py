@@ -156,6 +156,15 @@ Rules:
 - host_sector must be one of: human, animal, both, unknown.
 - Do not classify a general public-health or health-system issue as relevant
   unless it is tied to an active infectious-disease event.
+- Mark irrelevant when the item is a consumer, travel, or retrospective ranking
+  or survey that mentions food poisoning or another disease without reporting a
+  current outbreak, cases, investigation, surveillance alert, or active response.
+  For example, a survey naming Spain as a food-poisoning destination for UK
+  holidaymakers is not an infectious-disease event.
+- Mark irrelevant when the primary subject is that a locality remains disease-free,
+  has no local cases, or has no local exposure, unless the article materially
+  reports a real active infectious event elsewhere. A regional outbreak can still
+  be relevant when the disease-free locality is only contextual.
 
 The object must match this JSON Schema exactly:
 """

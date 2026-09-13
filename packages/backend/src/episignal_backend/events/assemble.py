@@ -429,15 +429,6 @@ def _disease_consensus(unit: tuple[SignalForMatching, ...]) -> tuple[UUID | None
     return winning_signal.disease_id, winning_signal.disease_text
 
 
-def _location_identity(location: LocationForMatching) -> tuple[str, str, str, str]:
-    return (
-        (location.country_code or "").strip().upper(),
-        normalized_form(location.admin1) if location.admin1 else "",
-        normalized_form(location.admin2) if location.admin2 else "",
-        normalized_form(location.place_name) if location.place_name else "",
-    )
-
-
 def _resolved_location_consensus(
     unit: tuple[SignalForMatching, ...],
 ) -> tuple[LocationForMatching, ...]:
@@ -452,9 +443,34 @@ def _resolved_location_consensus(
     if not resolved:
         return ()
 
-    identities = {_location_identity(location) for location in resolved}
-    if len(identities) != 1:
+    countries = {(location.country_code or "").strip().upper() for location in resolved}
+    if len(countries) != 1:
+        # Country disagreement is a hard safety boundary. A majority cannot
+        # establish that two reports describe one epidemiologic event.
         return ()
+    country_code = next(iter(countries))
+
+    def values(field: str) -> set[str]:
+        return {
+            normalized_form(value) for location in resolved if (value := getattr(location, field))
+        }
+
+    admin1_values = values("admin1")
+    if len(admin1_values) > 1:
+        common_admin1 = None
+        common_admin2 = None
+        common_place = None
+    else:
+        common_admin1 = next(iter(admin1_values), None)
+        admin2_values = values("admin2")
+        common_admin2 = next(iter(admin2_values), None) if len(admin2_values) == 1 else None
+        place_values = values("place_name")
+        common_place = next(iter(place_values), None) if len(place_values) == 1 else None
+        if len(admin2_values) > 1:
+            common_admin2 = None
+            common_place = None
+        elif len(place_values) > 1:
+            common_place = None
 
     chosen = max(
         resolved,
@@ -463,7 +479,85 @@ def _resolved_location_consensus(
             _LOCATION_PRECISION_RANK[location.precision],
         ),
     )
-    return (chosen,)
+    country_only = next(
+        (
+            location
+            for location in resolved
+            if not location.admin1 and not location.admin2 and not location.place_name
+        ),
+        None,
+    )
+    if common_admin1 is None and common_admin2 is None and common_place is None:
+        base = country_only or chosen
+        return (
+            base.model_copy(
+                update={
+                    "precision": Precision.COUNTRY,
+                    "country_code": country_code,
+                    "admin1": None,
+                    "admin2": None,
+                    "place_name": None,
+                    "latitude": base.latitude if country_only else None,
+                    "longitude": base.longitude if country_only else None,
+                }
+            ),
+        )
+
+    def matches_common(location: LocationForMatching) -> bool:
+        return all(
+            (not field_value and not getattr(location, field))
+            or (
+                field_value
+                and getattr(location, field)
+                and normalized_form(getattr(location, field)) == field_value
+            )
+            for field, field_value in (
+                ("admin1", common_admin1),
+                ("admin2", common_admin2),
+                ("place_name", common_place),
+            )
+        )
+
+    coordinate_base = next((location for location in resolved if matches_common(location)), None)
+    common_fields: dict[str, object] = {
+        "country_code": country_code,
+        "admin1": next(
+            (
+                location.admin1
+                for location in resolved
+                if location.admin1 and normalized_form(location.admin1) == common_admin1
+            ),
+            None,
+        ),
+        "admin2": next(
+            (
+                location.admin2
+                for location in resolved
+                if location.admin2 and normalized_form(location.admin2) == common_admin2
+            ),
+            None,
+        ),
+        "place_name": next(
+            (
+                location.place_name
+                for location in resolved
+                if location.place_name and normalized_form(location.place_name) == common_place
+            ),
+            None,
+        ),
+    }
+    common_fields["precision"] = (
+        Precision.PLACE
+        if common_fields["place_name"]
+        else Precision.ADMIN2
+        if common_fields["admin2"]
+        else Precision.ADMIN1
+        if common_fields["admin1"]
+        else Precision.COUNTRY
+    )
+    common_fields["latitude"] = coordinate_base.latitude if coordinate_base else None
+    common_fields["longitude"] = coordinate_base.longitude if coordinate_base else None
+    return (chosen.model_copy(update=common_fields),)
 
 
 def _event_representative(unit: tuple[SignalForMatching, ...]) -> SignalForMatching:

@@ -28,6 +28,29 @@ def test_classification_prompt_contains_only_discovery_metadata() -> None:
     assert "zoonotic disease name alone" in system
     assert "Anthropic" in system and "chikungunya" in system
     assert "explicitly ruled out" in system
+    assert "consumer, travel, or retrospective ranking" in system
+    assert "disease-free" in system
+    assert "Spain as a food-poisoning destination" in system
+
+
+def test_relevance_prompt_covers_production_false_positive_patterns() -> None:
+    examples = (
+        "Survey names Spain as top food-poisoning destination for UK holidaymakers",
+        "Clarksville remains measles-free with no local cases",
+    )
+
+    for title in examples:
+        system, _ = classification_prompt(
+            ClassifiableSignal(
+                id=uuid4(),
+                title=title,
+                excerpt="A contextual public-health report.",
+                source_name="Local news",
+                published_at=datetime(2026, 9, 2, tzinfo=UTC),
+            )
+        )
+        assert "current outbreak" in system
+        assert "disease-free" in system
 
 
 def test_extraction_prompt_uses_clean_article_and_exact_identity_repair() -> None:

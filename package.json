@@ -35,6 +35,7 @@
     "extract:signals": "uv run --package episignal-backend python -m episignal_backend.extract_runner",
     "extract:backfill": "uv run --package episignal-backend python -m episignal_backend.backfill_runner",
     "metadata:repair-ai": "uv run --package episignal-backend python -m episignal_backend.metadata_repair_ai_runner",
+    "metadata:repair-stored": "uv run --package episignal-backend python -m episignal_backend.metadata_repair_stored_runner",
     "geocode:signals": "uv run --package episignal-backend python -m episignal_backend.geocode_runner",
     "match:events": "uv run --package episignal-backend python -m episignal_backend.event_runner",
     "summarize:events": "uv run --package episignal-backend python -m episignal_backend.summarize_runner",

@@ -25,6 +25,7 @@ def resolver() -> LocalMetadataResolver:
             "south africa": "ZA",
             "india": "IN",
             "democratic republic of the congo": "CD",
+            "dr congo": "CD",
             "drc": "CD",
             "australia": "AU",
             "uganda": "UG",
@@ -201,6 +202,19 @@ def test_country_aliases_are_normalized_only_from_structured_fields() -> None:
     )
 
     assert resolved.country_code == "US"
+
+
+@pytest.mark.parametrize("country", ["DR Congo", "Democratic Republic of the Congo", "Drc"])
+def test_reviewed_dr_congo_aliases_share_one_country_identity(country: str) -> None:
+    resolved = resolver().resolve(
+        MetadataEvidence(
+            title="Ebola outbreak in Kinshasa",
+            text="",
+            extraction=MetadataFields(country=country, place_name="Kinshasa"),
+        )
+    )
+
+    assert resolved.country_code == "CD"
 
 
 def test_ambiguous_admin1_stays_unresolved() -> None:
