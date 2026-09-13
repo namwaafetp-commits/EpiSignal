@@ -65,7 +65,7 @@ function groupByDisease(events: DashboardEvent[]) {
 function EventMeta({ event }: { event: DashboardEvent }) {
   return (
     <p className="briefing-row__meta">
-      <span className="briefing-row__tag">
+      <span className="briefing-row__tag briefing-row__tag--disease">
         <DiseaseGroupIcon group={event.disease_group} />
         {diseaseGroupLabel(event.disease_group)}
       </span>

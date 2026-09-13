@@ -1,6 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { MAX_RELATED_SCORE, type RelatedEvent } from "@/lib/related-events";
+import type { RelatedEvent } from "@/lib/related-events";
 import type { EventDetailResponse } from "@/lib/api-events";
 import { dateLabel } from "@/lib/api-events";
 import type { DashboardEvent } from "@/lib/api-dashboard";
@@ -204,32 +204,54 @@ export function RelatedReporting({ related }: { related: RelatedEvent[] }) {
       aria-labelledby="related-heading"
     >
       <h2 id="related-heading">RELATED REPORTING</h2>
-      <p className="event-content__muted event-content__related-note">
-        Matched on disease group, place, host and reporting window. These events
-        are not confirmed to be epidemiologically linked.
-      </p>
       <ol className="event-content__related">
-        {related.map(({ event, score, reasons }) => (
+        {related.map(({ event }) => (
           <li key={event.public_id}>
             <Link href={`/events/${encodeURIComponent(event.public_id)}`}>
               {event.headline}
             </Link>
-            <p>
-              <span
-                className="event-content__match"
-                aria-hidden="true"
-                title={`Match score  out of `}
-              >
-                {score}
-              </span>
-              <span className="sr-only">
-                Match score {score} out of {MAX_RELATED_SCORE}.{" "}
-              </span>
-              {reasons.join(" · ")}
-            </p>
           </li>
         ))}
       </ol>
     </section>
+  );
+}
+
+/**
+ * The project keeps a careful vocabulary in CONTEXT.md that never reached a
+ * reader. Collapsed by default so it costs nothing until someone wants it.
+ */
+export function EventGlossary() {
+  return (
+    <details className="event-content__glossary">
+      <summary>What these terms mean</summary>
+      <dl>
+        <dt>Source</dt>
+        <dd>
+          The organisation that published a document. Each numbered entry under
+          Sources links to the report it came from.
+        </dd>
+        <dt>Disease group</dt>
+        <dd>
+          A broad surveillance grouping, not a diagnosis. It describes the kind
+          of infection reported, not its confirmed cause.
+        </dd>
+        <dt>Host</dt>
+        <dd>
+          Whether the reporting concerns people, animals, or both. Unknown means
+          the sources did not say.
+        </dd>
+        <dt>Signal</dt>
+        <dd>
+          Reporting worth attention that has not been confirmed. It is a reason
+          to look, not a finding.
+        </dd>
+        <dt>High credibility event</dt>
+        <dd>
+          Several independent sources, at least one of them official, describe
+          the same event. It does not mean the event is verified by us.
+        </dd>
+      </dl>
+    </details>
   );
 }

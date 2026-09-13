@@ -1,5 +1,6 @@
 import {
   EventBrief,
+  EventGlossary,
   RelatedReporting,
   SourceList,
 } from "@/components/event-content";
@@ -58,6 +59,7 @@ export default async function EventPage({
         <EventBrief event={detail} />
         <SourceList sources={detail.sources} />
         <RelatedReporting related={related} />
+        <EventGlossary />
       </div>
     </main>
   );

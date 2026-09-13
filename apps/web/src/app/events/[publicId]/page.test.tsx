@@ -201,7 +201,7 @@ describe("EventPage", () => {
     expect(screen.getByText("04")).not.toBeVisible();
   });
 
-  it("ranks related reporting on shared metadata without claiming linkage", async () => {
+  it("lists related reporting as plain headlines, ranked by shared metadata", async () => {
     const sibling = {
       public_id: "EVT-2026-00002",
       headline: "Cholera cases reported in a neighbouring district",
@@ -239,11 +239,8 @@ describe("EventPage", () => {
     expect(
       screen.getByRole("link", { name: sibling.headline }),
     ).toHaveAttribute("href", "/events/EVT-2026-00002");
-    expect(
-      screen.getByText(/not confirmed to be epidemiologically linked/),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/Same disease group · Same country · Same area/),
-    ).toBeVisible();
+    // Headlines only: no score, no match reasons, no standing caveat.
+    expect(screen.queryByText(/Match score/)).toBeNull();
+    expect(screen.queryByText(/Same disease group/)).toBeNull();
   });
 });

@@ -555,6 +555,7 @@ select {
 }
 .briefing-feed {
   min-width: 0;
+  container-type: inline-size;
 }
 .date-heading {
   display: flex;
@@ -573,45 +574,41 @@ select {
   font-weight: 450;
 }
 .briefing-row {
-  position: relative;
-  padding: 1.15rem 0.2rem 1.25rem 1rem;
+  --disease: #8b8b85;
+  padding: 1.15rem 0.2rem 1.25rem 0;
   border-bottom: 1px solid var(--line);
 }
-.briefing-row::before {
-  position: absolute;
-  top: 1.2rem;
-  bottom: 1.2rem;
-  left: 0;
-  width: 2px;
-  background: #777;
-  content: "";
+.briefing-row[data-disease="respiratory"] {
+  --disease: #6d8797;
 }
-.briefing-row[data-disease="respiratory"]::before {
-  background: #557b92;
+.briefing-row[data-disease="enteric_food_waterborne"] {
+  --disease: #5b8c89;
 }
-.briefing-row[data-disease="enteric_food_waterborne"]::before {
-  background: #337f78;
+.briefing-row[data-disease="vector_borne"] {
+  --disease: #b58a52;
 }
-.briefing-row[data-disease="vector_borne"]::before {
-  background: #ad751f;
+.briefing-row[data-disease="vaccine_preventable"] {
+  --disease: #8b789a;
 }
-.briefing-row[data-disease="vaccine_preventable"]::before {
-  background: #786783;
+.briefing-row[data-disease="viral_hemorrhagic_fever"] {
+  --disease: #b06b72;
 }
-.briefing-row[data-disease="viral_hemorrhagic_fever"]::before {
-  background: #a43d49;
+.briefing-row[data-disease="neurologic_invasive"] {
+  --disease: #74859b;
 }
-.briefing-row[data-disease="neurologic_invasive"]::before {
-  background: #565f8f;
+.briefing-row[data-disease="blood_borne_sti"] {
+  --disease: #a07b88;
 }
-.briefing-row[data-disease="blood_borne_sti"]::before {
-  background: #783841;
+.briefing-row[data-disease="healthcare_associated_amr"] {
+  --disease: #a3805f;
 }
-.briefing-row[data-disease="healthcare_associated_amr"]::before {
-  background: #a95c30;
+.briefing-row[data-disease="other_infectious"] {
+  --disease: #86936f;
 }
-.briefing-row[data-disease="other_infectious"]::before {
-  background: #737842;
+/* The disease cue rides the icon that already sits beside its text label,
+   so colour never carries the meaning on its own. */
+.briefing-row__tag--disease svg {
+  color: var(--disease);
 }
 .briefing-row.is-selected {
   background: var(--paper-raised);
@@ -1035,4 +1032,63 @@ select {
     --ink-muted: #cfcfca;
     --line: #4d4d4d;
   }
+}
+
+/* Wire-service dateline. Once the feed is wide enough, place and time hold a
+   left rail so the timestamp sits beside the headline it describes instead of
+   being flung to the far edge of an empty row. Collapses back to a stack when
+   the reading pane is open or on narrow viewports. Shelf items keep the stack
+   at every width, which is why this is scoped to .briefing-section. */
+@container (min-width: 52rem) {
+  .briefing-section .briefing-row {
+    display: grid;
+    grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr);
+    column-gap: clamp(1.5rem, 3vw, 3rem);
+    align-items: baseline;
+  }
+  .briefing-section .briefing-row__overline {
+    flex-direction: column;
+    align-items: start;
+    gap: 0.4rem;
+    grid-row: span 2;
+  }
+  .briefing-section .briefing-row h3 {
+    margin-top: 0;
+  }
+}
+
+/* A text field that filters a list should still look like a picker, so the
+   options are recognisable rather than something you have to recall. */
+.filter-combobox {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.filter-combobox input {
+  width: 100%;
+}
+.filter-combobox svg {
+  position: absolute;
+  top: 50%;
+  right: 0.7rem;
+  color: var(--ink-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.v2-filters label {
+  position: relative;
+}
+/* Absolute so an appearing hint never reflows the filter row. */
+.filter-hint {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.15rem;
+  color: #a43842;
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:root[data-theme="dark"] .filter-hint {
+  color: #e9868f;
 }

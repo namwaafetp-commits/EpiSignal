@@ -9,6 +9,7 @@ import {
   Bug,
   UserRound,
   Globe2,
+  ChevronDown,
 } from "lucide-react";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryFlag, countryName } from "../lib/country";
@@ -37,7 +38,16 @@ export function FilterBar({
   view: FilterView;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [countryDraft, setCountryDraft] = useState("");
+  const [countryDraft, setCountryDraft] = useState(() =>
+    filters.country ? countryName(filters.country) : "",
+  );
+  const committedCountry = useRef(filters.country);
+  useEffect(() => {
+    if (filters.country !== committedCountry.current) {
+      committedCountry.current = filters.country;
+      setCountryDraft(filters.country ? countryName(filters.country) : "");
+    }
+  }, [filters.country]);
 
   // Typing re-filters the whole feed and rewrites history, so commit on a
   // pause rather than per keystroke. The ref lets outside changes (reset,
@@ -63,6 +73,7 @@ export function FilterBar({
       ...(filters.country ? [filters.country] : []),
     ]),
   ].sort((a, b) => countryName(a).localeCompare(countryName(b)));
+  const countryUnmatched = countryDraft.trim() !== "" && !filters.country;
   return (
     <section
       className={`v2-filters ${view === "map" ? "v2-filters--compact" : ""} ${expanded ? "is-expanded" : ""}`}
@@ -151,25 +162,30 @@ export function FilterBar({
             <Globe2 size={14} aria-hidden="true" />
             Geography
           </span>
-          {/* Typing beats scrolling once the feed covers many countries. */}
-          <input
-            type="text"
-            list="country-options"
-            placeholder="All countries"
-            value={
-              filters.country ? countryName(filters.country) : countryDraft
-            }
-            onChange={(e) => {
-              const typed = e.target.value;
-              setCountryDraft(typed);
-              const match = countries.find(
-                (c) =>
-                  countryName(c).toLowerCase() === typed.trim().toLowerCase() ||
-                  c === typed.trim().toUpperCase(),
-              );
-              onChange("country", match ?? "");
-            }}
-          />
+          {/* Typing beats scrolling once the feed covers many countries, but
+              the list stays visible so nothing is hidden behind recall. */}
+          <span className="filter-combobox">
+            <input
+              type="text"
+              list="country-options"
+              placeholder="All countries"
+              aria-describedby="country-status"
+              value={countryDraft}
+              onChange={(e) => {
+                const typed = e.target.value;
+                setCountryDraft(typed);
+                const match = countries.find(
+                  (c) =>
+                    countryName(c).toLowerCase() ===
+                      typed.trim().toLowerCase() ||
+                    c === typed.trim().toUpperCase(),
+                );
+                committedCountry.current = match ?? "";
+                onChange("country", match ?? "");
+              }}
+            />
+            <ChevronDown size={15} aria-hidden="true" />
+          </span>
           <datalist id="country-options">
             {countries.map((c) => (
               <option value={countryName(c)} key={c}>
@@ -177,6 +193,11 @@ export function FilterBar({
               </option>
             ))}
           </datalist>
+          <span className="filter-hint" id="country-status" aria-live="polite">
+            {countryUnmatched
+              ? `No country matches "${countryDraft.trim()}"`
+              : ""}
+          </span>
         </label>
         <label className="filter-search">
           <span>
