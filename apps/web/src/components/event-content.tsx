@@ -106,7 +106,12 @@ export function SourceList({
         /* <details> keeps the full trail one click away without client JS. */
         <details className="event-content__more-sources">
           <summary>
-            Show {rest.length} more source{rest.length === 1 ? "" : "s"}
+            <span className="event-content__label-closed">
+              Show {rest.length} more source{rest.length === 1 ? "" : "s"}
+            </span>
+            <span className="event-content__label-open">
+              Hide {rest.length} source{rest.length === 1 ? "" : "s"}
+            </span>
           </summary>
           <ol className="event-content__sources" start={LEAD_SOURCE_COUNT + 1}>
             {rest.map((source, index) => (

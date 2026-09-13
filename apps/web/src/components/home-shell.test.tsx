@@ -374,6 +374,28 @@ describe("HomeShell UI v2", () => {
     expect(screen.getByText("No events match these filters.")).toBeVisible();
   });
 
+  it("offers a way out of an empty result", () => {
+    window.history.replaceState(null, "", "/briefing?period=7d&country=ZZ");
+    render(
+      <HomeShell
+        now={NOW}
+        view="briefing"
+        apiStatus="ready"
+        eventFeed={ready}
+      />,
+    );
+    expect(screen.getByText("No events match these filters.")).toBeVisible();
+
+    const emptyState = screen.getByRole("status");
+    fireEvent.click(
+      within(emptyState).getByRole("button", { name: "Reset filters" }),
+    );
+    expect(window.location.search).toBe("");
+    expect(
+      screen.getByRole("link", { name: EVENTS[0].headline }),
+    ).toBeVisible();
+  });
+
   it("gives the map short Today-first windows and the briefing wider ranges", () => {
     window.history.replaceState(null, "", "/");
     const view = render(

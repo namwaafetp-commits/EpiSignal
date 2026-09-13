@@ -999,11 +999,24 @@ select {
   color: var(--review-muted);
 }
 
-.route-skeleton__message {
-  margin: 0.6rem 0 0;
-  color: var(--ink-muted);
-  font-family: var(--display);
-  font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 480;
-  letter-spacing: -0.04em;
+.feed-message {
+  grid-auto-flow: row;
+  gap: 0.9rem;
+}
+.feed-message__reset {
+  display: inline-flex;
+  min-height: var(--tap);
+  align-items: center;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.feed-message__reset:hover {
+  border-color: var(--ink);
 }

@@ -245,6 +245,14 @@
   }
 }
 
-.event-content__loading-title {
-  color: var(--ink-muted);
+/* Native <details> keeps one label; swap it so the control reads correctly
+   in both states. */
+.event-content__label-open {
+  display: none;
+}
+.event-content__more-sources[open] .event-content__label-closed {
+  display: none;
+}
+.event-content__more-sources[open] .event-content__label-open {
+  display: inline;
 }

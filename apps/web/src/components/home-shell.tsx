@@ -208,7 +208,16 @@ export function HomeShell({
           Events unavailable. The API could not load summaries.
         </FeedMessage>
       ) : invalidRange(filters) ? null : events.length === 0 ? (
-        <FeedMessage>No events match these filters.</FeedMessage>
+        <FeedMessage>
+          No events match these filters.
+          <button
+            type="button"
+            className="feed-message__reset"
+            onClick={resetFilters}
+          >
+            Reset filters
+          </button>
+        </FeedMessage>
       ) : view === "map" ? (
         <section className="map-workspace" aria-labelledby="map-view-heading">
           <div className="map-caption">
