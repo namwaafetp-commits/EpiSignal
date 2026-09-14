@@ -51,11 +51,14 @@ describe("analytics event boundary", () => {
       "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
       "https://stats.example/script.js",
     );
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="website-id"></script>';
     window.umami = { track };
   });
 
   afterEach(() => {
     delete window.umami;
+    document.body.innerHTML = "";
     vi.unstubAllEnvs();
   });
 
@@ -107,9 +110,61 @@ describe("analytics event boundary", () => {
     ).not.toThrow();
   });
 
-  it("requires both public settings before sending", () => {
+  it("uses the runtime-rendered website id when build-time settings are absent", () => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "");
     vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "");
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="runtime-website-id"></script>';
 
+    trackPageView("/");
+
+    expect(track).toHaveBeenCalledWith({
+      website: "runtime-website-id",
+      url: "/",
+      title: "EpiSignal — Map",
+    });
+  });
+
+  it("sends custom events with the runtime-rendered website id", () => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "");
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "");
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="runtime-website-id"></script>';
+
+    trackEvent({ name: "full_event_open", properties: {} });
+
+    expect(track).toHaveBeenCalledWith({
+      website: "runtime-website-id",
+      url: "/",
+      title: "EpiSignal — Map",
+      name: "full_event_open",
+      data: {},
+    });
+  });
+
+  it("is a no-op when the rendered tracker script is missing", () => {
+    document.body.innerHTML = "";
+
+    trackPageView("/");
+    trackEvent({ name: "full_event_open", properties: {} });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the rendered tracker has no website id", () => {
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id=""></script>';
+
+    trackPageView("/");
+    trackEvent({ name: "full_event_open", properties: {} });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the rendered tracker omits its website id", () => {
+    document.body.innerHTML = '<script id="episignal-umami"></script>';
+
+    trackPageView("/");
     trackEvent({ name: "full_event_open", properties: {} });
 
     expect(track).not.toHaveBeenCalled();

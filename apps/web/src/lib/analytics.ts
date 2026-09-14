@@ -111,9 +111,10 @@ function pageTitle(pathname: string) {
 }
 
 function configuredWebsite() {
-  const website = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
-  const scriptUrl = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL;
-  return website && scriptUrl ? website : null;
+  if (typeof document === "undefined") return null;
+
+  const script = document.querySelector<HTMLScriptElement>("#episignal-umami");
+  return script?.dataset.websiteId?.trim() || null;
 }
 
 export function diseaseGroupValue(

@@ -21,6 +21,10 @@ afterEach(() => {
 });
 
 it("tracks a sanitized page path instead of the event public ID", () => {
+  const script = document.createElement("script");
+  script.id = "episignal-umami";
+  script.dataset.websiteId = "website-id";
+  document.body.append(script);
   window.umami = { track };
   render(<PageViewTracker />);
 
@@ -35,6 +39,7 @@ it("tracks a sanitized page path instead of the event public ID", () => {
 it("waits for tracker script load when tracker is not ready on mount", () => {
   const script = document.createElement("script");
   script.id = "episignal-umami";
+  script.dataset.websiteId = "website-id";
   document.body.append(script);
 
   render(<PageViewTracker />);
@@ -49,6 +54,7 @@ it("waits for tracker script load when tracker is not ready on mount", () => {
 it("sends exactly one pageview when tracker load fires more than once", () => {
   const script = document.createElement("script");
   script.id = "episignal-umami";
+  script.dataset.websiteId = "website-id";
   document.body.append(script);
 
   render(<PageViewTracker />);
@@ -64,10 +70,11 @@ it("does not wait indefinitely when tracker script is unavailable", () => {
   expect(track).not.toHaveBeenCalled();
 });
 
-it("is a no-op when analytics configuration is disabled", () => {
+it("is a no-op when the rendered tracker has no website id", () => {
   vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "");
   const script = document.createElement("script");
   script.id = "episignal-umami";
+  script.dataset.websiteId = "";
   document.body.append(script);
 
   window.umami = { track };

@@ -12,6 +12,8 @@ const track = vi.fn();
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
   vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "https://stats.example/script.js");
+  document.body.innerHTML =
+    '<script id="episignal-umami" data-website-id="website-id"></script>';
   track.mockReset();
   window.umami = { track };
   vi.stubGlobal("matchMedia", () => ({

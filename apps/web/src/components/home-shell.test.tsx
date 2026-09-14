@@ -192,6 +192,8 @@ describe("HomeShell UI v2", () => {
       "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
       "https://stats.example/script.js",
     );
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="website-id"></script>';
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
     window.history.replaceState(null, "", "/");
