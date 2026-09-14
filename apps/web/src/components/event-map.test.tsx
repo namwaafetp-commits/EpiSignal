@@ -10,6 +10,7 @@ type MockMapInstance = {
   handlers: Map<string, (event?: unknown) => void>;
   layers: Array<Record<string, unknown>>;
   queryRenderedFeatures: ReturnType<typeof vi.fn>;
+  getSource: ReturnType<typeof vi.fn>;
   sources: Record<
     string,
     {
@@ -21,6 +22,7 @@ type MockMapInstance = {
   >;
   trigger: (event: string, layer?: string, payload?: unknown) => void;
   pixelsPerDegree: number;
+  removed: boolean;
 };
 
 type MockFeatureCollection = {
@@ -45,8 +47,10 @@ vi.mock("maplibre-gl", () => {
     handlers = new Map<string, (event?: unknown) => void>();
     layers: Array<Record<string, unknown>> = [];
     queryRenderedFeatures = vi.fn(() => []);
+    getSource = vi.fn((id: string) => this.sources[id]);
     sources: MockMapInstance["sources"] = {};
     pixelsPerDegree = 2;
+    removed = false;
 
     constructor(options: Record<string, unknown>) {
       mapState.instances.push(this);
@@ -79,7 +83,21 @@ vi.mock("maplibre-gl", () => {
       this.handlers.get(`${event}:${layer}`)?.(payload);
     }
 
-    remove() {}
+    off(event: string, layerOrHandler: unknown, maybeHandler?: unknown) {
+      const handler = maybeHandler ?? layerOrHandler;
+      const layer = maybeHandler === undefined ? "map" : String(layerOrHandler);
+      const key = `${event}:${layer}`;
+      if (this.handlers.get(key) === handler) this.handlers.delete(key);
+      return this;
+    }
+
+    remove() {
+      this.removed = true;
+    }
+
+    isRemoved() {
+      return this.removed;
+    }
 
     addSource(id: string, source: { data: unknown; [key: string]: unknown }) {
       const entry = {
@@ -91,10 +109,6 @@ vi.mock("maplibre-gl", () => {
         }),
       };
       this.sources[id] = entry;
-    }
-
-    getSource(id: string) {
-      return this.sources[id];
     }
 
     addLayer(layer: Record<string, unknown>) {
@@ -713,6 +727,43 @@ describe("EventMap coverage and interaction", () => {
       nearby.longitude,
       nearby.latitude,
     ]);
+  });
+
+  it("cancels pending display refresh before removing the map", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const frame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callbacks.push(callback);
+        return 42;
+      });
+    const cancel = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => undefined);
+    const { unmount } = render(
+      <EventMap
+        events={[event("one"), event("two")]}
+        region=""
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const map = mapState.instances[0];
+    act(() => map.trigger("load"));
+    act(() => map.trigger("resize"));
+    map.getSource.mockClear();
+
+    unmount();
+
+    expect(cancel).toHaveBeenCalledWith(42);
+    expect(map.removed).toBe(true);
+    expect(map.handlers).toEqual(new Map());
+
+    act(() => callbacks[0](0));
+    expect(map.getSource).not.toHaveBeenCalled();
+
+    frame.mockRestore();
+    cancel.mockRestore();
   });
 
   it("preserves selected state in the shared circle layer", () => {

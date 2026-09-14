@@ -32,7 +32,7 @@ describe("Umami configuration", () => {
     expect(getUmamiScriptProps()).toEqual({
       id: "episignal-umami",
       src: "https://stats.example/script.js",
-      strategy: "afterInteractive",
+      strategy: "beforeInteractive",
       "data-website-id": "website-id",
       "data-auto-track": "true",
       "data-auto-pageview": "false",
@@ -194,5 +194,12 @@ describe("analytics event boundary", () => {
       data: {},
     });
     expect(JSON.stringify(track.mock.calls)).not.toContain("EVT-2026-00001");
+  });
+
+  it("ignores paths outside the approved page-view routes", () => {
+    trackPageView("/events/");
+    trackPageView("/events/EVT-2026-00001/extra");
+
+    expect(track).not.toHaveBeenCalled();
   });
 });

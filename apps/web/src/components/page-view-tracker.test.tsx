@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PageViewTracker } from "./page-view-tracker";
 
@@ -11,7 +11,8 @@ beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
   vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "https://stats.example/script.js");
   track.mockReset();
-  window.umami = { track };
+  delete window.umami;
+  document.body.innerHTML = "";
 });
 
 afterEach(() => {
@@ -20,6 +21,7 @@ afterEach(() => {
 });
 
 it("tracks a sanitized page path instead of the event public ID", () => {
+  window.umami = { track };
   render(<PageViewTracker />);
 
   expect(track).toHaveBeenCalledWith({
@@ -28,4 +30,49 @@ it("tracks a sanitized page path instead of the event public ID", () => {
     title: "EpiSignal — Event",
   });
   expect(JSON.stringify(track.mock.calls)).not.toContain("EVT-2026-00001");
+});
+
+it("waits for tracker script load when tracker is not ready on mount", () => {
+  const script = document.createElement("script");
+  script.id = "episignal-umami";
+  document.body.append(script);
+
+  render(<PageViewTracker />);
+  expect(track).not.toHaveBeenCalled();
+
+  window.umami = { track };
+  fireEvent.load(script);
+
+  expect(track).toHaveBeenCalledOnce();
+});
+
+it("sends exactly one pageview when tracker load fires more than once", () => {
+  const script = document.createElement("script");
+  script.id = "episignal-umami";
+  document.body.append(script);
+
+  render(<PageViewTracker />);
+  window.umami = { track };
+  fireEvent.load(script);
+  fireEvent.load(script);
+
+  expect(track).toHaveBeenCalledOnce();
+});
+
+it("does not wait indefinitely when tracker script is unavailable", () => {
+  expect(() => render(<PageViewTracker />)).not.toThrow();
+  expect(track).not.toHaveBeenCalled();
+});
+
+it("is a no-op when analytics configuration is disabled", () => {
+  vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "");
+  const script = document.createElement("script");
+  script.id = "episignal-umami";
+  document.body.append(script);
+
+  window.umami = { track };
+  render(<PageViewTracker />);
+  fireEvent.load(script);
+
+  expect(track).not.toHaveBeenCalled();
 });

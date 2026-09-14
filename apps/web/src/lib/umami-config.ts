@@ -7,7 +7,7 @@ export function getUmamiScriptProps() {
   return {
     id: "episignal-umami",
     src: scriptUrl,
-    strategy: "afterInteractive" as const,
+    strategy: "beforeInteractive" as const,
     "data-website-id": websiteId,
     "data-auto-track": "true",
     "data-auto-pageview": "false",

@@ -38,6 +38,7 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <UmamiScript />
       </head>
       <body>
         <Suspense fallback={<div className="navigation-placeholder" />}>
@@ -46,7 +47,6 @@ export default function RootLayout({
         {children}
         <SiteFooter />
         <PageViewTracker />
-        <UmamiScript />
       </body>
     </html>
   );

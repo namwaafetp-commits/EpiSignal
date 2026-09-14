@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
-import maplibregl, { type GeoJSONSource } from "maplibre-gl";
+import maplibregl, {
+  type GeoJSONSource,
+  type MapLayerMouseEvent,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryName } from "../lib/country";
@@ -408,30 +411,53 @@ export function EventMap({
         maxZoom: 14,
       });
       map.addControl(new maplibregl.NavigationControl(), "top-right");
-      map.on("load", () => {
+      let refreshFrame: number | null = null;
+      let refreshDisplayPositions: (() => void) | null = null;
+      let scheduleDisplayRefresh: (() => void) | null = null;
+      let mapActive = true;
+
+      const handleLoad = () => {
         setIsLoaded(true);
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
-        const refreshDisplayPositions = () => {
+        refreshDisplayPositions = () => {
+          if (!mapActive || mapRef.current !== map) return;
           const source = map.getSource("events") as GeoJSONSource | undefined;
           source?.setData(
             toGeoJson(eventsRef.current, Date.now(), mapDisplayProjection(map)),
           );
         };
-        let refreshFrame: number | null = null;
-        const scheduleDisplayRefresh = () => {
-          if (refreshFrame !== null) return;
+        scheduleDisplayRefresh = () => {
+          if (refreshFrame !== null || !mapActive || mapRef.current !== map)
+            return;
           refreshFrame = window.requestAnimationFrame(() => {
             refreshFrame = null;
-            refreshDisplayPositions();
+            if (!mapActive || mapRef.current !== map) return;
+            refreshDisplayPositions?.();
           });
         };
         map.on("moveend", refreshDisplayPositions);
         map.on("zoomend", refreshDisplayPositions);
         map.on("resize", scheduleDisplayRefresh);
-      });
-      map.on("error", () => setMapError(true));
+      };
+      const handleError = () => setMapError(true);
+      map.on("load", handleLoad);
+      map.on("error", handleError);
       mapRef.current = map;
       return () => {
+        mapActive = false;
+        if (refreshFrame !== null) {
+          window.cancelAnimationFrame(refreshFrame);
+          refreshFrame = null;
+        }
+        map.off("load", handleLoad);
+        map.off("error", handleError);
+        if (refreshDisplayPositions) {
+          map.off("moveend", refreshDisplayPositions);
+          map.off("zoomend", refreshDisplayPositions);
+        }
+        if (scheduleDisplayRefresh) {
+          map.off("resize", scheduleDisplayRefresh);
+        }
         popupRef.current?.remove();
         popupRef.current = null;
         map.remove();
@@ -445,11 +471,11 @@ export function EventMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isLoaded) return;
-    map.on("click", "events-circles", (event) => {
+    const handleClick = (event: MapLayerMouseEvent) => {
       const publicId = event.features?.[0]?.properties?.id;
       if (typeof publicId === "string") onSelectRef.current(publicId);
-    });
-    map.on("mouseenter", "events-circles", (event) => {
+    };
+    const handleMouseEnter = (event: MapLayerMouseEvent) => {
       map.getCanvas().style.cursor = "pointer";
       const feature = event.features?.[0];
       const properties = feature?.properties;
@@ -469,12 +495,20 @@ export function EventMap({
           ),
         )
         .addTo(map);
-    });
-    map.on("mouseleave", "events-circles", () => {
+    };
+    const handleMouseLeave = () => {
       map.getCanvas().style.cursor = "";
       popupRef.current?.remove();
       popupRef.current = null;
-    });
+    };
+    map.on("click", "events-circles", handleClick);
+    map.on("mouseenter", "events-circles", handleMouseEnter);
+    map.on("mouseleave", "events-circles", handleMouseLeave);
+    return () => {
+      map.off("click", "events-circles", handleClick);
+      map.off("mouseenter", "events-circles", handleMouseEnter);
+      map.off("mouseleave", "events-circles", handleMouseLeave);
+    };
   }, [isLoaded]);
 
   useEffect(() => {
@@ -489,11 +523,15 @@ export function EventMap({
     if (!map || !isLoaded || themeRef.current === theme) return;
     themeRef.current = theme;
     map.setStyle(MAP_STYLE[theme]);
-    map.once("style.load", () => {
+    const handleStyleLoad = () => {
       if (mapRef.current === map && themeRef.current === theme) {
         addEventLayers(map, eventsRef.current, selectedIdRef.current);
       }
-    });
+    };
+    map.once("style.load", handleStyleLoad);
+    return () => {
+      map.off("style.load", handleStyleLoad);
+    };
   }, [isLoaded, theme]);
 
   useEffect(() => {

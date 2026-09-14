@@ -8,10 +8,19 @@ export function PageViewTracker() {
   const pathname = usePathname();
 
   useEffect(() => {
-    const send = () => trackPageView(pathname ?? "");
+    let sent = false;
+    const send = () => {
+      if (sent || typeof window.umami?.track !== "function") return;
+      sent = trackPageView(pathname ?? "");
+    };
+
     send();
-    window.addEventListener("episignal-umami-ready", send);
-    return () => window.removeEventListener("episignal-umami-ready", send);
+    if (!sent) {
+      const script =
+        document.querySelector<HTMLScriptElement>("#episignal-umami");
+      script?.addEventListener("load", send, { once: true });
+      return () => script?.removeEventListener("load", send);
+    }
   }, [pathname]);
 
   return null;

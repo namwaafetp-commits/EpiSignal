@@ -100,7 +100,7 @@ function pagePath(
 ): "/" | "/briefing" | "/events/:public_id" | null {
   if (pathname === "/") return "/";
   if (pathname === "/briefing") return "/briefing";
-  if (pathname.startsWith("/events/")) return "/events/:public_id";
+  if (/^\/events\/[^/]+$/.test(pathname)) return "/events/:public_id";
   return null;
 }
 
@@ -294,20 +294,22 @@ export function trackEvent(event: AnalyticsEvent): void {
   }
 }
 
-export function trackPageView(pathname: string): void {
+export function trackPageView(pathname: string): boolean {
   const website = configuredWebsite();
   if (
     typeof window === "undefined" ||
     !website ||
     typeof window.umami?.track !== "function"
   )
-    return;
+    return false;
   const url = pagePath(pathname);
-  if (!url) return;
+  if (!url) return false;
   try {
     window.umami.track({ website, url, title: pageTitle(pathname) });
+    return true;
   } catch {
     // Analytics must never affect the application when a tracker is unavailable.
+    return false;
   }
 }
 
