@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260830_0019"]
+    assert scripts.get_heads() == ["20260912_0025"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -126,6 +126,15 @@ def test_second_revision_versions_signals_by_content_hash() -> None:
     sql = render_offline("upgrade", "head")
     assert "uq_signals_url_content_hash" in sql
     assert "drop constraint uq_signals_url" in sql
+
+
+def test_host_sector_revision_is_additive_and_nullable() -> None:
+    module = _load_revision("20260908_0023_host_sector")
+    assert module.down_revision == "20260904_0022"
+    sql = render_offline("upgrade", "head")
+    assert "add column host_sector" in sql
+    assert "ix_signals_host_sector" in sql
+    assert "host_sector_values" in sql
 
 
 def test_third_revision_adds_gdelt_discovery() -> None:
@@ -311,7 +320,53 @@ def test_the_summary_revision_adds_event_summary_fields_and_history() -> None:
     assert "'event_match_judge'" in sql
 
 
+def test_the_flash_brief_revision_adds_structured_summary_fields() -> None:
+    sql = render_offline("upgrade", "20260830_0019:20260901_0020")
+
+    assert "trajectory" in sql
+    assert "snapshot" in sql
+    assert "key_driver" in sql
+    assert "response" in sql
+    assert "risk" in sql
+    assert "material_facts" in sql
+    assert "event_summary_trajectory_values" in sql
+
+
+def test_the_disease_vocabulary_revision_is_idempotent_and_append_only() -> None:
+    module = _load_revision("20260904_0021_disease_vocabulary")
+    source = _revision_source("20260904_0021_disease_vocabulary")
+    sql = render_offline("upgrade", "20260901_0020:20260904_0021").lower()
+
+    assert module.down_revision == "20260901_0020"
+    assert "rabies" in sql
+    assert "a82" in sql
+    assert "rabies virus infection" in sql
+    assert "west nile virus" in sql
+    assert "h5 bird flu" in sql
+    assert "on conflict (slug) do nothing" in sql
+    assert "not (" in sql
+    assert "any (synonyms)" in sql
+    assert "synonyms || array" in sql
+    assert "delete from diseases" not in source.lower()
+    assert "cannot downgrade" in source.lower()
+
+
 def test_the_summary_downgrade_refuses_to_erase_judge_cost_rows() -> None:
     source = _revision_source("20260830_0019_event_summaries")
     assert "event_match_judge" in source
     assert "raise RuntimeError" in source
+
+
+def test_the_model_roster_revision_reconciles_the_summary_route() -> None:
+    module = _load_revision("20260912_0025_deepseek_event_summary_roster")
+    source = _revision_source("20260912_0025_deepseek_event_summary_roster").lower()
+
+    assert module.revision == "20260912_0025"
+    assert module.down_revision == "20260911_0024"
+    assert "deepseek/deepseek-v4-flash-0731" in source
+    assert "openrouter" in source
+    assert "event_summary" in source
+    assert "mistralai/mistral-small-3.2-24b-instruct" in source
+    assert "on conflict (model_id) do update" in source
+    assert "active = false" in source
+    assert "delete from ai_models" not in source

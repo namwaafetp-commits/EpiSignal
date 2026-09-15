@@ -5,19 +5,27 @@ module owns the public surface. Both read the same tables; nothing here can
 mutate an event, an observation, or a source link.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from episignal_backend.db.types import Precision
+from episignal_backend.db.types import HostSector, Precision
+from episignal_backend.disease_groups import (
+    CANONICAL_DISEASE_GROUPS,
+    disease_group_for,
+    disease_group_label,
+)
+from episignal_backend.events.host_sector import derive_event_host_sector
 from episignal_backend.geocode.normalize import ascii_form, normalized_form
 from episignal_backend.models import (
     Disease,
     Event,
+    EventLocation,
     EventObservation,
     EventSignal,
     EventSummary,
@@ -27,6 +35,48 @@ from episignal_backend.models import (
 )
 
 DashboardMapLevel = Literal["admin1", "country"]
+
+
+def _stored_disease_text(session: Session, event_id: UUID) -> str | None:
+    from episignal_backend.events.repository import read_stored_extraction
+
+    payload = session.execute(
+        select(Signal.ai_extraction)
+        .join(EventSignal, EventSignal.signal_id == Signal.id)
+        .where(EventSignal.event_id == event_id)
+        .order_by(EventSignal.is_primary.desc(), Signal.first_seen_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    extraction = read_stored_extraction(payload)
+    return str(extraction.disease) if extraction is not None and extraction.disease else None
+
+
+def _stored_disease_text_bulk(session: Session, event_ids: list[UUID]) -> dict[UUID, str]:
+    from episignal_backend.events.repository import read_stored_extraction
+
+    rows = session.execute(
+        select(
+            EventSignal.event_id,
+            Signal.ai_extraction,
+        )
+        .join(Signal, Signal.id == EventSignal.signal_id)
+        .where(EventSignal.event_id.in_(event_ids))
+        .order_by(
+            EventSignal.event_id,
+            EventSignal.is_primary.desc(),
+            Signal.first_seen_at.desc(),
+        )
+    ).all()
+    selected_event_ids: set[UUID] = set()
+    fallback_disease_by_event_id: dict[UUID, str] = {}
+    for event_id, payload in rows:
+        if event_id in selected_event_ids:
+            continue
+        selected_event_ids.add(event_id)
+        extraction = read_stored_extraction(payload)
+        if extraction is not None and extraction.disease:
+            fallback_disease_by_event_id[event_id] = str(extraction.disease)
+    return fallback_disease_by_event_id
 
 
 @dataclass(frozen=True)
@@ -45,6 +95,10 @@ class EventListItem:
     latest_report_at: datetime
     article_count: int
     last_summarized_at: datetime | None
+    disease_group: str = "unknown"
+    disease_group_label: str = "Unknown / unclassified"
+    host_sector: HostSector = HostSector.UNKNOWN
+    summary_payload: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +126,10 @@ class DashboardEventItem:
     latitude: float | None
     longitude: float | None
     map_level: DashboardMapLevel | None
+    disease_group: str = "unknown"
+    disease_group_label: str = "Unknown / unclassified"
+    host_sector: HostSector = HostSector.UNKNOWN
+    summary_payload: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -95,19 +153,24 @@ class EventSourceItem:
 
 
 @dataclass(frozen=True)
+class EventLocationItem:
+    location_role: str
+    precision: str
+    country_code: str | None
+    admin1: str | None
+    admin2: str | None
+    place_name: str | None
+    latitude: float | None
+    longitude: float | None
+
+
+@dataclass(frozen=True)
 class EventObservationItem:
+    signal_id: UUID
     observation_date: date | None
     reported_at: datetime | None
-    suspected_cases: int | None
-    probable_cases: int | None
-    confirmed_cases: int | None
-    total_cases: int | None
-    new_cases: int | None
-    deaths: int | None
-    new_deaths: int | None
-    hospitalizations: int | None
     notes: str | None
-    extraction_confidence: float | None
+    material_facts: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -115,11 +178,14 @@ class EventSummaryItem:
     version: int
     headline: str
     summary: str
-    status: str
-    latest_development: str | None
-    uncertainties: list[str] | None
+    trajectory: str
+    snapshot: tuple[str, ...] | None
+    key_driver: str | None
+    response: str | None
+    risk: str | None
     model_id: str
     created_at: datetime
+    summary_payload: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -140,9 +206,43 @@ class EventDetail:
     last_summarized_at: datetime | None
     early_signal_score: float | None
     evidence_score: float | None
+    locations: tuple[EventLocationItem, ...]
     sources: tuple[EventSourceItem, ...]
     observations: tuple[EventObservationItem, ...]
     summaries: tuple[EventSummaryItem, ...]
+    disease_group: str = "unknown"
+    disease_group_label: str = "Unknown / unclassified"
+    host_sector: HostSector = HostSector.UNKNOWN
+    summary_payload: dict[str, object] | None = None
+
+
+def normalize_summary_snapshot(value: object) -> tuple[str, ...] | None:
+    """Expose new fact arrays and legacy snapshot objects uniformly."""
+    if isinstance(value, (list, tuple)):
+        facts = value
+    elif isinstance(value, dict):
+        facts = []
+        cases = value.get("cases")
+        geographic_extent = value.get("geographic_extent")
+        if isinstance(cases, str) and cases.strip():
+            facts.append(cases)
+        deaths = value.get("deaths")
+        cfr = value.get("cfr")
+        if isinstance(deaths, str) and deaths.strip() and isinstance(cfr, str) and cfr.strip():
+            facts.append(f"{deaths} / {cfr}")
+        elif isinstance(deaths, str) and deaths.strip():
+            facts.append(deaths)
+        elif isinstance(cfr, str) and cfr.strip():
+            facts.append(cfr)
+        if isinstance(geographic_extent, str) and geographic_extent.strip():
+            facts.append(geographic_extent)
+    else:
+        return None
+
+    normalized = tuple(
+        " ".join(item.split()) for item in facts if isinstance(item, str) and item.strip()
+    )
+    return normalized or None
 
 
 def _dashboard_location(
@@ -168,7 +268,35 @@ def _dashboard_location(
     return admin1, None, None, None
 
 
-def query_dashboard_events(session: Session) -> DashboardEventPage:
+def _event_host_sectors(session: Session, event_ids: list[UUID]) -> dict[UUID, HostSector]:
+    if not event_ids:
+        return {}
+    rows = session.execute(
+        select(EventSignal.event_id, Signal.host_sector)
+        .join(Signal, Signal.id == EventSignal.signal_id)
+        .where(EventSignal.event_id.in_(event_ids))
+    ).all()
+    values: dict[UUID, list[HostSector | None]] = {}
+    for event_id, host_sector in rows:
+        values.setdefault(event_id, []).append(host_sector)
+    return {event_id: derive_event_host_sector(sectors) for event_id, sectors in values.items()}
+
+
+def _unpack_event_row(row: Sequence[object]) -> tuple[Event, str | None, str | None]:
+    """Read old two-column repository fakes while production uses disease slug too."""
+    if len(row) == 2:
+        event, disease_name = row
+        return event, disease_name, None  # type: ignore[return-value]
+    event, disease_name, disease_slug = row[:3]
+    return event, disease_name, disease_slug  # type: ignore[return-value]
+
+
+def query_dashboard_events(
+    session: Session,
+    *,
+    host_sector: str | None = None,
+    disease_group: str | None = None,
+) -> DashboardEventPage:
     """Return every stored event with a completed, non-empty summary."""
     conditions = [
         Event.summary.is_not(None),
@@ -176,7 +304,7 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
         Event.last_summarized_at.is_not(None),
     ]
     rows = session.execute(
-        select(Event, Disease.canonical_name)
+        select(Event, Disease.canonical_name, Disease.slug)
         .outerjoin(Disease, Disease.id == Event.disease_id)
         .where(*conditions)
         .order_by(Event.last_updated_at.desc(), Event.id.desc())
@@ -185,7 +313,22 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
     if not rows:
         return DashboardEventPage(items=(), total=0)
 
-    country_codes = {event.country_code for event, _ in rows if event.country_code is not None}
+    normalized_rows = [_unpack_event_row(row) for row in rows]
+    host_sectors = (
+        _event_host_sectors(session, [event.id for event, _, _ in normalized_rows])
+        if len(rows[0]) > 2
+        else {}
+    )
+    fallback_event_ids = [
+        event.id for event, disease_name, _ in normalized_rows if not disease_name
+    ]
+    fallback_disease_by_event_id = (
+        _stored_disease_text_bulk(session, fallback_event_ids) if fallback_event_ids else {}
+    )
+
+    country_codes = {
+        event.country_code for event, _, _ in normalized_rows if event.country_code is not None
+    }
     admin1_centroids: dict[tuple[str, str], tuple[str, float, float]] = {}
     if country_codes:
         admin1_rows = session.execute(
@@ -234,34 +377,46 @@ def query_dashboard_events(session: Session) -> DashboardEventPage:
         for code, latitude, longitude in centroid_rows:
             country_centroids.setdefault(code, (float(latitude), float(longitude)))
 
-    items = tuple(
-        DashboardEventItem(
-            public_id=event.public_id,
-            headline=event.headline,
-            summary=event.summary,
-            disease=disease_name,
-            event_type=event.event_type.value,
-            status=event.status.value,
-            country_code=event.country_code,
-            admin1=location[0],
-            first_reported_at=event.first_signal_at,
-            latest_report_at=event.last_updated_at,
-            article_count=event.article_count,
-            last_summarized_at=event.last_summarized_at,
-            latitude=location[1],
-            longitude=location[2],
-            map_level=location[3],
+    items_list: list[DashboardEventItem] = []
+    for event, disease_name, disease_slug in normalized_rows:
+        group = disease_group_for(disease_slug)
+        sector = host_sectors.get(event.id, HostSector.UNKNOWN)
+        if host_sector == "human" and sector not in {HostSector.HUMAN, HostSector.BOTH}:
+            continue
+        if host_sector == "animal" and sector not in {HostSector.ANIMAL, HostSector.BOTH}:
+            continue
+        if disease_group is not None and group.value != disease_group:
+            continue
+        location = _dashboard_location(
+            event.admin1,
+            country_centroids,
+            admin1_centroids,
+            event.country_code,
         )
-        for event, disease_name in rows
-        for location in (
-            _dashboard_location(
-                event.admin1,
-                country_centroids,
-                admin1_centroids,
-                event.country_code,
-            ),
+        items_list.append(
+            DashboardEventItem(
+                public_id=event.public_id,
+                headline=event.headline or event.public_id,
+                summary=event.summary or "",
+                disease=disease_name or fallback_disease_by_event_id.get(event.id),
+                event_type=event.event_type.value,
+                status=event.status.value,
+                country_code=event.country_code,
+                admin1=location[0],
+                first_reported_at=event.first_signal_at,
+                latest_report_at=event.last_updated_at,
+                article_count=event.article_count,
+                last_summarized_at=event.last_summarized_at or event.last_updated_at,
+                latitude=location[1],
+                longitude=location[2],
+                map_level=location[3],
+                disease_group=group.value,
+                disease_group_label=disease_group_label(group),
+                host_sector=sector,
+                summary_payload=getattr(event, "summary_payload", None),
+            )
         )
-    )
+    items = tuple(items_list)
     return DashboardEventPage(items=items, total=len(items))
 
 
@@ -277,6 +432,8 @@ def query_event_list(
     verification_status: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    host_sector: str | None = None,
+    disease_group: str | None = None,
 ) -> EventListPage:
     """Events with the plan's filters, most recently updated first."""
     conditions = []
@@ -294,6 +451,30 @@ def query_event_list(
         conditions.append(Event.last_updated_at >= start_date)
     if end_date is not None:
         conditions.append(Event.last_updated_at < end_date)
+    if host_sector in {"human", "animal"}:
+        accepted = [host_sector, "both"]
+        conditions.append(
+            Event.id.in_(
+                select(EventSignal.event_id)
+                .join(Signal, Signal.id == EventSignal.signal_id)
+                .where(Signal.host_sector.in_(accepted))
+            )
+        )
+    if disease_group is not None:
+        group_slugs = [
+            slug for slug, group in CANONICAL_DISEASE_GROUPS.items() if group.value == disease_group
+        ]
+        if disease_group == "unknown":
+            mapped_non_unknown_slugs = [
+                slug
+                for slug, group in CANONICAL_DISEASE_GROUPS.items()
+                if group.value != disease_group
+            ]
+            conditions.append(
+                or_(Disease.id.is_(None), Disease.slug.not_in(mapped_non_unknown_slugs))
+            )
+        else:
+            conditions.append(Disease.slug.in_(group_slugs))
 
     total = session.execute(
         select(func.count(Event.id))
@@ -303,7 +484,7 @@ def query_event_list(
     ).scalar_one()
 
     rows = session.execute(
-        select(Event, Disease.canonical_name)
+        select(Event, Disease.canonical_name, Disease.slug)
         .outerjoin(Disease, Disease.id == Event.disease_id)
         .where(*conditions)
         .order_by(Event.last_updated_at.desc(), Event.id.desc())
@@ -311,12 +492,18 @@ def query_event_list(
         .offset(offset)
     ).all()
 
+    normalized_rows = [_unpack_event_row(row) for row in rows]
+    host_sectors = (
+        _event_host_sectors(session, [event.id for event, _, _ in normalized_rows])
+        if rows and len(rows[0]) > 2
+        else {}
+    )
     items = tuple(
         EventListItem(
             public_id=event.public_id,
             headline=event.headline,
             summary=event.summary,
-            disease=disease_name,
+            disease=disease_name or _stored_disease_text(session, event.id),
             event_type=event.event_type.value,
             status=event.status.value,
             verification_status=event.verification_status.value,
@@ -327,8 +514,12 @@ def query_event_list(
             latest_report_at=event.last_updated_at,
             article_count=event.article_count,
             last_summarized_at=event.last_summarized_at,
+            disease_group=disease_group_for(disease_slug).value,
+            disease_group_label=disease_group_label(disease_group_for(disease_slug)),
+            host_sector=host_sectors.get(event.id, HostSector.UNKNOWN),
+            summary_payload=getattr(event, "summary_payload", None),
         )
-        for event, disease_name in rows
+        for event, disease_name, disease_slug in normalized_rows
     )
 
     return EventListPage(items=items, total=total, limit=limit, offset=offset)
@@ -341,13 +532,52 @@ def query_event_detail(
 ) -> EventDetail | None:
     """One event by public id, with its sources, observations, and summaries."""
     row = session.execute(
-        select(Event, Disease.canonical_name)
+        select(Event, Disease.canonical_name, Disease.slug)
         .outerjoin(Disease, Disease.id == Event.disease_id)
         .where(Event.public_id == public_id)
     ).first()
     if row is None:
         return None
-    event, disease_name = row
+    event, disease_name, disease_slug = _unpack_event_row(row)
+    if disease_name is None:
+        disease_name = _stored_disease_text(session, event.id)
+    event_host_sector = (
+        _event_host_sectors(session, [event.id]).get(event.id, HostSector.UNKNOWN)
+        if len(row) > 2
+        else HostSector.UNKNOWN
+    )
+    event_group = disease_group_for(disease_slug)
+
+    location_rows = (
+        session.execute(
+            select(EventLocation)
+            .where(EventLocation.event_id == event.id)
+            .order_by(EventLocation.location_role, EventLocation.id)
+        )
+        .scalars()
+        .all()
+    )
+    locations = tuple(
+        EventLocationItem(
+            location_role=location.location_role.value,
+            precision=(
+                "place"
+                if location.place_name
+                else "admin1"
+                if location.admin1
+                else "country"
+                if location.country_code
+                else "unresolved"
+            ),
+            country_code=location.country_code,
+            admin1=location.admin1,
+            admin2=location.admin2,
+            place_name=location.place_name,
+            latitude=location.latitude,
+            longitude=location.longitude,
+        )
+        for location in location_rows
+    )
 
     source_rows = session.execute(
         select(
@@ -413,18 +643,11 @@ def query_event_detail(
     )
     observations = tuple(
         EventObservationItem(
+            signal_id=obs.signal_id,
             observation_date=obs.observation_date,
             reported_at=obs.reported_at,
-            suspected_cases=obs.suspected_cases,
-            probable_cases=obs.probable_cases,
-            confirmed_cases=obs.confirmed_cases,
-            total_cases=obs.total_cases,
-            new_cases=obs.new_cases,
-            deaths=obs.deaths,
-            new_deaths=obs.new_deaths,
-            hospitalizations=obs.hospitalizations,
             notes=obs.notes,
-            extraction_confidence=obs.extraction_confidence,
+            material_facts=obs.material_facts,
         )
         for obs in observation_rows
     )
@@ -443,11 +666,14 @@ def query_event_detail(
             version=summary.version,
             headline=summary.headline,
             summary=summary.summary,
-            status=summary.status.value,
-            latest_development=summary.latest_development,
-            uncertainties=summary.uncertainties,
+            trajectory=summary.trajectory or "Unclear",
+            snapshot=normalize_summary_snapshot(summary.snapshot),
+            key_driver=summary.key_driver,
+            response=summary.response,
+            risk=summary.risk,
             model_id=summary.model_id,
             created_at=summary.created_at,
+            summary_payload=getattr(summary, "summary_payload", None),
         )
         for summary in summary_rows
     )
@@ -469,9 +695,14 @@ def query_event_detail(
         last_summarized_at=event.last_summarized_at,
         early_signal_score=event.early_signal_score,
         evidence_score=event.evidence_score,
+        locations=locations,
         sources=sources,
         observations=observations,
         summaries=summaries,
+        disease_group=event_group.value,
+        disease_group_label=disease_group_label(event_group),
+        host_sector=event_host_sector,
+        summary_payload=getattr(event, "summary_payload", None),
     )
 
 

@@ -135,7 +135,7 @@ def test_the_content_hash_changes_when_the_body_changes() -> None:
 
 def test_stub_for_a_failed_retrieval_is_built_by_the_connector() -> None:
     stub = connector(FULL_PAGE).stub(article(), FIRST)
-    assert stub.processing_status is ProcessingStatus.NEEDS_REVIEW
+    assert stub.processing_status is ProcessingStatus.FETCHED
     assert stub.raw_text is None
     assert stub.published_at is None
     assert stub.title == "Dos residentes - Example News ( 39 )"

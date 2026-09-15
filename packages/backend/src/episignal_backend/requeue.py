@@ -38,10 +38,7 @@ def requeue_historical_extractions(session: Session, *, limit: int | None = None
     rows = session.execute(statement).scalars().all()
     requeued = 0
     for signal in rows:
-        if (
-            signal.duplicate_of_signal_id is not None
-            or signal.public_health_relevant is False
-        ):
+        if signal.duplicate_of_signal_id is not None or signal.public_health_relevant is False:
             continue
         if read_stored_extraction(signal.ai_extraction) is None:
             continue

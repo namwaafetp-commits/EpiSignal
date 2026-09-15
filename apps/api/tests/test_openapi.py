@@ -15,6 +15,7 @@ def test_openapi_exposes_public_routes() -> None:
         "/api/v1/signals",
         "/api/v1/radar",
         "/api/v1/events",
+        "/api/v1/events/dashboard",
         "/api/v1/events/{public_id}",
         "/api/v1/events/{public_id}/sources",
         "/api/v1/events/{public_id}/observations",

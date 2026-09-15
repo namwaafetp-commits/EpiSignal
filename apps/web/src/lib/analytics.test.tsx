@@ -1,0 +1,340 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  analyticsEventNames,
+  countBucket,
+  sourceDomain,
+  trackPageView,
+  trackEvent,
+  trackSearchUsed,
+  type AnalyticsEvent,
+} from "./analytics";
+import { getUmamiScriptProps } from "./umami-config";
+
+describe("Umami configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("does not render a script when either public setting is missing", () => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "");
+
+    expect(getUmamiScriptProps()).toBeNull();
+  });
+
+  it("renders one non-blocking script with the configured website id", () => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+    vi.stubEnv(
+      "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
+      "https://stats.example/script.js",
+    );
+
+    expect(getUmamiScriptProps()).toEqual({
+      id: "episignal-umami",
+      src: "https://stats.example/script.js",
+      strategy: "beforeInteractive",
+      "data-website-id": "website-id",
+      "data-auto-track": "true",
+      "data-auto-pageview": "false",
+      "data-exclude-search": "true",
+    });
+  });
+});
+
+describe("analytics event boundary", () => {
+  const track = vi.fn();
+
+  beforeEach(() => {
+    track.mockReset();
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "website-id");
+    vi.stubEnv(
+      "NEXT_PUBLIC_UMAMI_SCRIPT_URL",
+      "https://stats.example/script.js",
+    );
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="website-id"></script>';
+    window.umami = { track };
+  });
+
+  afterEach(() => {
+    delete window.umami;
+    document.body.innerHTML = "";
+    vi.unstubAllEnvs();
+  });
+
+  it("accepts only the approved event names", () => {
+    expect(analyticsEventNames).toEqual([
+      "view_switch",
+      "theme_change",
+      "filter_change",
+      "search_used",
+      "map_event_open",
+      "briefing_event_open",
+      "reading_pane_open",
+      "full_event_open",
+      "source_click",
+    ]);
+
+    const events: AnalyticsEvent[] = [
+      { name: "view_switch", properties: { view: "map" } },
+      { name: "theme_change", properties: { theme: "dark" } },
+      { name: "filter_change", properties: { filter: "country" } },
+      { name: "search_used", properties: { results_bucket: "1-5" } },
+      {
+        name: "map_event_open",
+        properties: {
+          event_id: "EVT-64356615",
+          disease_group: "vector_borne",
+          host_sector: "human",
+        },
+      },
+      {
+        name: "briefing_event_open",
+        properties: {
+          event_id: "EVT-64356615",
+          disease_group: "vector_borne",
+          host_sector: "human",
+          source_count_bucket: "6-20",
+        },
+      },
+      { name: "reading_pane_open", properties: {} },
+      {
+        name: "full_event_open",
+        properties: { event_id: "EVT-64356615" },
+      },
+      {
+        name: "source_click",
+        properties: { event_id: "EVT-64356615", source_domain: "who.int" },
+      },
+    ];
+
+    for (const event of events) trackEvent(event);
+
+    expect(track).toHaveBeenCalledTimes(events.length);
+    expect(track.mock.calls.slice(4).map(([payload]) => payload.data)).toEqual([
+      {
+        event_id: "EVT-64356615",
+        disease_group: "vector_borne",
+        host_sector: "human",
+      },
+      {
+        event_id: "EVT-64356615",
+        disease_group: "vector_borne",
+        host_sector: "human",
+        source_count_bucket: "6-20",
+      },
+      {},
+      { event_id: "EVT-64356615" },
+      { event_id: "EVT-64356615", source_domain: "who.int" },
+    ]);
+  });
+
+  it("is a no-op when Umami is not loaded", () => {
+    delete window.umami;
+
+    expect(() =>
+      trackEvent({
+        name: "full_event_open",
+        properties: { event_id: "EVT-64356615" },
+      }),
+    ).not.toThrow();
+  });
+
+  it("uses the runtime-rendered website id when build-time settings are absent", () => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "");
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "");
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="runtime-website-id"></script>';
+
+    trackPageView("/");
+
+    expect(track).toHaveBeenCalledWith({
+      website: "runtime-website-id",
+      url: "/",
+      title: "EpiSignal — Map",
+    });
+  });
+
+  it("sends custom events with the runtime-rendered website id", () => {
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "");
+    vi.stubEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "");
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id="runtime-website-id"></script>';
+
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
+
+    expect(track).toHaveBeenCalledWith({
+      website: "runtime-website-id",
+      url: "/",
+      title: "EpiSignal — Map",
+      name: "full_event_open",
+      data: { event_id: "EVT-64356615" },
+    });
+  });
+
+  it("is a no-op when the rendered tracker script is missing", () => {
+    document.body.innerHTML = "";
+
+    trackPageView("/");
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the rendered tracker has no website id", () => {
+    document.body.innerHTML =
+      '<script id="episignal-umami" data-website-id=""></script>';
+
+    trackPageView("/");
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the rendered tracker omits its website id", () => {
+    document.body.innerHTML = '<script id="episignal-umami"></script>';
+
+    trackPageView("/");
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("buckets search counts without accepting search text", () => {
+    trackSearchUsed(0);
+    trackSearchUsed(3);
+    trackSearchUsed(12);
+    trackSearchUsed(21);
+
+    expect([0, 3, 12, 21].map(countBucket)).toEqual([
+      "0",
+      "1-5",
+      "6-20",
+      "20+",
+    ]);
+
+    expect(track.mock.calls.map(([payload]) => payload.data)).toEqual([
+      { results_bucket: "0" },
+      { results_bucket: "1-5" },
+      { results_bucket: "6-20" },
+      { results_bucket: "20+" },
+    ]);
+  });
+
+  it("normalizes source links to a bounded domain value", () => {
+    expect(sourceDomain("https://www.who.int/news/item?secret=1")).toBe(
+      "who.int",
+    );
+    expect(sourceDomain("https://reuters.com/world/story")).toBe("reuters.com");
+    expect(sourceDomain("https://private.example/article")).toBe("other");
+    expect(sourceDomain("not a url")).toBe("other");
+  });
+
+  it("never forwards private content in analytics payloads", () => {
+    trackSearchUsed(2);
+    trackEvent({
+      name: "source_click",
+      properties: {
+        event_id: "EVT-64356615",
+        source_domain: sourceDomain("https://www.who.int/story"),
+      },
+    });
+    trackEvent({
+      name: "briefing_event_open",
+      properties: {
+        event_id: "EVT-64356615",
+        disease_group: "other_infectious",
+        host_sector: "unknown",
+        source_count_bucket: "1-5",
+      },
+    });
+
+    const payload = JSON.stringify(track.mock.calls);
+    const eventData = track.mock.calls.map(([call]) => call.data ?? {});
+    expect(payload).not.toContain("search query");
+    expect(payload).not.toContain("headline");
+    expect(payload).not.toContain("summary");
+    expect(payload).not.toContain("EVT-2026-00001");
+    expect(payload).not.toContain("https://www.who.int/story");
+    for (const data of eventData) {
+      expect(Object.keys(data)).not.toEqual(
+        expect.arrayContaining([
+          "headline",
+          "title",
+          "summary",
+          "description",
+          "search",
+          "search_query",
+          "query",
+          "url",
+          "source_url",
+          "content",
+          "article",
+          "body",
+        ]),
+      );
+    }
+    expect(track).toHaveBeenCalledWith({
+      website: "website-id",
+      url: "/",
+      title: "EpiSignal — Map",
+      name: "source_click",
+      data: { event_id: "EVT-64356615", source_domain: "who.int" },
+    });
+  });
+
+  it("drops malformed event ids instead of forwarding private identifiers", () => {
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "internal-event-42" },
+    });
+
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "full_event_open", data: {} }),
+    );
+    expect(JSON.stringify(track.mock.calls)).not.toContain("internal-event-42");
+  });
+
+  it("sanitizes event-detail paths for custom events and page views", () => {
+    window.history.replaceState(null, "", "/events/EVT-2026-00001");
+
+    trackPageView(window.location.pathname);
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
+
+    expect(track).toHaveBeenNthCalledWith(1, {
+      website: "website-id",
+      url: "/events/:public_id",
+      title: "EpiSignal — Event",
+    });
+    expect(track).toHaveBeenNthCalledWith(2, {
+      website: "website-id",
+      url: "/events/:public_id",
+      title: "EpiSignal — Event",
+      name: "full_event_open",
+      data: { event_id: "EVT-64356615" },
+    });
+    expect(JSON.stringify(track.mock.calls)).not.toContain("EVT-2026-00001");
+  });
+
+  it("ignores paths outside the approved page-view routes", () => {
+    trackPageView("/events/");
+    trackPageView("/events/EVT-2026-00001/extra");
+
+    expect(track).not.toHaveBeenCalled();
+  });
+});
