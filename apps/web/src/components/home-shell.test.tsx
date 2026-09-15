@@ -49,7 +49,7 @@ vi.mock("./event-map", () => ({
 
 const EVENTS: DashboardEvent[] = [
   {
-    public_id: "EVT-2026-00001",
+    public_id: "EVT-64356615",
     headline: "Cholera activity increasing in Cacuaco",
     summary: "Health officials are monitoring a cholera outbreak.",
     disease: "Cholera",
@@ -69,7 +69,7 @@ const EVENTS: DashboardEvent[] = [
     map_level: "admin1",
   },
   {
-    public_id: "EVT-2026-00002",
+    public_id: "EVT-64356616",
     headline: "Dengue activity in Thailand",
     summary: "A country-level dengue summary.",
     disease: "Dengue",
@@ -96,7 +96,7 @@ const ready: DashboardFeedState = {
 };
 
 const detail = {
-  public_id: "EVT-2026-00001",
+  public_id: "EVT-64356615",
   headline: EVENTS[0].headline,
   summary: EVENTS[0].summary,
   disease: "Cholera",
@@ -228,12 +228,15 @@ describe("HomeShell UI v2", () => {
     );
     expect(
       within(pane).getByRole("link", { name: "View full event" }),
-    ).toHaveAttribute("href", "/events/EVT-2026-00001?period=72h");
+    ).toHaveAttribute("href", "/events/EVT-64356615?period=72h");
     fireEvent.click(
       within(pane).getByRole("link", { name: "View full event" }),
     );
     expect(track).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "full_event_open", data: {} }),
+      expect.objectContaining({
+        name: "full_event_open",
+        data: { event_id: "EVT-64356615" },
+      }),
     );
     fireEvent.keyDown(pane, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -256,6 +259,7 @@ describe("HomeShell UI v2", () => {
       expect.objectContaining({
         name: "map_event_open",
         data: {
+          event_id: "EVT-64356615",
           disease_group: "enteric_food_waterborne",
           host_sector: "human",
         },
@@ -278,6 +282,7 @@ describe("HomeShell UI v2", () => {
       expect.objectContaining({
         name: "briefing_event_open",
         data: {
+          event_id: "EVT-64356615",
           disease_group: "enteric_food_waterborne",
           host_sector: "human",
           source_count_bucket: "1-5",
@@ -389,7 +394,7 @@ describe("HomeShell UI v2", () => {
     await waitFor(() =>
       expect(
         screen.getByRole("link", { name: EVENTS[0].headline }),
-      ).toHaveAttribute("href", "/events/EVT-2026-00001?q=Angola"),
+      ).toHaveAttribute("href", "/events/EVT-64356615?q=Angola"),
     );
     expect(track).toHaveBeenCalledWith(
       expect.objectContaining({

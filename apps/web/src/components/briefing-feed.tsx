@@ -204,7 +204,10 @@ function EventHeadline({
         href={`/events/${encodeURIComponent(event.public_id)}${query}`}
         onClick={(e) => {
           if (!opensReadingPane(e)) {
-            trackEvent({ name: "full_event_open", properties: {} });
+            trackEvent({
+              name: "full_event_open",
+              properties: { event_id: event.public_id },
+            });
           }
           row.onClick(e, event.public_id);
         }}

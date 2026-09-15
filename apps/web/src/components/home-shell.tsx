@@ -188,6 +188,7 @@ export function HomeShell({
       trackEvent({
         name: "map_event_open",
         properties: {
+          event_id: event.public_id,
           disease_group: diseaseGroupValue(event.disease_group),
           host_sector: hostSectorValue(event.host_sector),
         },
@@ -197,6 +198,7 @@ export function HomeShell({
       trackEvent({
         name: "briefing_event_open",
         properties: {
+          event_id: event.public_id,
           disease_group: diseaseGroupValue(event.disease_group),
           host_sector: hostSectorValue(event.host_sector),
           source_count_bucket: countBucket(event.article_count),
@@ -296,7 +298,10 @@ export function HomeShell({
                 key={event.public_id}
                 href={`/events/${encodeURIComponent(event.public_id)}${query}`}
                 onClick={() =>
-                  trackEvent({ name: "full_event_open", properties: {} })
+                  trackEvent({
+                    name: "full_event_open",
+                    properties: { event_id: event.public_id },
+                  })
                 }
               >
                 {event.headline}
@@ -390,7 +395,10 @@ function ReadingPane({
           Loading source links…
         </p>
       ) : detail ? (
-        <SourceList sources={detail.sources.slice(0, 5)} />
+        <SourceList
+          eventId={event.public_id}
+          sources={detail.sources.slice(0, 5)}
+        />
       ) : (
         <p className="reading-pane__loading">
           Source details are temporarily unavailable.
@@ -399,7 +407,12 @@ function ReadingPane({
       <Link
         className="primary-action"
         href={`/events/${encodeURIComponent(event.public_id)}${query}`}
-        onClick={() => trackEvent({ name: "full_event_open", properties: {} })}
+        onClick={() =>
+          trackEvent({
+            name: "full_event_open",
+            properties: { event_id: event.public_id },
+          })
+        }
       >
         View full event
       </Link>

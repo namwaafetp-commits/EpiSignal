@@ -75,8 +75,10 @@ export function EventBrief({
 }
 
 export function SourceList({
+  eventId,
   sources,
 }: {
+  eventId: string;
   sources: EventDetailResponse["sources"];
 }) {
   if (!sources.length) {
@@ -102,7 +104,12 @@ export function SourceList({
       <h2 id="sources-heading">SOURCES · {sources.length}</h2>
       <ol className="event-content__sources">
         {lead.map((source, index) => (
-          <SourceRow key={source.signal_id} source={source} index={index} />
+          <SourceRow
+            key={source.signal_id}
+            eventId={eventId}
+            source={source}
+            index={index}
+          />
         ))}
       </ol>
       {rest.length > 0 && (
@@ -120,6 +127,7 @@ export function SourceList({
             {rest.map((source, index) => (
               <SourceRow
                 key={source.signal_id}
+                eventId={eventId}
                 source={source}
                 index={index + LEAD_SOURCE_COUNT}
               />
@@ -132,9 +140,11 @@ export function SourceList({
 }
 
 function SourceRow({
+  eventId,
   source,
   index,
 }: {
+  eventId: string;
   source: EventDetailResponse["sources"][number];
   index: number;
 }) {
@@ -151,7 +161,10 @@ function SourceRow({
           onClick={() =>
             trackEvent({
               name: "source_click",
-              properties: { source_domain: sourceDomain(source.url) },
+              properties: {
+                event_id: eventId,
+                source_domain: sourceDomain(source.url),
+              },
             })
           }
         >

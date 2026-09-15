@@ -82,31 +82,61 @@ describe("analytics event boundary", () => {
       { name: "search_used", properties: { results_bucket: "1-5" } },
       {
         name: "map_event_open",
-        properties: { disease_group: "vector_borne", host_sector: "human" },
+        properties: {
+          event_id: "EVT-64356615",
+          disease_group: "vector_borne",
+          host_sector: "human",
+        },
       },
       {
         name: "briefing_event_open",
         properties: {
+          event_id: "EVT-64356615",
           disease_group: "vector_borne",
           host_sector: "human",
           source_count_bucket: "6-20",
         },
       },
       { name: "reading_pane_open", properties: {} },
-      { name: "full_event_open", properties: {} },
-      { name: "source_click", properties: { source_domain: "who.int" } },
+      {
+        name: "full_event_open",
+        properties: { event_id: "EVT-64356615" },
+      },
+      {
+        name: "source_click",
+        properties: { event_id: "EVT-64356615", source_domain: "who.int" },
+      },
     ];
 
     for (const event of events) trackEvent(event);
 
     expect(track).toHaveBeenCalledTimes(events.length);
+    expect(track.mock.calls.slice(4).map(([payload]) => payload.data)).toEqual([
+      {
+        event_id: "EVT-64356615",
+        disease_group: "vector_borne",
+        host_sector: "human",
+      },
+      {
+        event_id: "EVT-64356615",
+        disease_group: "vector_borne",
+        host_sector: "human",
+        source_count_bucket: "6-20",
+      },
+      {},
+      { event_id: "EVT-64356615" },
+      { event_id: "EVT-64356615", source_domain: "who.int" },
+    ]);
   });
 
   it("is a no-op when Umami is not loaded", () => {
     delete window.umami;
 
     expect(() =>
-      trackEvent({ name: "full_event_open", properties: {} }),
+      trackEvent({
+        name: "full_event_open",
+        properties: { event_id: "EVT-64356615" },
+      }),
     ).not.toThrow();
   });
 
@@ -131,14 +161,17 @@ describe("analytics event boundary", () => {
     document.body.innerHTML =
       '<script id="episignal-umami" data-website-id="runtime-website-id"></script>';
 
-    trackEvent({ name: "full_event_open", properties: {} });
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
 
     expect(track).toHaveBeenCalledWith({
       website: "runtime-website-id",
       url: "/",
       title: "EpiSignal — Map",
       name: "full_event_open",
-      data: {},
+      data: { event_id: "EVT-64356615" },
     });
   });
 
@@ -146,7 +179,10 @@ describe("analytics event boundary", () => {
     document.body.innerHTML = "";
 
     trackPageView("/");
-    trackEvent({ name: "full_event_open", properties: {} });
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
 
     expect(track).not.toHaveBeenCalled();
   });
@@ -156,7 +192,10 @@ describe("analytics event boundary", () => {
       '<script id="episignal-umami" data-website-id=""></script>';
 
     trackPageView("/");
-    trackEvent({ name: "full_event_open", properties: {} });
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
 
     expect(track).not.toHaveBeenCalled();
   });
@@ -165,7 +204,10 @@ describe("analytics event boundary", () => {
     document.body.innerHTML = '<script id="episignal-umami"></script>';
 
     trackPageView("/");
-    trackEvent({ name: "full_event_open", properties: {} });
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
 
     expect(track).not.toHaveBeenCalled();
   });
@@ -204,11 +246,15 @@ describe("analytics event boundary", () => {
     trackSearchUsed(2);
     trackEvent({
       name: "source_click",
-      properties: { source_domain: sourceDomain("https://www.who.int/story") },
+      properties: {
+        event_id: "EVT-64356615",
+        source_domain: sourceDomain("https://www.who.int/story"),
+      },
     });
     trackEvent({
       name: "briefing_event_open",
       properties: {
+        event_id: "EVT-64356615",
         disease_group: "other_infectious",
         host_sector: "unknown",
         source_count_bucket: "1-5",
@@ -216,25 +262,59 @@ describe("analytics event boundary", () => {
     });
 
     const payload = JSON.stringify(track.mock.calls);
+    const eventData = track.mock.calls.map(([call]) => call.data ?? {});
     expect(payload).not.toContain("search query");
     expect(payload).not.toContain("headline");
     expect(payload).not.toContain("summary");
     expect(payload).not.toContain("EVT-2026-00001");
     expect(payload).not.toContain("https://www.who.int/story");
+    for (const data of eventData) {
+      expect(Object.keys(data)).not.toEqual(
+        expect.arrayContaining([
+          "headline",
+          "title",
+          "summary",
+          "description",
+          "search",
+          "search_query",
+          "query",
+          "url",
+          "source_url",
+          "content",
+          "article",
+          "body",
+        ]),
+      );
+    }
     expect(track).toHaveBeenCalledWith({
       website: "website-id",
       url: "/",
       title: "EpiSignal — Map",
       name: "source_click",
-      data: { source_domain: "who.int" },
+      data: { event_id: "EVT-64356615", source_domain: "who.int" },
     });
+  });
+
+  it("drops malformed event ids instead of forwarding private identifiers", () => {
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "internal-event-42" },
+    });
+
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "full_event_open", data: {} }),
+    );
+    expect(JSON.stringify(track.mock.calls)).not.toContain("internal-event-42");
   });
 
   it("sanitizes event-detail paths for custom events and page views", () => {
     window.history.replaceState(null, "", "/events/EVT-2026-00001");
 
     trackPageView(window.location.pathname);
-    trackEvent({ name: "full_event_open", properties: {} });
+    trackEvent({
+      name: "full_event_open",
+      properties: { event_id: "EVT-64356615" },
+    });
 
     expect(track).toHaveBeenNthCalledWith(1, {
       website: "website-id",
@@ -246,7 +326,7 @@ describe("analytics event boundary", () => {
       url: "/events/:public_id",
       title: "EpiSignal — Event",
       name: "full_event_open",
-      data: {},
+      data: { event_id: "EVT-64356615" },
     });
     expect(JSON.stringify(track.mock.calls)).not.toContain("EVT-2026-00001");
   });

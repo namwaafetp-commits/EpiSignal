@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const detail = {
-  public_id: "EVT-2026-00001",
+  public_id: "EVT-64356615",
   headline: "Cholera activity increasing in Cacuaco",
   summary: "Health officials are monitoring a cholera outbreak.",
   disease: "Cholera",
@@ -127,7 +127,7 @@ describe("EventPage", () => {
     expect(track).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "source_click",
-        data: { source_domain: "other" },
+        data: { event_id: "EVT-64356615", source_domain: "other" },
       }),
     );
   });
@@ -237,7 +237,7 @@ describe("EventPage", () => {
 
   it("lists related reporting as plain headlines, ranked by shared metadata", async () => {
     const sibling = {
-      public_id: "EVT-2026-00002",
+      public_id: "EVT-64356616",
       headline: "Cholera cases reported in a neighbouring district",
       summary: "More cholera reporting.",
       disease: "Cholera",
@@ -272,7 +272,7 @@ describe("EventPage", () => {
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: sibling.headline }),
-    ).toHaveAttribute("href", "/events/EVT-2026-00002");
+    ).toHaveAttribute("href", "/events/EVT-64356616");
     // Headlines only: no score, no match reasons, no standing caveat.
     expect(screen.queryByText(/Match score/)).toBeNull();
     expect(screen.queryByText(/Same disease group/)).toBeNull();

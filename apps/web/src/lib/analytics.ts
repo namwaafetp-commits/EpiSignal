@@ -45,6 +45,7 @@ export type DiseaseGroup = (typeof DISEASE_GROUPS)[number];
 export type HostSector = (typeof HOST_SECTORS)[number];
 export type SourceDomain = (typeof SOURCE_DOMAINS)[number];
 export type SourceCountBucket = "0" | "1-5" | "6-20" | "20+";
+export type PublicEventId = string;
 
 export type AnalyticsEvent =
   | { name: "view_switch"; properties: { view: "map" | "briefing" } }
@@ -58,19 +59,27 @@ export type AnalyticsEvent =
   | { name: "search_used"; properties: { results_bucket: SourceCountBucket } }
   | {
       name: "map_event_open";
-      properties: { disease_group: DiseaseGroup; host_sector: HostSector };
+      properties: {
+        event_id: PublicEventId;
+        disease_group: DiseaseGroup;
+        host_sector: HostSector;
+      };
     }
   | {
       name: "briefing_event_open";
       properties: {
+        event_id: PublicEventId;
         disease_group: DiseaseGroup;
         host_sector: HostSector;
         source_count_bucket: SourceCountBucket;
       };
     }
   | { name: "reading_pane_open"; properties: Record<never, never> }
-  | { name: "full_event_open"; properties: Record<never, never> }
-  | { name: "source_click"; properties: { source_domain: SourceDomain } };
+  | { name: "full_event_open"; properties: { event_id: PublicEventId } }
+  | {
+      name: "source_click";
+      properties: { event_id: PublicEventId; source_domain: SourceDomain };
+    };
 
 type UmamiTracker = {
   track: (payload: {
@@ -147,7 +156,27 @@ export function sourceDomain(value: string): SourceDomain {
   }
 }
 
-function safeEvent(value: unknown): AnalyticsEvent | null {
+const PUBLIC_EVENT_ID_PATTERN = /^EVT-[0-9A-F]{8}$/;
+
+export function publicEventIdValue(value: unknown): PublicEventId | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return PUBLIC_EVENT_ID_PATTERN.test(normalized) ? normalized : null;
+}
+
+function eventIdProperties(properties: object): Record<string, string> {
+  const eventId = publicEventIdValue(
+    (properties as Record<string, unknown>).event_id,
+  );
+  return eventId ? { event_id: eventId } : {};
+}
+
+type SafeAnalyticsEvent = {
+  name: AnalyticsEvent["name"];
+  properties: Record<string, string>;
+};
+
+function safeEvent(value: unknown): SafeAnalyticsEvent | null {
   if (!value || typeof value !== "object") return null;
   const event = value as Record<string, unknown>;
   switch (event.name) {
@@ -208,6 +237,7 @@ function safeEvent(value: unknown): AnalyticsEvent | null {
         ? {
             name: event.name,
             properties: {
+              ...eventIdProperties(event.properties),
               disease_group: diseaseGroupValue(
                 (event.properties as Record<string, unknown>)
                   .disease_group as string,
@@ -224,6 +254,7 @@ function safeEvent(value: unknown): AnalyticsEvent | null {
         ? {
             name: event.name,
             properties: {
+              ...eventIdProperties(event.properties),
               disease_group: diseaseGroupValue(
                 (event.properties as Record<string, unknown>)
                   .disease_group as string,
@@ -247,13 +278,20 @@ function safeEvent(value: unknown): AnalyticsEvent | null {
           }
         : null;
     case "reading_pane_open":
-    case "full_event_open":
       return { name: event.name, properties: {} };
+    case "full_event_open":
+      return {
+        name: event.name,
+        properties: eventIdProperties(
+          (event.properties as Record<string, unknown> | undefined) ?? {},
+        ),
+      };
     case "source_click":
       return event.properties && typeof event.properties === "object"
         ? {
             name: event.name,
             properties: {
+              ...eventIdProperties(event.properties),
               source_domain: (() => {
                 const value = String(
                   (event.properties as Record<string, unknown>).source_domain,

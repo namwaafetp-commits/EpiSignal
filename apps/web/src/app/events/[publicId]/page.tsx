@@ -57,7 +57,7 @@ export default async function EventPage({
 
       <div className="event-content__body">
         <EventBrief event={detail} />
-        <SourceList sources={detail.sources} />
+        <SourceList eventId={detail.public_id} sources={detail.sources} />
         <RelatedReporting related={related} />
         <EventGlossary />
       </div>
