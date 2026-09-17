@@ -4,15 +4,15 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-11
 
 ## Position
 
 | Field | Value |
 | --- | --- |
 | Band | 2 — GDELT discovery layer |
-| Item | Real-data end-to-end surveillance validation |
-| Status | `verified` |
+| Item | Final simplified three-model surveillance pipeline |
+| Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | [Lean MVP real-data validation design](docs/superpowers/specs/2026-08-31-real-data-mvp-validation-design.md) |
 | Plan | [Lean MVP real-data validation plan](docs/superpowers/plans/2026-08-31-real-data-mvp-validation.md) |
@@ -148,6 +148,13 @@ Lean MVP real-data validation: COMPLETE
 
 MVP verdict: MVP READY WITH MINOR FIXES
 
+## Verified baseline — Lean MVP branch reconciliation
+
+The branch baseline reconciliation was verified at commit `ad26140` with
+`corepack pnpm verify`: 1,222 Python tests and 105 frontend tests passed, with
+two existing dependency deprecation warnings. The completion report is
+[the Lean MVP test reconciliation report](docs/reports/2026-08-31-lean-mvp-test-reconciliation-report.md).
+
 Post-MVP follow-up only: one GDELT rule may intermittently return
 `GdeltUnavailable`, triage precision can improve later, and extraction
 benchmarking remains deferred. Model benchmarking, extraction benchmarking,
@@ -166,11 +173,231 @@ reopened.
 
 ## Next action
 
-Validation complete on branch `codex/real-data-mvp-validation`. The MVP is
-ready with minor fixes; residual provider availability and summary attribution
-risks are recorded in the validation report.
+Review and push the focused test-migration commit on
+`codex/final-three-model-pipeline`; production model-roster updates remain a
+separate authorized operation.
 
 ## Blockers
 
-Residual risks are recorded in
-[the real-data validation report](docs/reports/2026-08-31-real-data-mvp-validation.md).
+The implementation still needs planner handoff before the roadmap item is
+marked `verified`; the full gate is now green. See [the final pipeline
+report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
+
+## Task ledger — final simplified three-model pipeline
+
+- [x] DeepSeek V4 Flash relevance classification over discovery metadata only.
+- [x] Gemini 3.1 Flash-Lite identity extraction with one same-model repair.
+- [x] Deterministic disease/location normalization and exact multi-location grouping.
+- [x] Mistral Small 3.2 summary wiring over linked clean article sources.
+- [x] API/dashboard observation and multi-location surface updated; legacy rows retained.
+- [x] Focused acceptance, lint, type, contract generation, and web build checks passed.
+- [x] Full `corepack pnpm verify` gate: 1,188 Python tests passed, 1 skipped,
+  107 web tests passed, and 2 existing deprecation warnings.
+
+## Task ledger — deterministic Telegram monitoring (2026-09-07)
+
+- [x] Reuse the existing read-only HealthSummary evaluation and preserve its semantics.
+- [x] Add deterministic daily, abnormal, and recovery formatters plus safe Telegram transport.
+- [x] Persist observed state and delivery checkpoints; suppress duplicates and retry failed sends.
+- [x] Integrate monitoring-only CLI modes; document proposed UTC/ICT cron and durable mount.
+- [x] Resolve independent standards/specification review findings with regression tests.
+- [x] Full repository gate passed: 107 web tests; 1,418 Python tests passed, 2 skipped.
+- [x] Focused monitoring/notification suites: 138 passed; lint, format, types, contracts, build passed.
+
+The tested implementation tree is committed as
+`a053e19af26440df819e447a0297e601ea20d1fb`. The current expected Alembic head
+remains `20260904_0022`; no production migrations or deployment were performed.
+Two PostgreSQL tests remain skipped without `EPISIGNAL_TEST_DATABASE_URL`.
+The existing web marker test received a test-only clock correction; map code
+and all monitoring health semantics are unchanged.
+
+Completion evidence and review points:
+[Telegram monitoring report](docs/reports/2026-09-07-telegram-monitoring-report.md).
+Next action: review the commits and proposed notification configuration/schedule.
+**NOT DEPLOYED.** Final push confirmation is recorded in the task response.
+
+## Task ledger — local Telegram cadence correction (2026-09-07)
+
+- [x] Reproduce routine hourly freshness WARNING/recovery cycles with five-minute polling.
+- [x] Document post-run evaluation plus independent :16/:26 watchdog proposal.
+- [x] Separate daily primary/retry at 08:20/08:21 ICT (01:20/01:21 UTC).
+- [x] Keep SQLite implementation and one-second timeout; test contention in both modes.
+- [x] Label production assumptions and all scheduler entries as unverified proposals.
+- [x] Independent standards and specification reviews: no actionable findings.
+- [x] Local gate: 1,432 Python tests passed, 2 skipped, 2 warnings; 107 web tests passed.
+- [x] Backend suite: 1,360 passed, 2 skipped; monitoring/notification suites: 150 passed.
+
+No runtime source, monitoring semantics, thresholds, AI, surveillance behavior,
+production configuration, or migrations changed. Alembic head: `20260904_0022`.
+Evidence: [cadence correction report](docs/reports/2026-09-07-telegram-cadence-correction-report.md).
+Next action: separate deployment-time verification of actual scheduler phase,
+runtime, wrapper, container, timezone, environment, and persistent mount.
+**NOT DEPLOYED. VPS NOT ACCESSED. COOLIFY NOT ACCESSED. PRODUCTION CRON NOT MODIFIED.**
+
+## Task ledger — production GDELT NGram discovery (2026-09-11)
+
+- [x] Production NGram/TOC connector moved benchmark-proven matching, streaming,
+  language filtering, canonicalization, deduplication, and cleanup into backend
+  modules.
+- [x] Durable NGram cursor added with success-only advancement, restart safety,
+  bounded six-hour catch-up, partial failure retention, and provider health states.
+- [x] Scheduled discovery defaults to NGram only; `GdeltDocClient` remains
+  available without automatic fallback.
+- [x] Structured discovery stage metrics and resource safeguards added.
+- [x] Benchmark optional-output permission failure fixed and tested.
+- [x] Full repository gate passed at commit `5a5ba6c`: web 125 passed; Python
+  1,497 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
+  build passed.
+- [x] Review corrections preserve durable-cursor authority, oldest-first
+  `max_batches` continuity, mid-batch retry continuity, and non-green status
+  when zero batches succeed.
+- [x] Correction gate passed at commit `0b4019b`: web 125 passed; Python 1,501
+  passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and build
+  passed.
+
+Completion report:
+[Production GDELT NGram discovery report](docs/reports/2026-09-11-gdelt-ngram-production-report.md).
+
+## Task ledger — scheduler NGram health propagation (2026-09-11)
+
+- [x] Batch provider status is authoritative for scheduled discovery stage
+  success/failure.
+- [x] Partial and unavailable provider statuses map to their explicit stage
+  errors; legacy all-rules-failed DOC behavior remains protected.
+- [x] Regression coverage added for healthy zero-candidate, partial,
+  unavailable with zero failed-rule count, and legacy DOC failure cases.
+- [x] Full repository gate passed at commit `61af04e`: web 125 passed; Python
+  1,505 passed, 2 skipped, 2 warnings; format, lint, typecheck, contracts, and
+  build passed. Alembic head remains `20260911_0024`.
+
+## Task ledger — privacy-preserving Umami analytics (2026-09-13)
+
+- [x] Added optional, non-blocking root-layout Umami script with safe disabled
+  behavior and no hardcoded production values.
+- [x] Added one typed analytics boundary with approved event names, controlled
+  values, bounded count/domain buckets, and privacy-safe object payloads.
+- [x] Added sanitized manual page views for `/`, `/briefing`, and
+  `/events/:public_id`; automatic URL/title collection is disabled.
+- [x] Instrumented navigation, theme, filters, search, map/briefing opens,
+  reading/full-event opens, and source links without sending private content.
+- [x] Added disabled/enabled/custom-event/privacy/UI/page-view tests and the
+  manual [Umami operations guide](docs/operations/umami.md).
+- [x] Final `corepack pnpm verify`: web 157 passed across 20 files; Python
+  1,533 passed, 2 skipped, 2 warnings; typecheck, lint, contracts, and build
+  passed. Alembic head remains `20260912_0025`.
+
+Completion report:
+[Umami analytics report](docs/reports/2026-09-13-umami-analytics-report.md).
+
+## Task ledger — additive surveillance dimensions and flexible summaries (2026-09-08)
+
+- [x] Map all 30 seeded diseases to the explicit additive disease-group taxonomy with unknown fallback.
+- [x] Add nullable DeepSeek host-sector classification, deterministic event derivation, persistence, filters, and UI labels.
+- [x] Add strict flexible Mistral summaries with 3–5 bullets while preserving legacy summary rendering.
+- [x] Expose additive API/contracts and persist flexible summary payloads in event and summary history.
+- [x] Run the full repository gate: 117 web tests, 1,458 Python tests, 2 skipped, lint, format, types, contracts, and build passed.
+
+Completion evidence: [surveillance dimensions and flexible summaries report](docs/reports/2026-09-08-surveillance-dimensions-and-flexible-summaries-report.md).
+Commit: `bb7aaeb`. Local only; no production migration or deployment was performed.
+
+## Review corrections — surveillance dimensions (2026-09-08)
+
+- [x] Unknown filters include unmapped canonical disease slugs.
+- [x] `/events` filter links preserve combined query parameters and clear only the active filter.
+- [x] New Mistral responses require only the flexible 3–5 bullet contract; legacy rows remain readable.
+- [x] Flexible homepage summaries omit the legacy risk block while historical summaries retain compatibility.
+- [x] Review correction gate passed: 125 web tests, 1,460 Python tests, 2 skipped, contracts, and build passed.
+
+Evidence: [surveillance review corrections report](docs/reports/2026-09-08-surveillance-review-corrections-report.md).
+Fix commit: `bc51db3`; migration head remains `20260908_0023`.
+
+## Task ledger — focused surveillance and two-level grouping (2026-09-12)
+
+- [x] DeepSeek relevance requires a real infectious-disease event and excludes
+  disease-name-only, AI biological-weapons, and ruled-out disease reporting.
+- [x] Gemini extraction remains structured-only with optional controlled
+  categories/tags and no prose or recommendations.
+- [x] Conservative deterministic same-story grouping is separate from article
+  dedupe and strict epidemiologic event matching.
+- [x] Strong same-story unresolved signals remain one event unit; resolved
+  member evidence is available for strict event clustering.
+- [x] Event summaries use DeepSeek with optional legacy takeaway compatibility
+  and a 3–5 bullet, approximately 30–100 word contract.
+- [x] Regression coverage and generated contracts are updated; no migration,
+  production configuration, or deployment was performed.
+
+Verified baseline: `d9bb2ea1908df694228908382761ec8fbb531a5a`.
+
+`corepack pnpm verify` passed: web 125 tests; Python 1,518 passed and 2
+skipped; format, lint, typecheck, contracts, and build passed. Alembic head is
+`20260911_0024`; the only warnings are the two existing deprecations. Full
+evidence: [next iteration report](docs/reports/2026-09-12-next-iteration-report.md).
+
+## Task ledger — story-group epidemiologic identity reconciliation (2026-09-12)
+
+- [x] Disease representatives use deterministic consensus and leave conflicts
+  unresolved instead of selecting the first member.
+- [x] Location representatives use exact agreement, allow one resolved value
+  with unresolved peers, and leave conflicting locations unresolved.
+- [x] Expanded story clusters retain reconciled event identity while attaching
+  every original signal.
+- [x] Regression coverage protects bad, missing, and conflicting locations;
+  disease consensus/conflict; Anthropic story grouping; and event matching.
+- [x] Terminology uses `distinctive-term overlap`; no NER was added.
+
+Verified baseline: `577dbcb`.
+
+`corepack pnpm verify` passed: web 125 tests; Python 1,523 passed, 2 skipped,
+2 existing deprecation warnings; format, lint, typecheck, contracts, and build
+passed. Alembic head remains `20260911_0024`.
+Evidence: [event identity reconciliation report](docs/reports/2026-09-12-event-identity-reconciliation-report.md).
+
+## Task ledger — initial event summary gate correction (2026-09-12)
+
+- [x] Prove newly created events are due without structured observations,
+  resolved disease, resolved location, or counts when clean article text exists.
+- [x] Preserve conservative summarized-event behavior for material change,
+  sufficient new article evidence, and summary age.
+- [x] Skip events without usable article text and expose bounded skip reasons.
+- [x] Verify DeepSeek/OpenRouter purpose wiring through the existing registry.
+- [x] Add regression coverage for initial, unresolved, no-source, unchanged,
+  changed, wiring, and legacy summary behavior.
+- [x] Full repository gate passed: web 125; Python 1,530 passed, 2 skipped,
+  2 existing deprecation warnings; format, lint, typecheck, contracts, and
+  build passed.
+
+Verified baseline: commit containing this ledger entry. Alembic head remains
+`20260911_0024`; no production database or deployment changes were made.
+Evidence: [event summary gate correction report](docs/reports/2026-09-12-event-summary-gate-report.md).
+
+## Task ledger — DeepSeek event-summary roster migration (2026-09-12)
+
+- [x] Trace the database-owned roster, seed loader, migration chain, and
+  purpose-specific registry from the pre-change Mistral summary route.
+- [x] Add idempotent Alembic migration `20260912_0025` to activate the
+  DeepSeek/OpenRouter `event_summary` row and retire the old Mistral row without
+  deleting audit identities or mutating event summaries.
+- [x] Keep the reviewed seed convergent and preserve DeepSeek classification,
+  Gemini extraction, and DeepSeek summarization as the three-model workflow.
+- [x] Add fresh/upgrade integration coverage plus repository, wiring, and seed
+  regressions.
+- [x] Full repository gate passed: web 125; Python 1,533 passed, 2 skipped,
+  2 existing deprecation warnings; format, lint, typecheck, contracts, and
+  build passed.
+
+Verified implementation baseline: `f816cf1`; Alembic head is
+`20260912_0025`. No production database or deployment changes were made.
+Evidence: [event-summary roster migration report](docs/reports/2026-09-12-event-summary-roster-migration-report.md).
+
+## Task ledger — UI v2 (2026-09-13)
+
+Current request: UI-only editorial redesign; building on codex/next-iteration.
+Plan: [UI v2](docs/superpowers/plans/2026-09-13-ui-v2.md).
+
+- [ ] Theme and shared navigation.
+- [ ] Briefing and URL filters.
+- [ ] Map preview and reading pane.
+- [ ] Event detail, sources and observation history.
+- [ ] Responsive map and accessibility.
+- [ ] Independent review, visual QA and full verification.
+- [ ] Completion report, commit and push; no deployment.

@@ -9,7 +9,7 @@ This module imports neither database driver nor httpx.
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from episignal_backend.db.types import PipelineChain, PipelineRunStatus, PipelineTrigger
@@ -49,7 +49,7 @@ class PipelineRunRepository(Protocol):
         *,
         status: PipelineRunStatus,
         finished_at: datetime,
-        stage_counts: dict[str, dict[str, int]],
+        stage_counts: dict[str, dict[str, Any]],
         backlog: dict[str, int],
         failed_stages: Sequence[StageOutcome],
     ) -> None:

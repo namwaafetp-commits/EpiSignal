@@ -100,6 +100,8 @@ def get_event_page(
     verification_status: Annotated[str | None, Query()] = None,
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,
+    host_sector: Annotated[str | None, Query()] = None,
+    disease_group: Annotated[str | None, Query()] = None,
 ) -> Any:
     from episignal_backend.events.read import query_event_list
 
@@ -115,14 +117,26 @@ def get_event_page(
             verification_status=verification_status,
             start_date=start_date,
             end_date=end_date,
+            host_sector=host_sector,
+            disease_group=disease_group,
         )
 
 
-def get_dashboard_events_page() -> Any:
+def get_dashboard_events_page(
+    host_sector: Annotated[str | None, Query()] = None,
+    disease_group: Annotated[str | None, Query()] = None,
+) -> Any:
     from episignal_backend.events.read import query_dashboard_events
 
+    settings = get_settings()
     with session_scope() as session:
-        return query_dashboard_events(session)
+        return query_dashboard_events(
+            session,
+            host_sector=host_sector,
+            disease_group=disease_group,
+            ranking_enabled=settings.briefing_ranking_enabled,
+            now=datetime.now(UTC),
+        )
 
 
 def get_pipeline_runs_page(

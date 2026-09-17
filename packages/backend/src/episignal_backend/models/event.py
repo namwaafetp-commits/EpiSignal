@@ -96,6 +96,7 @@ class Event(IdentityMixin, TimestampMixin, Base):
     # accepted summary; the versioned history lives in `event_summaries`.
     headline: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
+    summary_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     article_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -171,6 +172,9 @@ class EventObservation(IdentityMixin, Base):
     # an already-observed event: the updated five-slot brief plus what changed.
     # Absent on every observation that was not the product of a follow-up.
     delta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Validated extraction facts used by event summary evidence and material
+    # change detection. This is additive history, never an overwritten total.
+    material_facts: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     extraction_confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -212,10 +216,12 @@ class EventLocation(IdentityMixin, Base):
 
 
 class EventSummary(IdentityMixin, Base):
-    """One generated summary of an event, versioned and never overwritten.
+    """One generated event-level flash brief, versioned and never overwritten.
 
     Each material update appends a row; the newest row is what
     ``events.headline``/``events.summary`` denormalize for the public surface.
+    The older ``latest_development``/``uncertainties`` columns remain nullable
+    for mixed-version rows but are no longer part of the summary contract.
     """
 
     __tablename__ = "event_summaries"
@@ -237,6 +243,12 @@ class EventSummary(IdentityMixin, Base):
     )
     latest_development: Mapped[str | None] = mapped_column(Text)
     uncertainties: Mapped[list[str] | None] = mapped_column(JSONB)
+    trajectory: Mapped[str | None] = mapped_column(Text)
+    snapshot: Mapped[list[str] | dict[str, Any] | None] = mapped_column(JSONB)
+    key_driver: Mapped[str | None] = mapped_column(Text)
+    response: Mapped[str | None] = mapped_column(Text)
+    risk: Mapped[str | None] = mapped_column(Text)
+    summary_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     model_id: Mapped[str] = mapped_column(Text, nullable=False)
     source_signal_ids: Mapped[list[UUID] | None] = mapped_column(JSONB)
     # The epidemiological snapshot this summary was written against, so the next

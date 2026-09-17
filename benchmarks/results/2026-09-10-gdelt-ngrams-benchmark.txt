@@ -1,0 +1,130 @@
+GDELT Web Legacy NGram benchmark (non-production)
+Time window scanned: last 2 hours UTC; safe lag 5 minutes
+Batches discovered: 4
+Batches processed: 4
+Batches skipped after discovery: 0
+
+Per-batch measurements:
+  2026-09-10T10:02:00Z
+    ngram compressed: 8.651 MB
+    toc compressed: 0.313 MB
+    total downloaded: 8.964 MB
+    download: 3.19s (ngram 2.37s, toc 0.82s)
+    scan: 37.98s; TOC processing: 0.08s
+    documents represented: 2080; matched DOCIDs: 4; unique candidate URLs: 4
+    peak RSS: 77.6 MB
+    peak temp disk: 8.651 MB
+  2026-09-10T10:01:00Z
+    ngram compressed: 13.526 MB
+    toc compressed: 0.489 MB
+    total downloaded: 14.015 MB
+    download: 4.26s (ngram 3.25s, toc 1.01s)
+    scan: 58.10s; TOC processing: 0.10s
+    documents represented: 3346; matched DOCIDs: 8; unique candidate URLs: 8
+    peak RSS: 79.1 MB
+    peak temp disk: 13.526 MB
+  2026-09-10T09:47:00Z
+    ngram compressed: 16.589 MB
+    toc compressed: 0.679 MB
+    total downloaded: 17.268 MB
+    download: 5.30s (ngram 4.30s, toc 1.01s)
+    scan: 63.47s; TOC processing: 0.21s
+    documents represented: 4463; matched DOCIDs: 16; unique candidate URLs: 16
+    peak RSS: 79.3 MB
+    peak temp disk: 16.589 MB
+  2026-09-10T09:46:00Z
+    ngram compressed: 2.775 MB
+    toc compressed: 0.103 MB
+    total downloaded: 2.878 MB
+    download: 1.81s (ngram 1.29s, toc 0.53s)
+    scan: 11.31s; TOC processing: 0.03s
+    documents represented: 743; matched DOCIDs: 4; unique candidate URLs: 4
+    peak RSS: 79.4 MB
+    peak temp disk: 2.775 MB
+
+Totals:
+  elapsed benchmark duration: 193.75s
+  total download: 43.125 MB
+  average MB/batch: 10.781
+  candidate URLs: 32
+  unique candidate URLs: 32
+  MB per unique candidate: 1.348
+  download seconds: 14.58s
+  scan seconds: 170.85s
+  TOC processing seconds: 0.42s
+  peak RAM: 79.4 MB
+  peak temp disk: 16.589 MB
+
+Extrapolation from observed batch density in scanned window:
+  estimated MB/hour: 21.562
+  estimated GB/day: 0.517
+  estimated GB/30-day month: 15.525
+  current VPS baseline: 1.05 GB/day; 31 GB/month
+  projected baseline + NGram traffic: 46.525 GB/month
+  baseline is approximate whole-VPS interface traffic, not EpiSignal-only billing data
+
+Top matching rules:
+  Dengue: 10
+  MERS: 8
+  Chikungunya: 6
+  Zika: 5
+  Salmonella: 3
+  Malaria: 2
+  Polio: 2
+  Diphtheria: 2
+  Rabies: 2
+  Ebola: 1
+Top languages:
+  en: 13
+  ro: 6
+  fr: 3
+  es: 3
+  it: 2
+  gn: 1
+  pl: 1
+  gl: 1
+  ru: 1
+  tl: 1
+Top domains:
+  www.kudika.ro: 3
+  www.prnewswire.com: 2
+  www.ellitoral.com: 2
+  www.equaltimes.org: 1
+  www.northernpen.ca: 1
+  www.abc.com.py: 1
+  www.jagranjosh.com: 1
+  www.arkansasonline.com: 1
+  www.queanbeyanage.com.au: 1
+  business24.ro: 1
+
+Example candidates (up to 30):
+  2026-09-10T10:02:00.000Z | en | Ebola | Will Sierra Leone overturn its school ban on teenage mothers? | www.equaltimes.org | https://www.equaltimes.org/will-sierra-leone-overturn-its
+  2026-09-10T10:02:00.000Z | en | Malaria | Florida officials are issuing mosquito-borne disease advisories | www.northernpen.ca | https://www.northernpen.ca/florida-officials-are-issuing-mosquito-borne-disease-advisories/
+  2026-09-10T10:02:00.000Z | fr | MERS | Un terrain vert pour relier les montagnes et les mers ; des cœurs unis rassemblent le monde entier | www.prnewswire.com | http://www.prnewswire.com/news-releases/un-terrain-vert-pour-relier-les-montagnes-et-les-mers--des-curs-unis-rassemblent-le-monde-entier-302875091.html
+  2026-09-10T10:02:00.000Z | gn | Dengue | Alerta en Paraguay: Tormentas en 7 departamentos hoy - Clima | www.abc.com.py | https://www.abc.com.py/clima/2026/09/10/alerta-de-tormentas-en-paraguay-cuales-serian-las-zonas-afectadas/
+  2026-09-10T10:01:00.000Z | en | Polio | List of Important Days in October 2026: National and International Events in September | www.jagranjosh.com | https://www.jagranjosh.com/general-knowledge/important-days-and-dates-in-october-1569663507-1
+  2026-09-10T10:01:00.000Z | en | Diphtheria, Measles | Country's measles death toll still rising | The Arkansas Democrat-Gazette | www.arkansasonline.com | https://www.arkansasonline.com/news/2026/sep/10/countrys-measles-death-toll-still-rising/
+  2026-09-10T10:01:00.000Z | en | Chikungunya, Dengue, Zika | Heat-related deaths skyrocket in southern Europe cities | www.queanbeyanage.com.au | https://www.queanbeyanage.com.au/story/9348091/heat-related-deaths-skyrocket-in-southern-europe-cities/
+  2026-09-10T10:01:00.000Z | ro | MERS | Avionul lui Volodimir Zelenski, în pericol de a fi lovit de o dronă în drum spre Oslo | business24.ro | https://business24.ro/volodimir-zelenski/pericol-lovire-avion-volodimir-zelenski-drona-oslo-1666787
+  2026-09-10T10:01:00.000Z | es | Chikungunya, Dengue, Zika | Una vacuna busca que el propio mosquito sea el blanco contra el dengue | www.ellitoral.com | https://www.ellitoral.com/area-metropolitana/conicet-dengue-aedes-mosquito-vacuna-novedad-ciencia-salud_0_sk9y5QRvEb.html
+  2026-09-10T10:01:00.000Z | pl | Cholera | CIA przeoczyło ważny trop przed zamachami 11 września | www.newsweek.pl | https://www.newsweek.pl/swiat/cia-przeoczylo-wazny-trop-przed-zamachami-11-wrzesnia/8p5w5t4
+  2026-09-10T10:01:00.000Z | es | Leptospirosis | Más casos de lo esperado: qué enfermedades aumentaron en Argentina durante 2026 | www.ellitoral.com | https://www.ellitoral.com/salud/boletinepidemiologiconacional-ministeriodesalud-argentina-coqueluche-sifilis-sars-cov-2-direcciondeepidemiologia-triquinosis-hantavirosis-leptospirosis-buenosaires-vacunacion-monoxidodecarbono-tosconvulsa-hepatitisa-covid-19_0_s1pFfed7tV.html
+  2026-09-10T10:01:00.000Z | ro | MERS | 11 SEPTEMBRIE, DIN INTERIORUL CIA. Ziua în care sediul Agenției a amuțit, sala de conferințe a devenit „cameră de război", iar America a început vânătoarea lui bin Laden – Ziua Veche | www.ziuaveche.ro | https://www.ziuaveche.ro/top-secret/servicii-secrete/11-septembrie-din-interiorul-cia-ziua-in-care-sediul-agentiei-a-amutit-sala-de-conferinte-a-devenit-camera-de-razboi-iar-america-a-inceput-vanatoarea-lui-bin-laden-351013.html
+  2026-09-10T09:47:00.000Z | en | Rabies | Free Rabies Clinic This Weekend In Western New York | wblk.com | https://wblk.com/ixp/16/p/free-pet-rabies-clinic-erie-county/
+  2026-09-10T09:47:00.000Z | en | Polio | Today in History, 1949: City health officer okays reopening of Fargo schools as polio epidemic declines | www.inforum.com | https://www.inforum.com/community/today-in-history-1949-city-health-officer-okays-reopening-of-fargo-schools-as-polio-epidemic-declines
+  2026-09-10T09:47:00.000Z | en | Dengue, Zika | Things You Should Know Before Visiting Costa Rica | qcostarica.com | https://qcostarica.com/things-you-should-know-before-visiting-costa-rica/
+  2026-09-10T09:47:00.000Z | en | Rabies | Punxsutawney Borough Police Chief's report for August 2026 | www.thecourierexpress.com | https://www.thecourierexpress.com/news/local/punxsutawney-borough-police-chiefs-report-for-august-2026/article_d22d8b3d-51f8-467b-a0aa-c4bbe6e27acc.html
+  2026-09-10T09:47:00.000Z | en | Diphtheria | Editorial:Nigeria's diphtheria crisis demands prevention, not perpetual reaction | pmnewsnigeria.com | https://pmnewsnigeria.com/2026/09/10/editorialnigerias-diphtheria-crisis-demands-prevention-not-perpetual-reaction/
+  2026-09-10T09:47:00.000Z | gl | Salmonella | Galicia, entre a tradición e o risco sanitario: o consumo de leite cru baixo a lupa tras novos brotes bacterianos | xornalgalicia.com | https://xornalgalicia.com/reportaxes-a-fondo/galicia-entre-a-tradicion-e-o-risco-sanitario-o-consumo-de-leite-cru-baixo-a-lupa-tras-novos-brotes-bacterianos
+  2026-09-10T09:47:00.000Z | it | Chikungunya, Dengue | Dengue | 2 focolai a Lecce e Livorno e il clima ideale per le zanzare | www.zazoom.it | https://www.zazoom.it/2026-09-10/dengue-2-focolai-a-lecce-e-livorno-e-il-clima-ideale-per-le-zanzare/19664003/
+  2026-09-10T09:47:00.000Z | ro | MERS | Larisa Iordache, copleșită de emoții după ce și-a dus fetița la creșă: Sigur la mine nu o să fie așa... | www.kudika.ro | https://www.kudika.ro/articol/vedete/94671/larisa-iordache-coplesita-de-emotii-dupa-ce-si-a-dus-fetita-la-cresa-sigur-la-mine-nu-o-sa-fie-asa.html
+  2026-09-10T09:47:00.000Z | ru | Salmonella | Цефтриаксон:  кому и как принимать | www.medpulse.ru | https://www.medpulse.ru/encyclopedia/8556.html
+  2026-09-10T09:47:00.000Z | tl | Dengue | State of calamity, posibleng ideklara sa Albay dahil sa dami ng dengue cases, casualties | www.bomboradyo.com | https://www.bomboradyo.com/state-of-calamity-posibleng-ideklara-sa-albay-dahil-sa-dami-ng-dengue-cases-casualties
+  2026-09-10T09:47:00.000Z | fr | Dengue | Sénégal: One Health - Les partenaires techniques et financiers réaffirment leur engagement aux côtés du pays | fr.allafrica.com | https://fr.allafrica.com/stories/202609100134.html
+  2026-09-10T09:47:00.000Z | fr | MERS | Un terrain vert pour relier les montagnes et les mers ; des cœurs unis rassemblent le monde entier | www.prnewswire.com | https://www.prnewswire.com/news-releases/un-terrain-vert-pour-relier-les-montagnes-et-les-mers--des-curs-unis-rassemblent-le-monde-entier-302875091.html
+  2026-09-10T09:47:00.000Z | ro | MERS | Adriana Bahmuțeanu, mesaj după ce obiecte atribuite lui Silviu Prigoană au ajuns la un târg de vechituri:Trecutul nu se întoarce | www.kudika.ro | https://www.kudika.ro/articol/vedete/94667/adriana-bahmuteanu-mesaj-dupa-ce-obiecte-atribuite-lui-silviu-prigoana-au-ajuns-la-un-targ-de-vechituri-trecutul-nu-se-intoarce.html
+  2026-09-10T09:47:00.000Z | ro | MERS | Alina Pușcău și-a schimbat religia chiar înainte să afle rezultatul biopsiei: Așteptam să văd dacă am cancer sau nu... | www.kudika.ro | https://www.kudika.ro/articol/vedete/94669/alina-puscau-si-a-schimbat-religia-chiar-inainte-sa-afle-rezultatul-biopsiei-asteptam-sa-vad-daca-am-cancer-sau-nu.html
+  2026-09-10T09:47:00.000Z | ro | MERS | Reacția Adrianei Bahmuțeanu, după ce lucrurile lui Silviu Prigoană au ajuns la un târg de vechituri: „Probabil așa trebuia să se întâmple" | ziare.com | https://ziare.com/adriana-bahmuteanu/reactie-obiecte-silviu-prigoana-vitan-2034594
+  2026-09-10T09:47:00.000Z | it | Chikungunya, Dengue, Zika | Maldive, tramonti e Dengue. Il nuovo souvenir delle vacanze | www.tviweb.it | https://www.tviweb.it/maldive-tramonti-e-dengue-il-nuovo-souvenir-delle-vacanze/
+  2026-09-10T09:46:00.000Z | en | Salmonella | Government salmonella outbreak update as hundreds fall ill | www.thewestmorlandgazette.co.uk | https://www.thewestmorlandgazette.co.uk/news/26537808.government-salmonella-outbreak-update-hundreds-fall-ill/
+  2026-09-10T09:46:00.000Z | en | Chikungunya, Dengue | Chikungunya Cases in US Travelers Reach 89 with No Local Spread as Six Countries Carry Outbreak Notices | www.medicaldaily.com | https://www.medicaldaily.com/chikungunya-us-travel-cases-cdc-surveillance-data-478458

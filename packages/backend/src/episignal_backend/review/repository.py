@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from episignal_backend.db.types import (
     CredibilityTier,
+    LocationRole,
+    Precision,
     ProcessingStatus,
     RelationshipType,
     ReviewReason,
@@ -20,6 +22,7 @@ from episignal_backend.events.documents import (
     LocationForMatching,
     SignalForMatching,
 )
+from episignal_backend.ingestion.gdelt.locale import COUNTRY_CODES
 from episignal_backend.models import (
     Disease,
     Event,
@@ -76,6 +79,22 @@ def _load_signal_for_matching(session: Session, signal: Signal) -> SignalForMatc
     is_official = source_row[0] if source_row else False
     cred_tier = source_row[1] if source_row else CredibilityTier.UNKNOWN
     extraction = read_stored_extraction(signal.ai_extraction)
+    if not locs and extraction is not None:
+        locs = [
+            LocationForMatching(
+                location_role=LocationRole.PRIMARY,
+                precision=Precision.PLACE if location.town else Precision.COUNTRY,
+                country_code=(
+                    location.country.strip().upper()
+                    if location.country and len(location.country.strip()) == 2
+                    else COUNTRY_CODES.get(location.country.casefold())
+                    if location.country
+                    else None
+                ),
+                place_name=location.town,
+            )
+            for location in extraction.locations
+        ]
 
     return SignalForMatching(
         signal_id=signal.id,
@@ -372,9 +391,12 @@ def query_review_queue(
     ]
 
     items: list[ReviewQueueItem] = []
+    from episignal_backend.events.repository import read_stored_extraction
+
     for row in case_rows:
         title = row.title
         extracted_disease: str | None = None
+        extraction = None
         if isinstance(row.ai_extraction, dict):
             eng_title = row.ai_extraction.get("english_title")
             if isinstance(eng_title, str) and eng_title.strip():
@@ -382,6 +404,18 @@ def query_review_queue(
             disease_val = row.ai_extraction.get("disease_text")
             if isinstance(disease_val, str) and disease_val.strip():
                 extracted_disease = disease_val
+            extraction = read_stored_extraction(row.ai_extraction)
+        if not locations_by_signal.get(row.signal_id) and extraction is not None:
+            locations_by_signal[row.signal_id].extend(
+                ReviewSignalLocation(
+                    location_role=LocationRole.PRIMARY,
+                    precision=Precision.PLACE if location.town else Precision.COUNTRY,
+                    country_name=location.country,
+                    place_name=location.town,
+                    resolved_name=location.town or location.country,
+                )
+                for location in extraction.locations
+            )
 
         allowed = sorted(
             ALLOWED_RESOLUTIONS.get(row.reason, frozenset()),

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 import pytest
@@ -16,6 +17,7 @@ from episignal_backend.radar import (
     PipelineRunPage,
 )
 from episignal_backend.schedule.documents import StageName
+from fastapi import Query
 from fastapi.testclient import TestClient
 
 TEST_SETTINGS = Settings(
@@ -95,9 +97,14 @@ def test_admin_pipeline_runs_endpoint_returns_exact_json_shape() -> None:
 def test_admin_pipeline_runs_query_bounds(query_string: str, expected_status: int) -> None:
     run_page = PipelineRunPage(items=(), limit=20)
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_pipeline_runs_page] = (
-        get_pipeline_runs_page  # test real dependency signature with mocked query_pipeline_runs
-    )
+
+    def override_pipeline_runs(
+        limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    ) -> PipelineRunPage:
+        del limit
+        return run_page
+
+    app.dependency_overrides[get_pipeline_runs_page] = override_pipeline_runs
 
     client = TestClient(app)
     import episignal_api.dependencies as deps
