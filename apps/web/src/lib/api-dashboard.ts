@@ -27,6 +27,7 @@ export interface DashboardEvent {
 export interface DashboardEventsResponse {
   items: DashboardEvent[];
   total: number;
+  ranking_enabled?: boolean;
 }
 
 export type DashboardFeedState =
@@ -129,7 +130,9 @@ function isDashboardResponse(value: unknown): value is DashboardEventsResponse {
     Array.isArray(response.items) &&
     response.items.every(isDashboardEvent) &&
     Number.isInteger(response.total) &&
-    Number(response.total) === response.items.length
+    Number(response.total) === response.items.length &&
+    (response.ranking_enabled === undefined ||
+      typeof response.ranking_enabled === "boolean")
   );
 }
 

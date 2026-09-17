@@ -28,6 +28,7 @@ const FILTERS = [
   "status",
 ] as const;
 const RESULT_BUCKETS = ["0", "1-5", "6-20", "20+"] as const;
+const POSITION_BUCKETS = ["1-5", "6-10", "11-20", "21+"] as const;
 
 export const analyticsEventNames = [
   "view_switch",
@@ -36,6 +37,7 @@ export const analyticsEventNames = [
   "search_used",
   "map_event_open",
   "briefing_event_open",
+  "event_impression",
   "reading_pane_open",
   "full_event_open",
   "source_click",
@@ -45,6 +47,7 @@ export type DiseaseGroup = (typeof DISEASE_GROUPS)[number];
 export type HostSector = (typeof HOST_SECTORS)[number];
 export type SourceDomain = (typeof SOURCE_DOMAINS)[number];
 export type SourceCountBucket = "0" | "1-5" | "6-20" | "20+";
+export type ImpressionPositionBucket = (typeof POSITION_BUCKETS)[number];
 export type PublicEventId = string;
 
 export type AnalyticsEvent =
@@ -72,6 +75,14 @@ export type AnalyticsEvent =
         disease_group: DiseaseGroup;
         host_sector: HostSector;
         source_count_bucket: SourceCountBucket;
+      };
+    }
+  | {
+      name: "event_impression";
+      properties: {
+        event_id: PublicEventId;
+        surface: "briefing";
+        position_bucket: ImpressionPositionBucket;
       };
     }
   | { name: "reading_pane_open"; properties: Record<never, never> }
@@ -141,6 +152,13 @@ export function countBucket(count: number): SourceCountBucket {
   if (count <= 5) return "1-5";
   if (count <= 20) return "6-20";
   return "20+";
+}
+
+export function positionBucket(position: number): ImpressionPositionBucket {
+  if (position <= 5) return "1-5";
+  if (position <= 10) return "6-10";
+  if (position <= 20) return "11-20";
+  return "21+";
 }
 
 export function sourceDomain(value: string): SourceDomain {
@@ -277,6 +295,24 @@ function safeEvent(value: unknown): SafeAnalyticsEvent | null {
             },
           }
         : null;
+    case "event_impression": {
+      if (!event.properties || typeof event.properties !== "object")
+        return null;
+      const properties = event.properties as Record<string, unknown>;
+      const eventId = publicEventIdValue(properties.event_id);
+      return eventId &&
+        properties.surface === "briefing" &&
+        isOneOf(properties.position_bucket, POSITION_BUCKETS)
+        ? {
+            name: event.name,
+            properties: {
+              event_id: eventId,
+              surface: "briefing",
+              position_bucket: properties.position_bucket,
+            },
+          }
+        : null;
+    }
     case "reading_pane_open":
       return { name: event.name, properties: {} };
     case "full_event_open":

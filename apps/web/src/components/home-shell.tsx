@@ -89,9 +89,11 @@ export function HomeShell({
     () => (eventFeed.status === "ready" ? eventFeed.data.items : []),
     [eventFeed],
   );
+  const rankingEnabled =
+    eventFeed.status === "ready" && eventFeed.data.ranking_enabled === true;
   const events = useMemo(
-    () => filterEvents(allEvents, filters, now),
-    [allEvents, filters, now],
+    () => filterEvents(allEvents, filters, now, rankingEnabled),
+    [allEvents, filters, now, rankingEnabled],
   );
   const selectedEvent =
     allEvents.find((event) => event.public_id === selectedId) ?? null;
@@ -163,7 +165,8 @@ export function HomeShell({
     }
     if (key === "q") {
       trackSearchUsed(
-        filterEvents(allEvents, { ...filters, q: value }, now).length,
+        filterEvents(allEvents, { ...filters, q: value }, now, rankingEnabled)
+          .length,
       );
     }
     setSelectedId(null);
@@ -320,6 +323,7 @@ export function HomeShell({
             onSelect={selectEvent}
             query={query}
             now={now}
+            ranked={rankingEnabled}
           />
           {selectedEvent && (
             <ReadingPane

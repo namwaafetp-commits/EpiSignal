@@ -362,6 +362,11 @@ export interface components {
         DashboardEventsResponse: {
             /** Items */
             items: components["schemas"]["DashboardEventResponse"][];
+            /**
+             * Ranking Enabled
+             * @default false
+             */
+            ranking_enabled: boolean;
             /** Total */
             total: number;
         };

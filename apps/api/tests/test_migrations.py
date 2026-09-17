@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260912_0025"]
+    assert scripts.get_heads() == ["20260917_0026"]
 
 
 def render_offline(*arguments: str) -> str:

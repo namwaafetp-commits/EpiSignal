@@ -79,6 +79,7 @@ class DashboardEventResponse(BaseModel):
 class DashboardEventsResponse(BaseModel):
     items: list[DashboardEventResponse]
     total: int
+    ranking_enabled: bool = False
 
 
 class EventSourceResponse(BaseModel):
@@ -181,6 +182,7 @@ def dashboard_events(
     return DashboardEventsResponse(
         items=[DashboardEventResponse.model_validate(item) for item in page.items],
         total=page.total,
+        ranking_enabled=page.ranking_enabled,
     )
 
 

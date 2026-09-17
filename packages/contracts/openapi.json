@@ -313,6 +313,11 @@
             "title": "Items",
             "type": "array"
           },
+          "ranking_enabled": {
+            "default": false,
+            "title": "Ranking Enabled",
+            "type": "boolean"
+          },
           "total": {
             "title": "Total",
             "type": "integer"

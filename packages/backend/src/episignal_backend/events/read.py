@@ -7,13 +7,18 @@ mutate an event, an observation, or a source link.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from episignal_backend.briefing.ranking import (
+    BriefingEventForRanking,
+    PopularityMetricForRanking,
+    rank_briefing_events,
+)
 from episignal_backend.db.types import HostSector, Precision
 from episignal_backend.disease_groups import (
     CANONICAL_DISEASE_GROUPS,
@@ -27,6 +32,7 @@ from episignal_backend.models import (
     Event,
     EventLocation,
     EventObservation,
+    EventPopularityMetric,
     EventSignal,
     EventSummary,
     GazetteerPlace,
@@ -136,6 +142,7 @@ class DashboardEventItem:
 class DashboardEventPage:
     items: tuple[DashboardEventItem, ...]
     total: int
+    ranking_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -296,6 +303,8 @@ def query_dashboard_events(
     *,
     host_sector: str | None = None,
     disease_group: str | None = None,
+    ranking_enabled: bool = False,
+    now: datetime | None = None,
 ) -> DashboardEventPage:
     """Return every stored event with a completed, non-empty summary."""
     conditions = [
@@ -311,7 +320,7 @@ def query_dashboard_events(
     ).all()
 
     if not rows:
-        return DashboardEventPage(items=(), total=0)
+        return DashboardEventPage(items=(), total=0, ranking_enabled=ranking_enabled)
 
     normalized_rows = [_unpack_event_row(row) for row in rows]
     host_sectors = (
@@ -417,7 +426,65 @@ def query_dashboard_events(
             )
         )
     items = tuple(items_list)
-    return DashboardEventPage(items=items, total=len(items))
+    if not ranking_enabled or not items:
+        return DashboardEventPage(
+            items=items,
+            total=len(items),
+            ranking_enabled=ranking_enabled,
+        )
+
+    metric_rows = (
+        session.execute(
+            select(EventPopularityMetric)
+            .where(
+                EventPopularityMetric.event_id.in_([event.id for event, _, _ in normalized_rows])
+            )
+            .order_by(
+                EventPopularityMetric.event_id,
+                EventPopularityMetric.window_end.desc(),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    latest_metrics: dict[UUID, EventPopularityMetric] = {}
+    for metric in metric_rows:
+        latest_metrics.setdefault(metric.event_id, metric)
+    effective_now = now or datetime.now(UTC)
+    event_id_by_public_id = {event.public_id: event.id for event, _, _ in normalized_rows}
+    ranking_metrics = {
+        item.public_id: PopularityMetricForRanking(
+            public_id=item.public_id,
+            impressions_unique=metric.impressions_unique,
+            briefing_opens_unique=metric.briefing_opens_unique,
+            baseline_ctr=metric.baseline_ctr,
+            smoothed_ctr=metric.smoothed_ctr,
+            engagement_score=metric.engagement_score,
+            calculated_at=metric.calculated_at,
+        )
+        for item in items
+        for metric in [latest_metrics.get(event_id_by_public_id[item.public_id])]
+        if metric is not None
+    }
+    ranked = rank_briefing_events(
+        [
+            BriefingEventForRanking(
+                public_id=item.public_id,
+                published_at=item.latest_report_at,
+            )
+            for item in items
+        ],
+        ranking_metrics,
+        now=effective_now,
+        enabled=True,
+    )
+    items_by_public_id = {item.public_id: item for item in items}
+    ranked_items = tuple(items_by_public_id[result.event.public_id] for result in ranked)
+    return DashboardEventPage(
+        items=ranked_items,
+        total=len(ranked_items),
+        ranking_enabled=True,
+    )
 
 
 def query_event_list(

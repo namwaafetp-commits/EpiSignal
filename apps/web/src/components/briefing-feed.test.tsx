@@ -9,6 +9,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { BriefingFeed, SHELF_THRESHOLD } from "./briefing-feed";
 
+type MockObserver = {
+  callback: IntersectionObserverCallback;
+  disconnect: ReturnType<typeof vi.fn>;
+  observe: ReturnType<typeof vi.fn>;
+};
+
+const observers: MockObserver[] = [];
+const track = vi.fn();
+
+class TestIntersectionObserver {
+  callback: IntersectionObserverCallback;
+  disconnect = vi.fn();
+  observe = vi.fn();
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+    observers.push(this);
+  }
+}
+
 const NOW = Date.parse("2026-09-13T12:00:00Z");
 
 function buildEvent(index: number, overrides: Partial<DashboardEvent> = {}) {
@@ -35,7 +55,11 @@ function buildEvent(index: number, overrides: Partial<DashboardEvent> = {}) {
   } as DashboardEvent;
 }
 
-function renderFeed(events: DashboardEvent[]) {
+function validPublicId(index: number) {
+  return `EVT-${index.toString(16).padStart(8, "0").toUpperCase()}`;
+}
+
+function renderFeed(events: DashboardEvent[], ranked = false) {
   return render(
     <BriefingFeed
       events={events}
@@ -43,11 +67,19 @@ function renderFeed(events: DashboardEvent[]) {
       onSelect={vi.fn()}
       query=""
       now={NOW}
+      ranked={ranked}
     />,
   );
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  observers.length = 0;
+  track.mockReset();
+  document.body.innerHTML =
+    '<script id="episignal-umami" data-website-id="website-id"></script>';
+  window.umami = { track };
+  vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -56,10 +88,37 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  delete window.umami;
+  document.body.innerHTML = "";
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
+function trigger(observerIndex: number, ratio: number) {
+  const observer = observers[observerIndex];
+  observer.callback(
+    [
+      {
+        isIntersecting: ratio >= 0.5,
+        intersectionRatio: ratio,
+      } as IntersectionObserverEntry,
+    ],
+    observer as unknown as IntersectionObserver,
+  );
+}
+
 describe("BriefingFeed", () => {
+  it("renders ranked events as one flat ordered list", () => {
+    const { container } = renderFeed(
+      [buildEvent(1), buildEvent(2, { disease_group: "respiratory" })],
+      true,
+    );
+
+    expect(container.querySelectorAll(".briefing-section")).toHaveLength(0);
+    expect(container.querySelectorAll(".briefing-shelf")).toHaveLength(0);
+    expect(container.querySelectorAll(".briefing-row")).toHaveLength(2);
+  });
+
   it("keeps the dated timeline for a small feed", () => {
     const { container } = renderFeed([buildEvent(1), buildEvent(2)]);
     expect(screen.getByText(/13 September 2026/)).toBeVisible();
@@ -198,6 +257,115 @@ describe("BriefingFeed", () => {
     it("tells the reader the shortcuts exist", () => {
       renderFeed([buildEvent(1)]);
       expect(screen.getByText(/to move through events/)).toBeInTheDocument();
+    });
+  });
+
+  describe("impression tracking", () => {
+    it("does not send below 50 percent visibility or before one second", () => {
+      renderFeed([buildEvent(101, { public_id: validPublicId(101) })]);
+
+      trigger(0, 0.49);
+      vi.advanceTimersByTime(1000);
+      expect(track).not.toHaveBeenCalled();
+
+      trigger(0, 0.5);
+      vi.advanceTimersByTime(999);
+      expect(track).not.toHaveBeenCalled();
+    });
+
+    it("cancels the timer when the card leaves before one second", () => {
+      renderFeed([buildEvent(102, { public_id: validPublicId(102) })]);
+
+      trigger(0, 0.75);
+      vi.advanceTimersByTime(500);
+      trigger(0, 0.25);
+      vi.advanceTimersByTime(1000);
+
+      expect(track).not.toHaveBeenCalled();
+    });
+
+    it("sends once after continuous visibility and never duplicates on rerender or return", () => {
+      const view = renderFeed([
+        buildEvent(103, { public_id: validPublicId(103) }),
+      ]);
+
+      trigger(0, 0.5);
+      vi.advanceTimersByTime(1000);
+      expect(track).toHaveBeenCalledTimes(1);
+      expect(track).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "event_impression",
+          data: {
+            event_id: validPublicId(103),
+            surface: "briefing",
+            position_bucket: "1-5",
+          },
+        }),
+      );
+
+      view.rerender(
+        <BriefingFeed
+          events={[buildEvent(103, { public_id: validPublicId(103) })]}
+          selectedId={null}
+          onSelect={vi.fn()}
+          query=""
+          now={NOW}
+        />,
+      );
+      trigger(0, 0.2);
+      trigger(0, 0.9);
+      vi.advanceTimersByTime(1000);
+      expect(track).toHaveBeenCalledTimes(1);
+    });
+
+    it("tracks each valid event once with the canonical position bucket", () => {
+      const events = [
+        ...Array.from({ length: 20 }, (_, index) =>
+          buildEvent(200 + index, {
+            public_id: validPublicId(200 + index),
+          }),
+        ),
+        buildEvent(220, { public_id: validPublicId(220) }),
+      ];
+      renderFeed(events);
+
+      trigger(0, 0.5);
+      trigger(5, 0.5);
+      trigger(10, 0.5);
+      trigger(20, 0.5);
+      vi.advanceTimersByTime(1000);
+
+      expect(track.mock.calls.map(([payload]) => payload.data)).toEqual([
+        {
+          event_id: validPublicId(200),
+          surface: "briefing",
+          position_bucket: "1-5",
+        },
+        {
+          event_id: validPublicId(205),
+          surface: "briefing",
+          position_bucket: "6-10",
+        },
+        {
+          event_id: validPublicId(210),
+          surface: "briefing",
+          position_bucket: "11-20",
+        },
+        {
+          event_id: validPublicId(220),
+          surface: "briefing",
+          position_bucket: "21+",
+        },
+      ]);
+    });
+
+    it("does not emit for an invalid public event id", () => {
+      renderFeed([buildEvent(104, { public_id: "internal-event-42" })]);
+
+      trigger(0, 0.5);
+      vi.advanceTimersByTime(1000);
+
+      expect(track).not.toHaveBeenCalled();
     });
   });
 });

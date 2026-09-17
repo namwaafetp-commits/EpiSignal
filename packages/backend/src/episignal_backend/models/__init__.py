@@ -15,6 +15,7 @@ from episignal_backend.models.event import (
 )
 from episignal_backend.models.geography import GazetteerPlace, GeocodeCache, SignalLocation
 from episignal_backend.models.pipeline import PipelineHealthRun, PipelineRun
+from episignal_backend.models.popularity import EventPopularityMetric
 from episignal_backend.models.review import SignalReviewCandidate, SignalReviewCase
 from episignal_backend.models.signal import Signal
 from episignal_backend.models.story import StoryGroup, StoryGroupMember
@@ -28,6 +29,7 @@ __all__ = [
     "EventObservation",
     "EventSignal",
     "EventSummary",
+    "EventPopularityMetric",
     "GazetteerPlace",
     "GdeltQueryRule",
     "GdeltDiscoveryState",

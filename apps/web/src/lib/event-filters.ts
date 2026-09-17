@@ -97,6 +97,7 @@ export function filterEvents(
   events: readonly DashboardEvent[],
   filters: EventFilters,
   now: number,
+  preserveOrder = false,
 ) {
   if (invalidRange(filters)) return [];
   const hour = 3_600_000;
@@ -111,35 +112,37 @@ export function filterEvents(
       ? Date.parse(`${filters.to}T23:59:59.999Z`)
       : now;
   const query = filters.q.trim().toLowerCase();
-  return events
-    .filter((event) => {
-      const timestamp = Date.parse(event.latest_report_at);
-      const text = [
-        event.headline,
-        event.summary,
-        event.disease,
-        diseaseGroupLabel(event.disease_group),
-        hostSectorLabel(event.host_sector),
-        countryName(event.country_code),
-        event.country_code,
-        event.admin1,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return (
-        timestamp >= start &&
-        timestamp <= end &&
-        (!query || text.includes(query)) &&
-        (!filters.disease_group ||
-          event.disease_group === filters.disease_group) &&
-        (!filters.host ||
-          event.host_sector === filters.host ||
-          (["human", "animal"].includes(filters.host) &&
-            event.host_sector === "both")) &&
-        (!filters.country || event.country_code === filters.country)
-      );
-    })
-    .sort(
-      (a, b) => Date.parse(b.latest_report_at) - Date.parse(a.latest_report_at),
+  const filtered = events.filter((event) => {
+    const timestamp = Date.parse(event.latest_report_at);
+    const text = [
+      event.headline,
+      event.summary,
+      event.disease,
+      diseaseGroupLabel(event.disease_group),
+      hostSectorLabel(event.host_sector),
+      countryName(event.country_code),
+      event.country_code,
+      event.admin1,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return (
+      timestamp >= start &&
+      timestamp <= end &&
+      (!query || text.includes(query)) &&
+      (!filters.disease_group ||
+        event.disease_group === filters.disease_group) &&
+      (!filters.host ||
+        event.host_sector === filters.host ||
+        (["human", "animal"].includes(filters.host) &&
+          event.host_sector === "both")) &&
+      (!filters.country || event.country_code === filters.country)
     );
+  });
+  return preserveOrder
+    ? filtered
+    : filtered.sort(
+        (a, b) =>
+          Date.parse(b.latest_report_at) - Date.parse(a.latest_report_at),
+      );
 }

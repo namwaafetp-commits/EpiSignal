@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
@@ -400,6 +400,77 @@ def test_dashboard_reads_new_disease_slug_and_host_sector_filters() -> None:
     assert page.items[0].disease_group == "vector_borne"
     assert page.items[0].host_sector is HostSector.BOTH
     assert page.items[0].summary_payload == event.summary_payload
+
+
+def test_dashboard_ranking_reads_metrics_in_one_bulk_query_and_orders_items() -> None:
+    older_id = uuid4()
+    newer_id = uuid4()
+    older = _dashboard_event(older_id, "EVT-OLDER")
+    newer = _dashboard_event(newer_id, "EVT-NEWER")
+    now = datetime(2026, 9, 17, 12, tzinfo=UTC)
+    older.last_updated_at = now.replace(hour=10)
+    newer.last_updated_at = now.replace(hour=11)
+    older_metric = SimpleNamespace(
+        event_id=older_id,
+        impressions_unique=100,
+        briefing_opens_unique=40,
+        baseline_ctr=0.4,
+        smoothed_ctr=0.4,
+        engagement_score=1.0,
+        calculated_at=now,
+    )
+    newer_metric = SimpleNamespace(
+        event_id=newer_id,
+        impressions_unique=100,
+        briefing_opens_unique=40,
+        baseline_ctr=0.4,
+        smoothed_ctr=0.4,
+        engagement_score=0.0,
+        calculated_at=now,
+    )
+    session = FakeSession(
+        [
+            FakeResult([(older, "Dengue"), (newer, "Dengue")]),
+            FakeResult([older_metric, newer_metric]),
+        ]
+    )
+
+    page = query_dashboard_events(session, ranking_enabled=True, now=now)
+
+    assert [item.public_id for item in page.items] == ["EVT-OLDER", "EVT-NEWER"]
+    assert page.ranking_enabled is True
+    assert len(session.executed) == 2
+    rendered = str(session.executed[1].compile(compile_kwargs={"literal_binds": True}))
+    assert "event_popularity_metrics" in rendered
+
+
+def test_dashboard_ranking_falls_back_to_recency_for_stale_metrics() -> None:
+    older_id = uuid4()
+    newer_id = uuid4()
+    older = _dashboard_event(older_id, "EVT-OLDER")
+    newer = _dashboard_event(newer_id, "EVT-NEWER")
+    now = datetime(2026, 9, 17, 12, tzinfo=UTC)
+    older.last_updated_at = now.replace(hour=10)
+    newer.last_updated_at = now.replace(hour=11)
+    stale = SimpleNamespace(
+        event_id=older_id,
+        impressions_unique=100,
+        briefing_opens_unique=40,
+        baseline_ctr=0.4,
+        smoothed_ctr=0.4,
+        engagement_score=1.0,
+        calculated_at=now - timedelta(minutes=61),
+    )
+    session = FakeSession(
+        [
+            FakeResult([(older, "Dengue"), (newer, "Dengue")]),
+            FakeResult([stale]),
+        ]
+    )
+
+    page = query_dashboard_events(session, ranking_enabled=True, now=now)
+
+    assert [item.public_id for item in page.items] == ["EVT-NEWER", "EVT-OLDER"]
 
 
 def test_unknown_group_filter_includes_unmapped_canonical_disease() -> None:

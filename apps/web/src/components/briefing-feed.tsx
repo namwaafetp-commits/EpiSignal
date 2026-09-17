@@ -9,7 +9,11 @@ import {
   type RefObject,
 } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { trackEvent } from "../lib/analytics";
+import {
+  positionBucket,
+  publicEventIdValue,
+  trackEvent,
+} from "../lib/analytics";
 import type { DashboardEvent } from "../lib/api-dashboard";
 import { countryFlag, countryName } from "../lib/country";
 import { relativeTimeLabel } from "../lib/api-events";
@@ -88,7 +92,90 @@ type RowProps = {
   onSelect: (id: string) => void;
   query: string;
   now: number;
+  position: number;
 };
+
+const seenBriefingImpressions = new Set<string>();
+const BRIEFING_IMPRESSION_STORAGE_PREFIX = "episignal:briefing-impression:";
+
+function hasSeenBriefingImpression(publicId: string) {
+  if (seenBriefingImpressions.has(publicId)) return true;
+  try {
+    return (
+      window.sessionStorage.getItem(
+        `${BRIEFING_IMPRESSION_STORAGE_PREFIX}${publicId}`,
+      ) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function markBriefingImpression(publicId: string) {
+  seenBriefingImpressions.add(publicId);
+  try {
+    window.sessionStorage.setItem(
+      `${BRIEFING_IMPRESSION_STORAGE_PREFIX}${publicId}`,
+      "1",
+    );
+  } catch {
+    // Storage can be unavailable in privacy-restricted browsers; the module
+    // set still deduplicates for the lifetime of this page.
+  }
+}
+
+function useBriefingImpression(
+  publicId: string,
+  position: number,
+  cardRef: RefObject<HTMLElement | null>,
+) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentRef = useRef(false);
+
+  useEffect(() => {
+    if (sentRef.current || hasSeenBriefingImpression(publicId)) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const card = cardRef.current;
+    if (!card) return;
+
+    const cancelTimer = () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry || !entry.isIntersecting || entry.intersectionRatio < 0.5) {
+          cancelTimer();
+          return;
+        }
+        if (timerRef.current !== null) return;
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          if (sentRef.current || hasSeenBriefingImpression(publicId)) return;
+          sentRef.current = true;
+          markBriefingImpression(publicId);
+          trackEvent({
+            name: "event_impression",
+            properties: {
+              event_id: publicEventIdValue(publicId) ?? "",
+              surface: "briefing",
+              position_bucket: positionBucket(position),
+            },
+          });
+        }, 1000);
+      },
+      { threshold: 0.5 },
+    );
+
+    observer.observe(card);
+    return () => {
+      cancelTimer();
+      observer.disconnect();
+    };
+  }, [cardRef, position, publicId]);
+}
 
 /**
  * The reading pane only takes over a plain desktop activation. Modified clicks,
@@ -223,16 +310,39 @@ function EventHeadline({
   );
 }
 
-function BriefingRow(props: RowProps) {
-  const { event, selectedId, now } = props;
-  return (
-    <article
-      className={`briefing-row ${selectedId === event.public_id ? "is-selected" : ""}`}
-      data-disease={event.disease_group ?? "unknown"}
-    >
+function BriefingCard({
+  asListItem = false,
+  ...props
+}: RowProps & { asListItem?: boolean }) {
+  const { event, selectedId, now, position } = props;
+  const cardRef = useRef<HTMLElement | null>(null);
+  useBriefingImpression(event.public_id, position, cardRef);
+  const className = `briefing-row ${selectedId === event.public_id ? "is-selected" : ""}`;
+  const content = (
+    <>
       <EventOverline event={event} now={now} />
       <EventHeadline {...props} />
       <EventMeta event={event} />
+    </>
+  );
+  const setCardRef = (node: HTMLElement | null) => {
+    cardRef.current = node;
+  };
+  return asListItem ? (
+    <li
+      ref={setCardRef}
+      className={`shelf-item ${className}`}
+      data-disease={event.disease_group ?? "unknown"}
+    >
+      {content}
+    </li>
+  ) : (
+    <article
+      ref={setCardRef}
+      className={className}
+      data-disease={event.disease_group ?? "unknown"}
+    >
+      {content}
     </article>
   );
 }
@@ -252,16 +362,40 @@ export function BriefingFeed({
   onSelect,
   query,
   now,
+  ranked = false,
 }: {
   events: DashboardEvent[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   query: string;
   now: number;
+  ranked?: boolean;
 }) {
   const asShelves = events.length > SHELF_THRESHOLD;
   const feedRef = useRef<HTMLDivElement | null>(null);
   useFeedTraversal(feedRef);
+  const positionById = new Map(
+    events.map((event, index) => [event.public_id, index + 1]),
+  );
+
+  if (ranked) {
+    return (
+      <div className="briefing-feed briefing-feed--ranked" ref={feedRef}>
+        <FeedShortcutHint />
+        {events.map((event) => (
+          <BriefingCard
+            key={event.public_id}
+            event={event}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            query={query}
+            now={now}
+            position={positionById.get(event.public_id) ?? 1}
+          />
+        ))}
+      </div>
+    );
+  }
 
   if (asShelves) {
     return (
@@ -284,20 +418,16 @@ export function BriefingFeed({
             </h2>
             <ul className="shelf-track">
               {rows.map((event) => (
-                <li
-                  className={`shelf-item briefing-row ${selectedId === event.public_id ? "is-selected" : ""}`}
+                <BriefingCard
                   key={event.public_id}
-                  data-disease={event.disease_group ?? "unknown"}
-                >
-                  <EventOverline event={event} now={now} />
-                  <EventHeadline
-                    event={event}
-                    selectedId={selectedId}
-                    onSelect={onSelect}
-                    query={query}
-                  />
-                  <EventMeta event={event} />
-                </li>
+                  event={event}
+                  selectedId={selectedId}
+                  onSelect={onSelect}
+                  query={query}
+                  now={now}
+                  position={positionById.get(event.public_id) ?? 1}
+                  asListItem
+                />
               ))}
             </ul>
           </section>
@@ -324,13 +454,14 @@ export function BriefingFeed({
             </span>
           </h2>
           {rows.map((event) => (
-            <BriefingRow
+            <BriefingCard
               key={event.public_id}
               event={event}
               selectedId={selectedId}
               onSelect={onSelect}
               query={query}
               now={now}
+              position={positionById.get(event.public_id) ?? 1}
             />
           ))}
         </section>

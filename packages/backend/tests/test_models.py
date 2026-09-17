@@ -27,6 +27,7 @@ EXPECTED_TABLES = {
     "signal_review_cases",
     "signal_review_candidates",
     "event_summaries",
+    "event_popularity_metrics",
 }
 
 

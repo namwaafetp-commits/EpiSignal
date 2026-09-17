@@ -217,6 +217,35 @@ def test_the_openrouter_key_is_not_printed_by_repr() -> None:
     assert "sk-secret-value" not in repr(settings)
 
 
+def test_briefing_ranking_defaults_to_shadow_mode_and_keeps_umami_server_side() -> None:
+    settings = build_settings()
+
+    assert settings.briefing_ranking_enabled is False
+    assert settings.umami_base_url == ""
+    assert settings.umami_website_id == ""
+    assert settings.umami_api_token.get_secret_value() == ""
+    assert settings.umami_timeout_seconds == 15.0
+
+
+def test_briefing_ranking_accepts_unprefixed_operational_environment_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BRIEFING_RANKING_ENABLED", "true")
+    monkeypatch.setenv("UMAMI_BASE_URL", "https://analytics.example")
+    monkeypatch.setenv("UMAMI_WEBSITE_ID", "website-id")
+    monkeypatch.setenv("UMAMI_API_TOKEN", "server-secret")
+
+    settings = Settings(
+        database_url=DATABASE_URL,
+        _env_file=None,
+    )
+
+    assert settings.briefing_ranking_enabled is True
+    assert settings.umami_base_url == "https://analytics.example"
+    assert settings.umami_website_id == "website-id"
+    assert "server-secret" not in repr(settings)
+
+
 def test_a_batch_larger_than_the_run_limit_is_rejected() -> None:
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_AI_BATCH_SIZE="500", EPISIGNAL_AI_SIGNAL_BATCH_LIMIT="100")

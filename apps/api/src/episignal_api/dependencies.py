@@ -128,11 +128,14 @@ def get_dashboard_events_page(
 ) -> Any:
     from episignal_backend.events.read import query_dashboard_events
 
+    settings = get_settings()
     with session_scope() as session:
         return query_dashboard_events(
             session,
             host_sector=host_sector,
             disease_group=disease_group,
+            ranking_enabled=settings.briefing_ranking_enabled,
+            now=datetime.now(UTC),
         )
 
 

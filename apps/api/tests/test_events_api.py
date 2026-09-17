@@ -108,9 +108,22 @@ def test_dashboard_endpoint_returns_summarized_event_map_fields() -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
+    assert data["ranking_enabled"] is False
     assert data["items"][0]["admin1"] == "Chiang Mai"
     assert data["items"][0]["map_level"] == "admin1"
     assert data["items"][0]["latitude"] == 18.7883
+
+
+def test_dashboard_endpoint_exposes_only_the_ranking_mode_indicator() -> None:
+    page = DashboardEventPage(items=(), total=0, ranking_enabled=True)
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_dashboard_events_page] = lambda: page
+
+    response = TestClient(app).get("/api/v1/events/dashboard")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0, "ranking_enabled": True}
+    assert "UMAMI" not in response.text
 
 
 def test_accepted_summary_status_is_visible_on_list_and_detail_endpoints() -> None:

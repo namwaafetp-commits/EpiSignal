@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   analyticsEventNames,
   countBucket,
+  positionBucket,
   sourceDomain,
   trackPageView,
   trackEvent,
@@ -70,6 +71,7 @@ describe("analytics event boundary", () => {
       "search_used",
       "map_event_open",
       "briefing_event_open",
+      "event_impression",
       "reading_pane_open",
       "full_event_open",
       "source_click",
@@ -106,6 +108,14 @@ describe("analytics event boundary", () => {
         name: "source_click",
         properties: { event_id: "EVT-64356615", source_domain: "who.int" },
       },
+      {
+        name: "event_impression",
+        properties: {
+          event_id: "EVT-64356615",
+          surface: "briefing",
+          position_bucket: "6-10",
+        },
+      },
     ];
 
     for (const event of events) trackEvent(event);
@@ -126,6 +136,11 @@ describe("analytics event boundary", () => {
       {},
       { event_id: "EVT-64356615" },
       { event_id: "EVT-64356615", source_domain: "who.int" },
+      {
+        event_id: "EVT-64356615",
+        surface: "briefing",
+        position_bucket: "6-10",
+      },
     ]);
   });
 
@@ -231,6 +246,54 @@ describe("analytics event boundary", () => {
       { results_bucket: "6-20" },
       { results_bucket: "20+" },
     ]);
+  });
+
+  it("maps impression positions to coarse approved buckets", () => {
+    expect([1, 5, 6, 10, 11, 20, 21, 100].map(positionBucket)).toEqual([
+      "1-5",
+      "1-5",
+      "6-10",
+      "6-10",
+      "11-20",
+      "11-20",
+      "21+",
+      "21+",
+    ]);
+  });
+
+  it("sends only valid Briefing impression properties", () => {
+    trackEvent({
+      name: "event_impression",
+      properties: {
+        event_id: "EVT-64356615",
+        surface: "briefing",
+        position_bucket: "1-5",
+      },
+    });
+
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "event_impression",
+        data: {
+          event_id: "EVT-64356615",
+          surface: "briefing",
+          position_bucket: "1-5",
+        },
+      }),
+    );
+  });
+
+  it("does not send invalid impression identifiers or properties", () => {
+    trackEvent({
+      name: "event_impression",
+      properties: {
+        event_id: "internal-event-42",
+        surface: "briefing",
+        position_bucket: "1-5",
+      },
+    });
+
+    expect(track).not.toHaveBeenCalled();
   });
 
   it("normalizes source links to a bounded domain value", () => {

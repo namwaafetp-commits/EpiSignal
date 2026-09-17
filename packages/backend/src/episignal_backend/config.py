@@ -68,6 +68,27 @@ class Settings(BaseSettings):
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
+    briefing_ranking_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "BRIEFING_RANKING_ENABLED",
+            "EPISIGNAL_BRIEFING_RANKING_ENABLED",
+        ),
+    )
+    umami_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("UMAMI_BASE_URL", "EPISIGNAL_UMAMI_BASE_URL"),
+    )
+    umami_website_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("UMAMI_WEBSITE_ID", "EPISIGNAL_UMAMI_WEBSITE_ID"),
+    )
+    umami_api_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("UMAMI_API_TOKEN", "EPISIGNAL_UMAMI_API_TOKEN"),
+    )
+    umami_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_chat_id: SecretStr = SecretStr("")
     # Required for notifications: choose a file on a persistent local mount.
