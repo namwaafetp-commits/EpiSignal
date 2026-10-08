@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react(), tsconfigPaths({ projects: ["./tsconfig.json"] })],
   test: {
     pool: "threads",
+    maxWorkers: 2,
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
