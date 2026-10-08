@@ -21,6 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
 from episignal_backend.db.types import (
     DiscoveryMethod,
+    HostSector,
     ProcessingStatus,
     SignalType,
     TriageStatus,
@@ -88,6 +89,9 @@ class Signal(IdentityMixin, TimestampMixin, Base):
         vocabulary(SignalType, "signal_type_values"),
         nullable=False,
         default=SignalType.UNKNOWN,
+    )
+    host_sector: Mapped[HostSector | None] = mapped_column(
+        vocabulary(HostSector, "host_sector_values"), nullable=True
     )
     ai_extraction: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     ai_model: Mapped[str | None] = mapped_column(Text)

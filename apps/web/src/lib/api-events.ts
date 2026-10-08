@@ -89,12 +89,16 @@ export async function getEventList({
   disease,
   country,
   status,
+  host_sector,
+  disease_group,
 }: {
   limit?: number;
   offset?: number;
   disease?: string;
   country?: string;
   status?: string;
+  host_sector?: "human" | "animal";
+  disease_group?: string;
 } = {}): Promise<EventFeedState> {
   const baseUrl =
     process.env.NEXT_PUBLIC_EPISIGNAL_API_URL ?? "http://127.0.0.1:8000";
@@ -106,6 +110,8 @@ export async function getEventList({
     if (disease) params.set("disease", disease);
     if (country) params.set("country", country);
     if (status) params.set("status", status);
+    if (host_sector) params.set("host_sector", host_sector);
+    if (disease_group) params.set("disease_group", disease_group);
     const response = await fetch(
       `${baseUrl}/api/v1/events?${params.toString()}`,
       {

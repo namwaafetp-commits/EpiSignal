@@ -3,8 +3,10 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react(), tsconfigPaths({ projects: ["./tsconfig.json"] })],
   test: {
+    pool: "threads",
+    maxWorkers: 2,
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],

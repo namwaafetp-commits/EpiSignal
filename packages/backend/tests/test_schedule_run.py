@@ -67,6 +67,53 @@ def test_counts_are_kept_per_stage() -> None:
     assert outcome.ok is True
 
 
+def test_a_provider_success_with_zero_results_is_a_healthy_stage() -> None:
+    outcome = run_chain(
+        (StageName.DISCOVER,),
+        {
+            StageName.DISCOVER: lambda: {
+                "rules_attempted": 2,
+                "rules_succeeded": 2,
+                "discovered": 0,
+                "__stage_ok": True,
+            }
+        },
+    )
+
+    assert outcome.ok is True
+    assert outcome.outcomes[0].counts["discovered"] == 0
+
+
+def test_an_unavailable_discovery_stage_is_failed_without_stopping_later_stages() -> None:
+    calls: list[StageName] = []
+    outcome = run_chain(
+        (StageName.DISCOVER, StageName.RETRIEVE),
+        {
+            StageName.DISCOVER: lambda: {
+                "rules_attempted": 1,
+                "rules_succeeded": 0,
+                "rules_failed": 1,
+                "__stage_ok": False,
+                "__stage_error": "DiscoveryUnavailable",
+            },
+            StageName.RETRIEVE: _record(calls, StageName.RETRIEVE, {"retrieved": 0}),
+        },
+    )
+
+    assert outcome.ok is False
+    assert outcome.outcomes[0].error == "DiscoveryUnavailable"
+    assert calls == [StageName.RETRIEVE]
+
+
+def test_stage_duration_is_diagnostic_and_does_not_change_success_behavior() -> None:
+    chain = (StageName.DEDUPE,)
+    outcome = run_chain(chain, {StageName.DEDUPE: _record([], StageName.DEDUPE, {"examined": 1})})
+
+    assert outcome.ok is True
+    assert outcome.outcomes[0].duration_sec is not None
+    assert outcome.outcomes[0].duration_sec >= 0
+
+
 def test_a_stage_with_no_runner_is_a_failure_not_a_crash() -> None:
     outcome = run_chain((StageName.MATCH,), {})
 

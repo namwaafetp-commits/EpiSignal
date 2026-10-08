@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
+from uuid import UUID
 
 
 class StageName(StrEnum):
@@ -18,6 +20,8 @@ class StageName(StrEnum):
     INGEST_ECDC = "ingest_ecdc"
     DISCOVER = "discover"
     RETRIEVE = "retrieve"
+    STORY_GROUP = "story_group"
+    CLASSIFY = "classify"
     DEDUPE = "dedupe"
     TRIAGE = "triage"
     EMBED = "embed"
@@ -42,16 +46,27 @@ class DiscoveryWindow:
         return max(1, int((self.end - self.start).total_seconds() // 60))
 
 
+@dataclass
+class PipelineCohort:
+    """In-memory identity of the signals and events touched by one run."""
+
+    signal_ids: tuple[UUID, ...] = ()
+    story_groups: tuple[tuple[UUID, ...], ...] = ()
+    touched_event_ids: tuple[UUID, ...] = ()
+
+
 @dataclass(frozen=True)
 class StageOutcome:
     """What one stage did, or the type of the exception that stopped it."""
 
     stage: StageName
     ok: bool
-    counts: Mapping[str, int] = field(default_factory=dict)
+    counts: Mapping[str, Any] = field(default_factory=dict)
     # The exception's type name only. Never its payload: an exception raised
     # near the session can carry the connection string.
     error: str | None = None
+    duration_sec: float | None = None
+    error_category: str | None = None
 
 
 @dataclass(frozen=True)

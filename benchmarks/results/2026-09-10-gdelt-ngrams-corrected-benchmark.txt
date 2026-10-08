@@ -1,0 +1,75 @@
+GDELT Web Legacy NGram benchmark (non-production)
+Window start: 2026-09-10T08:07:00+00:00
+Window end: 2026-09-10T10:07:00+00:00
+Observation mode: exhaustive
+Minutes checked: 121
+NGram files present: 2
+TOC files present: 0
+Complete batch pairs: 0
+Complete pair timestamps: none
+Batches processed: 0
+Batches skipped after discovery: 0
+
+Bandwidth:
+  NGram compressed MB: 0.000
+  TOC compressed MB: 0.000
+  Total download MB: 0.000
+  Actual complete-window bandwidth: False
+  MB/hour: unavailable
+  GB/day: unavailable
+  GB/30-day month: unavailable
+  Projected VPS total GB/month: unavailable
+
+Yield:
+  Documents represented: 0
+  Raw lexical matched DOCIDs: 0
+  English-filtered matched DOCIDs: 0
+  Raw unique candidate URLs: 0
+  English unique candidate URLs: 0
+  MB per English candidate: unavailable
+
+NGram scan profile:
+  Compressed NGram MB: 0.000
+  Uncompressed bytes scanned: 0
+  Rows scanned: 0
+  Quadgrams scanned: 0
+  Tokenization time: 0.00s
+  Matching time: 0.00s
+  Gzip/decompression time: 0.00s
+  Total scan time: 0.00s
+  Compressed MB/sec: 0.000
+  Uncompressed MB/sec: 0.000
+
+Matcher comparison (same local fixture):
+  Fixture rows: 100000
+  Old matcher scan: 0.39s
+  New matcher scan: 0.19s
+  Speedup: 2.09x
+  Match sets identical: True
+
+Performance:
+  Total elapsed: 82.63s
+  Download: 0.00s
+  NGram scan: 0.00s
+  TOC processing: 0.00s
+  NGram processing minutes/hour: 0.000
+  Peak RAM: unavailable
+  Peak temp disk: 0.000 MB
+
+Feasibility:
+  Bandwidth: RED
+  CPU/runtime: YELLOW
+  RAM: YELLOW
+  Disk: YELLOW
+  Candidate discovery: YELLOW (lexical discovery still needs downstream relevance filtering)
+  Recommendation: OPTIMIZE MORE
+
+Top matching rules:
+  none
+Top English candidate languages:
+  none
+Top English candidate domains:
+  none
+
+Safe English candidate examples (max 30; no article bodies):
+  none

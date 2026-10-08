@@ -31,7 +31,7 @@ from episignal_backend.db.types import AiPurpose
 
 DEFAULT_LIMIT = 200
 DEFAULT_MAX_TIER = 3
-TRIAGE_SNIPPET_CHARACTERS = 1200
+TRIAGE_CONTENT_CHARACTERS = 4000
 TRIAGE_PREFERRED_MODEL_ID = "mistralai/mistral-small-24b-instruct-2501"
 
 logger = logging.getLogger("episignal_backend.ai.triage")
@@ -47,6 +47,16 @@ class TriageResult:
     unavailable: int = 0
     requests: int = 0
     stopped_early: bool = False
+
+
+@dataclass(frozen=True)
+class TriageSignalResult:
+    outcome: ClimbOutcome
+    verdict: TriageVerdict | None
+    error: str | None
+    attempts: tuple[Attempt, ...]
+    repaired: bool = False
+    repair_attempted: bool = False
 
 
 def _validate(content: str) -> TriageVerdict:
@@ -76,7 +86,7 @@ def _request_builder(system: str, user: str) -> Callable[[ModelSpec], ChatReques
     return _request
 
 
-def _triage_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
+def build_triage_ladder(repository: AiRepository, *, max_tier: int) -> Ladder:
     ladder = Ladder.build(
         repository.models(),
         max_tier=max_tier,
@@ -100,12 +110,12 @@ def _climb_once(
     repair_error: str | None = None,
 ) -> tuple[ClimbOutcome, TriageVerdict | None, str | None, list[Attempt]]:
     if repair_error is None:
-        system, user = triage_prompt(signal, max_characters=TRIAGE_SNIPPET_CHARACTERS)
+        system, user = triage_prompt(signal, max_characters=TRIAGE_CONTENT_CHARACTERS)
     else:
         system, user = triage_repair_prompt(
             signal,
             error=repair_error,
-            max_characters=TRIAGE_SNIPPET_CHARACTERS,
+            max_characters=TRIAGE_CONTENT_CHARACTERS,
         )
 
     validation_error: str | None = None
@@ -130,6 +140,42 @@ def _climb_once(
     return result.outcome, result.value, validation_error or result.reason, attempts
 
 
+def triage_signal(
+    signal: TriageableSignal,
+    model: ChatModel,
+    *,
+    ladder: Ladder,
+    budget: RunBudget,
+) -> TriageSignalResult:
+    """Run normal triage, including its single schema-repair request."""
+    outcome, verdict, error, attempts = _climb_once(
+        signal=signal,
+        ladder=ladder,
+        budget=budget,
+        model=model,
+    )
+    all_attempts = list(attempts)
+    repaired = False
+    if outcome is ClimbOutcome.REJECTED and not budget.exhausted:
+        outcome, verdict, error, repair_attempts = _climb_once(
+            signal=signal,
+            ladder=ladder,
+            budget=budget,
+            model=model,
+            repair_error=error or "answer did not match the triage schema",
+        )
+        all_attempts.extend(repair_attempts)
+        repaired = outcome is ClimbOutcome.ACCEPTED
+    return TriageSignalResult(
+        outcome=outcome,
+        verdict=verdict,
+        error=error,
+        attempts=tuple(all_attempts),
+        repaired=repaired,
+        repair_attempted=len(all_attempts) > len(attempts),
+    )
+
+
 def run_triage(
     repository: AiRepository,
     model: ChatModel,
@@ -139,7 +185,7 @@ def run_triage(
     max_tier: int = DEFAULT_MAX_TIER,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> TriageResult:
-    ladder = _triage_ladder(repository, max_tier=max_tier)
+    ladder = build_triage_ladder(repository, max_tier=max_tier)
     budget = RunBudget(guards)
     pending = repository.awaiting_triage(limit=limit)
 
@@ -152,27 +198,13 @@ def run_triage(
     stopped_early = False
 
     for signal in pending:
-        outcome, verdict, error, attempts = _climb_once(
-            signal=signal,
-            ladder=ladder,
-            budget=budget,
-            model=model,
-        )
-        all_attempts = list(attempts)
-        repair_attempted = False
-        repaired_this_signal = False
-
-        if outcome is ClimbOutcome.REJECTED and not budget.exhausted:
-            repair_attempted = True
-            outcome, verdict, error, repair_attempts = _climb_once(
-                signal=signal,
-                ladder=ladder,
-                budget=budget,
-                model=model,
-                repair_error=error or "answer did not match the triage schema",
-            )
-            all_attempts.extend(repair_attempts)
-            repaired_this_signal = outcome is ClimbOutcome.ACCEPTED
+        triage = triage_signal(signal, model, ladder=ladder, budget=budget)
+        outcome = triage.outcome
+        verdict = triage.verdict
+        error = triage.error
+        all_attempts = list(triage.attempts)
+        repair_attempted = triage.repair_attempted
+        repaired_this_signal = triage.repaired
 
         requests += len(all_attempts)
         at = now()

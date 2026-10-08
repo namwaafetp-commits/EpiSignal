@@ -17,6 +17,7 @@ from episignal_backend.events.documents import (
     SignalForMatching,
     StoryCluster,
 )
+from episignal_backend.geocode.normalize import normalized_form
 
 PRECISION_WEIGHTS: dict[Precision, float] = {
     Precision.PLACE: 1.0,
@@ -62,39 +63,25 @@ def spatially_compatible(
     *,
     distance_km: float = 50.0,
 ) -> bool:
-    """Evaluate spatial compatibility between two locations at their coarsest shared precision.
+    """Compare exact normalized town+country or country-only identities.
 
-    - UNRESOLVED always returns False.
-    - Differing country codes always return False.
-    - COUNTRY precision compares on country_code equality only.
-    - ADMIN1 precision compares on admin1 code equality, never distance.
-    - ADMIN2 precision compares on admin2 code equality.
-    - PLACE precision compares by great-circle distance within distance_km.
+    Coordinates and fuzzy geography never decide event identity. A local place
+    cannot match a country-only report merely because countries agree.
     """
-    if a.precision == Precision.UNRESOLVED or b.precision == Precision.UNRESOLVED:
+    del distance_km
+    if not a.country_code or not b.country_code:
         return False
-
-    if not a.country_code or not b.country_code or a.country_code != b.country_code:
+    country_a = a.country_code.strip().upper()
+    country_b = b.country_code.strip().upper()
+    if country_a != country_b:
         return False
-
-    coarsest = min(a.precision, b.precision, key=lambda p: _PRECISION_RANK[p])
-
-    if coarsest == Precision.COUNTRY:
-        return a.country_code == b.country_code
-
-    if coarsest == Precision.ADMIN1:
-        return bool(a.admin1 and b.admin1 and a.admin1 == b.admin1)
-
-    if coarsest == Precision.ADMIN2:
-        if a.admin1 and b.admin1 and a.admin1 != b.admin1:
-            return False
-        return bool(a.admin2 and b.admin2 and a.admin2 == b.admin2)
-
-    # Coarsest is PLACE (both are PLACE)
-    if a.latitude is None or a.longitude is None or b.latitude is None or b.longitude is None:
+    local_a_value = a.place_name or a.admin2 or a.admin1
+    local_b_value = b.place_name or b.admin2 or b.admin1
+    local_a = normalized_form(local_a_value) if local_a_value else ""
+    local_b = normalized_form(local_b_value) if local_b_value else ""
+    if bool(local_a) != bool(local_b):
         return False
-
-    return haversine_distance_km(a.latitude, a.longitude, b.latitude, b.longitude) <= distance_km
+    return local_a == local_b
 
 
 def _signal_timestamp(sig: SignalForMatching) -> datetime:
@@ -146,12 +133,11 @@ def compatible(
     if not temporally_compatible(a, b, window_days=window_days):
         return False
 
-    loc_a = representative_location(a)
-    loc_b = representative_location(b)
-    if loc_a is None or loc_b is None:
-        return False
-
-    return spatially_compatible(loc_a, loc_b, distance_km=distance_km)
+    return any(
+        spatially_compatible(left, right, distance_km=distance_km)
+        for left in a.locations
+        for right in b.locations
+    )
 
 
 class _UnionFind:
@@ -220,7 +206,18 @@ def build_clusters(
                     window_days=window_days,
                     distance_km=distance_km,
                 ):
-                    uf.union(i, j)
+                    root_i = uf.find(i)
+                    root_j = uf.find(j)
+                    if root_i == root_j:
+                        continue
+                    members = [
+                        signal
+                        for index, signal in enumerate(disease_signals)
+                        if uf.find(index) in {root_i, root_j}
+                    ]
+                    times = [_signal_timestamp(signal) for signal in members]
+                    if max(times) - min(times) <= timedelta(days=window_days):
+                        uf.union(i, j)
 
         groups: dict[int, list[SignalForMatching]] = defaultdict(list)
         for idx, sig in enumerate(disease_signals):

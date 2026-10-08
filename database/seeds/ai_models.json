@@ -55,6 +55,16 @@
   },
   {
     "tier": 1,
+    "model_id": "mistralai/mistral-small-3.2-24b-instruct",
+    "label": "Mistral Small 3.2 24B",
+    "provider": "openrouter",
+    "purpose": "event_summary",
+    "prompt_price_per_million": "0.05",
+    "completion_price_per_million": "0.08",
+    "active": false
+  },
+  {
+    "tier": 1,
     "model_id": "meta-llama/llama-3.1-8b-instruct",
     "label": "Llama 3.1 8B Instruct",
     "provider": "openrouter",

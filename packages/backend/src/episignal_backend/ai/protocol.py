@@ -44,13 +44,17 @@ class ChatModel(Protocol):
 class AiRepository(Protocol):
     def models(self) -> Sequence[ModelSpec]: ...
 
-    def awaiting_classification(self, *, limit: int) -> Sequence[ClassifiableSignal]: ...
+    def awaiting_classification(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ClassifiableSignal]: ...
 
     def awaiting_triage(self, *, limit: int) -> Sequence[TriageableSignal]: ...
 
     def awaiting_embeddings(self, *, limit: int) -> Sequence[ExtractableSignal]: ...
 
-    def awaiting_extraction(self, *, limit: int) -> Sequence[ExtractableSignal]: ...
+    def awaiting_extraction(
+        self, *, limit: int, signal_ids: Sequence[UUID] | None = None
+    ) -> Sequence[ExtractableSignal]: ...
 
     def awaiting_backfill(self, *, limit: int) -> Sequence[ExtractableSignal]: ...
 
@@ -98,6 +102,13 @@ class ModelUnavailable(Exception):
     without notice. Distinct from a rejected answer, because nothing was learned
     about the signal, so the signal must stay exactly as it was.
     """
+
+    def __init__(
+        self, detail: str = "", *, attempts: int = 1, http_status: int | None = None
+    ) -> None:
+        super().__init__(detail)
+        self.attempts = attempts
+        self.http_status = http_status
 
 
 class NoModelsConfigured(Exception):

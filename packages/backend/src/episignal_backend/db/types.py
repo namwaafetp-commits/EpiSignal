@@ -49,6 +49,13 @@ class SignalType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class HostSector(StrEnum):
+    HUMAN = "human"
+    ANIMAL = "animal"
+    BOTH = "both"
+    UNKNOWN = "unknown"
+
+
 class ProcessingStatus(StrEnum):
     FETCHED = "fetched"
     NORMALIZED = "normalized"

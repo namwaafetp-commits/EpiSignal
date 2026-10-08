@@ -18,6 +18,8 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from episignal_backend.diagnostics import FailureCategory
+
 USER_AGENT = "EpiSignal/0.1 (+https://episignal.org)"
 TIMEOUT_SECONDS = 15.0
 DELAY_SECONDS = 1.0
@@ -30,9 +32,15 @@ logger = logging.getLogger("episignal_backend.ingestion.gdelt")
 class Unfetchable(Exception):
     """The page could not be retrieved. Worth retrying later."""
 
+    def __init__(self, detail: str = "", *, category: str | None = None) -> None:
+        super().__init__(detail)
+        self.category = category
+
 
 class Disallowed(Exception):
     """robots.txt forbids this path. Never worth retrying."""
+
+    category = FailureCategory.BLOCKED_ROBOTS.value
 
 
 class ArticleFetcher:
@@ -66,20 +74,42 @@ class ArticleFetcher:
             response = self._client.get(
                 url, timeout=self._timeout_seconds, headers={"User-Agent": self._user_agent}
             )
-        except (httpx.TimeoutException, httpx.TransportError) as error:
-            raise Unfetchable(host) from error
+        except httpx.ConnectTimeout as error:
+            raise Unfetchable(host, category=FailureCategory.CONNECT_TIMEOUT.value) from error
+        except httpx.ReadTimeout as error:
+            raise Unfetchable(host, category=FailureCategory.READ_TIMEOUT.value) from error
+        except httpx.TimeoutException as error:
+            raise Unfetchable(host, category=FailureCategory.TIMEOUT.value) from error
+        except httpx.ConnectError as error:
+            raise Unfetchable(host, category=FailureCategory.DNS_CONNECT_ERROR.value) from error
+        except httpx.TransportError as error:
+            raise Unfetchable(host, category=FailureCategory.OTHER.value) from error
         finally:
             self._last_request[host] = monotonic()
 
         if response.status_code >= 400:
-            raise Unfetchable(f"{host} returned {response.status_code}")
+            if response.status_code == 403:
+                category = FailureCategory.HTTP_403.value
+            elif response.status_code == 429:
+                category = FailureCategory.HTTP_429.value
+            elif 500 <= response.status_code <= 599:
+                category = FailureCategory.HTTP_5XX.value
+            else:
+                category = FailureCategory.HTTP_OTHER.value
+            raise Unfetchable(f"{host} returned {response.status_code}", category=category)
 
         content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
         if content_type and not content_type.startswith(HTML_TYPES):
-            raise Unfetchable(f"{host} returned {content_type}")
+            raise Unfetchable(
+                f"{host} returned {content_type}",
+                category=FailureCategory.INVALID_CONTENT.value,
+            )
 
         if len(response.content) > MAX_BYTES:
-            raise Unfetchable(f"{host} returned an oversized document")
+            raise Unfetchable(
+                f"{host} returned an oversized document",
+                category=FailureCategory.INVALID_CONTENT.value,
+            )
 
         return response.text
 

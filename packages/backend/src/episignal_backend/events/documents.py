@@ -81,6 +81,7 @@ class SignalForMatching(BaseModel):
     published_at: datetime | None = None
     first_seen_at: datetime
     title: str = ""
+    raw_text: str = ""
     locations: tuple[LocationForMatching, ...] = ()
     extraction: Extraction | None = None
     embedding: tuple[float, ...] | None = None
@@ -108,13 +109,18 @@ class StoryCluster(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     signals: tuple[SignalForMatching, ...] = Field(min_length=1)
+    event_representative: SignalForMatching | None = Field(default=None, exclude=True)
 
     @property
     def disease_id(self) -> UUID | None:
-        return self.signals[0].disease_id
+        if self.event_representative is not None:
+            return self.event_representative.disease_id
+        return next((signal.disease_id for signal in self.signals if signal.disease_id), None)
 
     @property
     def disease_text(self) -> str | None:
+        if self.event_representative is not None:
+            return normalize_disease_text(self.event_representative.disease_text)
         return next(
             (
                 text
@@ -138,7 +144,10 @@ class StoryCluster(BaseModel):
 
         Falls back to highest-precision location with any role if no primary exists.
         """
-        all_locs = [loc for sig in self.signals for loc in sig.locations]
+        source_signals = (
+            (self.event_representative,) if self.event_representative is not None else self.signals
+        )
+        all_locs = [loc for sig in source_signals for loc in sig.locations]
         if not all_locs:
             return None
 
@@ -244,6 +253,9 @@ class SummarySource(BaseModel):
     source_name: str = Field(min_length=1)
     is_official: bool = False
     published_at: datetime | None = None
+    article_text: str = ""
+    # Historical callers may still provide a brief; active summarization never
+    # reads it and uses article_text as authoritative evidence.
     brief: tuple[BriefPoint, ...] = ()
 
 
@@ -262,6 +274,10 @@ class EventForSummary(BaseModel):
     # observation today. Material-change detection compares the two.
     previous_counts: dict[str, object] | None = None
     latest_observation: dict[str, object] | None = None
+    # Every linked observation is supplied to the event-level summarizer so it
+    # can preserve history, source disagreement, and confirmed/probable/
+    # suspected distinctions instead of treating one article as the event.
+    observations: tuple[dict[str, object], ...] = ()
     unsummarized_articles: int = 0
     last_summarized_at: datetime | None = None
     sources: tuple[SummarySource, ...] = ()

@@ -31,7 +31,7 @@ class NotReadyResponse(BaseModel):
 
 
 @router.get("/live", response_model=LivenessResponse)
-def liveness() -> LivenessResponse:
+async def liveness() -> LivenessResponse:
     return LivenessResponse(status="alive")
 
 

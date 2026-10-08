@@ -2,6 +2,22 @@
 
 This document describes how the EpiSignal daily pipeline is scheduled, locked, recorded, and recovered after downtime.
 
+## Briefing popularity sync
+
+`pnpm popularity:sync` is a separate, short-lived worker. Schedule it about
+every 15 minutes with the same external scheduler used for the application;
+do not add it to the daily ingestion chain. Each run reads the previous
+rolling 48 hours from the separately hosted Umami instance and upserts one
+aggregate row per known event and window. It reports only aggregate counts,
+skipped-ID counts, and safe exception types.
+
+The worker needs `UMAMI_BASE_URL`, `UMAMI_WEBSITE_ID`, and the server-only
+`UMAMI_API_TOKEN`. `BRIEFING_RANKING_ENABLED=false` keeps the API in shadow
+mode while operators compare the recency order with the computed ranking.
+Missing credentials or an Umami outage fail the worker without changing the
+dashboard or writing partial metrics. A stale or absent metric causes the
+dashboard's recency-only fallback.
+
 ## What `pnpm pipeline:run` does
 
 `pnpm pipeline:run` executes the complete daily processing chain once and exits:

@@ -8,6 +8,19 @@ from episignal_backend.db.base import Base, IdentityMixin, TimestampMixin
 from episignal_backend.db.types import FilterRuleGroup, vocabulary
 
 ANY_LANGUAGE = "any"
+GDELT_NGRAM_PROVIDER = "gdelt_ngram"
+
+
+class GdeltDiscoveryState(Base):
+    """Durable watermark for provider batches, separate from scheduler state."""
+
+    __tablename__ = "gdelt_discovery_state"
+
+    provider: Mapped[str] = mapped_column(Text, primary_key=True)
+    cursor_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()", nullable=False
+    )
 
 
 class GdeltQueryRule(IdentityMixin, TimestampMixin, Base):
