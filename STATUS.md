@@ -4,18 +4,18 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-09-11
+**Last updated:** 2026-10-08
 
 ## Position
 
 | Field | Value |
 | --- | --- |
-| Band | 2 — GDELT discovery layer |
-| Item | Final simplified three-model surveillance pipeline |
+| Band | 4 — Operations |
+| Item | Production dashboard availability and database load |
 | Status | `building` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
-| Spec | [Lean MVP real-data validation design](docs/superpowers/specs/2026-08-31-real-data-mvp-validation-design.md) |
-| Plan | [Lean MVP real-data validation plan](docs/superpowers/plans/2026-08-31-real-data-mvp-validation.md) |
+| Spec | User-approved bounded production reliability fix, 2026-10-08 |
+| Plan | Acceptance and rollback procedure in [HANDOFF.md](HANDOFF.md) |
 
 ## Verified main baseline
 
@@ -401,3 +401,26 @@ Plan: [UI v2](docs/superpowers/plans/2026-09-13-ui-v2.md).
 - [ ] Responsive map and accessibility.
 - [ ] Independent review, visual QA and full verification.
 - [ ] Completion report, commit and push; no deployment.
+
+## Task ledger — production dashboard availability (2026-10-08)
+
+This authorized operational fix supersedes the old UI handoff's deployment
+restriction. The UI changes already in the working tree remain outside this
+patch. Baseline: `cb616c5`; no schema migration.
+
+- [x] Diagnose provider-credit exhaustion, VPS CPU contention, dashboard
+  timeouts, database I/O warning, and orphaned health-check children.
+- [x] Add a bounded 60-second API dashboard cache with filter isolation and
+  preserved evidence timestamps; test through the public endpoint.
+- [x] Add web liveness independent of the API/database and a bounded Docker
+  probe; enable init for both services and allow 15-second cold dashboard reads.
+- [x] Focused API/backend regressions pass (90 tests); dedicated web liveness
+  regression passes with an isolated Node test configuration.
+- [ ] Independent code review and full repository verification.
+- [ ] Protected rollback copy and deployment through Coolify.
+- [ ] Production health, cached response latency, content, and scheduler checks.
+- [ ] Completion report and final repository synchronization.
+
+Status remains `building` until verification evidence is recorded. OpenRouter
+funding and VPS provider capacity are external constraints, not application
+changes completed by this patch.

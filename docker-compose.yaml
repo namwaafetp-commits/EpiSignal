@@ -1,5 +1,6 @@
 services:
   episignal-api:
+    init: true
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -95,6 +96,7 @@ services:
       traefik.http.services.episignal-api.loadbalancer.server.port: "8000"
 
   episignal-web:
+    init: true
     build:
       context: .
       dockerfile: apps/web/Dockerfile

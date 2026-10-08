@@ -142,7 +142,7 @@ export async function getDashboardEvents(): Promise<DashboardFeedState> {
   try {
     const response = await fetch(`${baseUrl}/api/v1/events/dashboard`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(15000),
     });
     if (!response.ok) return { status: "unavailable", data: null };
     const body: unknown = await response.json();

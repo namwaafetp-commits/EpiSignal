@@ -1,9 +1,52 @@
-# Handoff — UI v2 editorial redesign
+# Handoff — production dashboard availability
 
-Date: 2026-09-13. State: building.
+Date: 2026-10-08. State: building. Baseline: `cb616c5` on
+`codex/next-iteration`.
 
-Implement the user-supplied [design](docs/superpowers/specs/2026-09-13-ui-v2-design.md) following the [plan](docs/superpowers/plans/2026-09-13-ui-v2.md). This request supersedes the previous active handoff, archived in docs/handoffs/2026-09-13-before-ui-v2.md.
+The user authorized fixing production availability after SSH diagnostics and a
+Supabase disk I/O warning. This supersedes the old UI-only restriction on
+production access; the previous handoff is archived at
+`docs/handoffs/2026-10-08-before-production-reliability.md`. Preserve the user's
+uncommitted footer, CSS, image, and critique changes.
 
-Preserve all backend/API/data behavior. Work on codex/next-iteration, commit and push only after review and verification. Never access production, VPS, or Coolify; never deploy. Use local fixtures for visual QA.
+## Bounded implementation
 
-Public testing seams approved in the user specification: theme selection/storage; Map/Briefing navigation; URL filters/history; map drawer and reading pane; full event rendering including bullets, legacy summaries and source links; responsive keyboard interaction. Parent owns shell/feed/theme and integration; a bounded independent worker may own event content/detail. Final reviewers independently assess standards and specification against 198964ab5041666ac0490e09c4fe02904aeb348f.
+1. Cache successful public dashboard reads within each API process for 60
+   seconds. Preserve response shape, filters, ranking mode, and stored evidence
+   timestamps. Bound the cache to 32 entries and coalesce concurrent misses.
+2. Add web `GET /health/live` with no API or database dependency. Point the
+   Docker health check at it with a bounded network timeout.
+3. Enable Docker init for both EpiSignal services to reap orphaned child
+   processes. Allow the frontend 15 seconds for cold dashboard refreshes;
+   observed direct API requests exceeded the old five-second timeout.
+4. Run focused regressions, independent review, and the full repository gate.
+   Record actual outcomes; do not mark the roadmap verified without a passing
+   `corepack pnpm verify` run.
+5. Deploy only the reviewed commit through the existing Coolify application.
+   Preserve old images and a protected copy of the current compose definition.
+   Verify both health checks, dashboard contents, repeated request latency,
+   public web rendering, and continued scheduler container discovery.
+
+The user explicitly approved testing through the existing public dashboard API
+and the dedicated public web liveness endpoint. Test database/time boundaries
+without touching production data. No schema migration or model change is part
+of this fix.
+
+## Remaining external constraints
+
+- OpenRouter's account credits were exhausted. Restoring funding requires an
+  account action; do not change models, buy credits, or trigger a paid backfill.
+- The two-vCPU VPS showed substantial CPU steal. Application changes cannot
+  guarantee recovery of provider CPU capacity.
+- Supabase's warning reports a depleting I/O budget, not confirmed present
+  exhaustion. Historical statistics are not current utilization measurements.
+- Netdata was stopped with user authorization during diagnosis. Leave it
+  stopped pending a separate decision.
+
+## Rollback
+
+Keep the previous image tags and compose definition before deployment. If the
+new services fail acceptance, restore the prior compose definition and recreate
+only EpiSignal API/web from the retained images. No data restore or migration
+rollback is needed. Existing cron wrappers discover the running API container
+by application label and must continue doing so.
