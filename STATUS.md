@@ -173,15 +173,16 @@ reopened.
 
 ## Next action
 
-Review and push the focused test-migration commit on
-`codex/final-three-model-pipeline`; production model-roster updates remain a
-separate authorized operation.
+Complete the independent fixed-source repository gate and the authorized
+Coolify rollout, then record production health, dashboard content, latency,
+scheduler discovery, and rollback evidence in the operational report.
 
 ## Blockers
 
-The implementation still needs planner handoff before the roadmap item is
-marked `verified`; the full gate is now green. See [the final pipeline
-report](docs/reports/2026-09-02-final-three-model-pipeline-report.md).
+No missing authorization or credentials block this operation. The VPS is under
+CPU contention, and the actual Supabase I/O budget cannot be inferred from
+historical database counters. Browser automation returns
+`net::ERR_BLOCKED_BY_CLIENT`; terminal HTTPS acceptance remains available.
 
 ## Task ledger — final simplified three-model pipeline
 
@@ -416,7 +417,11 @@ patch. Baseline: `cb616c5`; no schema migration.
   probe; enable init for both services and allow 15-second cold dashboard reads.
 - [x] Focused API/backend regressions pass (90 tests); dedicated web liveness
   regression passes with an isolated Node test configuration.
-- [ ] Independent code review and full repository verification.
+- [x] Independent standards and specification reviews have no remaining findings;
+  corrected cache passed six focused regressions.
+- [x] Final independent full gate at `1a49590`: 190 web tests; 1,580 Python
+  passed, 2 skipped; format, lint, types, contracts, and build passed. A prior
+  repeat had four UI timeouts; limiting test workers resolved contention.
 - [ ] Protected rollback copy and deployment through Coolify.
 - [ ] Production health, cached response latency, content, and scheduler checks.
 - [ ] Completion report and final repository synchronization.
@@ -424,3 +429,7 @@ patch. Baseline: `cb616c5`; no schema migration.
 Status remains `building` until verification evidence is recorded. OpenRouter
 funding and VPS provider capacity are external constraints, not application
 changes completed by this patch.
+
+Verified source baseline: `1a495906db32fcc0833d79a1e6ae7ff8aa8547ae`.
+Production runtime commit: `72cda55` (rollout acceptance pending).
+Evidence: [production availability report](docs/reports/2026-10-08-production-dashboard-availability-report.md).

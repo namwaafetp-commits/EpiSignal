@@ -34,8 +34,10 @@ of this fix.
 
 ## Remaining external constraints
 
-- OpenRouter's account credits were exhausted. Restoring funding requires an
-  account action; do not change models, buy credits, or trigger a paid backfill.
+- OpenRouter's account credits were exhausted, then funding was restored. A
+  read-only check found $19.8243 remaining, and scheduled processing produced a
+  stored summary on October 8 at 10:28 Bangkok. Do not change models, buy credits,
+  or trigger a paid backfill.
 - The two-vCPU VPS showed substantial CPU steal. Application changes cannot
   guarantee recovery of provider CPU capacity.
 - Supabase's warning reports a depleting I/O budget, not confirmed present
