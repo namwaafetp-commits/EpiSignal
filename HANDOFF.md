@@ -1,6 +1,6 @@
 # Handoff — production dashboard availability
 
-Date: 2026-10-08. State: building. Baseline: `cb616c5` on
+Date: 2026-10-08. State: verified for the bounded application scope. Baseline: `cb616c5` on
 `codex/next-iteration`.
 
 The user authorized fixing production availability after SSH diagnostics and a
@@ -27,6 +27,15 @@ uncommitted footer, CSS, image, and critique changes.
    Verify both health checks, dashboard contents, repeated request latency,
    public web rendering, and continued scheduler container discovery.
 
+The runtime commit is `72cda55`; independent full verification passed at
+`1a49590`, which adds only a web test-worker bound. Coolify deployment
+`c3eec9583ca26efea1f7438a` finished. During its slow build, the reviewed web image
+was restored first with a protected web-only compose override; the normal
+deployment subsequently replaced both services. Final health, cached dashboard,
+content, and dynamic scheduler discovery checks passed. See the
+[completion report](docs/reports/2026-10-08-production-dashboard-availability-report.md)
+for transient timeout evidence and remaining provider-capacity limits.
+
 The user explicitly approved testing through the existing public dashboard API
 and the dedicated public web liveness endpoint. Test database/time boundaries
 without touching production data. No schema migration or model change is part
@@ -51,4 +60,4 @@ Keep the previous image tags and compose definition before deployment. If the
 new services fail acceptance, restore the prior compose definition and recreate
 only EpiSignal API/web from the retained images. No data restore or migration
 rollback is needed. Existing cron wrappers discover the running API container
-by application label and must continue doing so.
+by its `episignal-api` name filter and must continue doing so.

@@ -145,10 +145,80 @@ also received an independent standards review with no actionable findings.
 ## Deployment and rollback
 
 The reviewed commit was pushed and queued through Coolify as deployment
-`c3eec9583ca26efea1f7438a`; production acceptance is pending. A protected rollback directory was created on the VPS at
-`/root/episignal-rollback-20261008`, containing the previous compose definition
-and API/web image identities. Existing images are retained. Rollback recreates
-only EpiSignal services from the prior definition; no database rollback is needed.
+`c3eec9583ca26efea1f7438a`; it finished at `2026-10-08T04:46:13Z` (11:46
+Bangkok). A protected
+rollback directory was created on the VPS at
+`/root/episignal-rollback-20261008`, containing the previous compose definition,
+environment file, and API/web image identities. Existing images are retained.
+Rollback restores the prior compose and environment and recreates only
+EpiSignal services from retained images; no database rollback is needed.
+
+The VPS continued to show 80% CPU steal during the build. Web compilation took
+8.3 minutes and TypeScript took 4.3 minutes; Python dependency bytecode setup
+took approximately 24 minutes. Once the reviewed web image was available, web
+was restored first with a protected compose override changing only its image
+and `init: true`. The existing API contract remains compatible. The normal
+Coolify deployment subsequently finished the API image and replaced both services.
+
+Staged web acceptance:
+
+```text
+web runtime image: 72cda55
+web Docker health: healthy; init: true; zombie processes: 0
+API /health/live: HTTP 200
+web /health/live: HTTP 200
+dashboard: HTTP 200; 1,138 items
+newest report: 2026-10-08T04:20:42.412240Z
+newest summary: 2026-10-08T04:20:42.615086Z
+homepage: HTTP 200, 8.608 s, 4 event links, no unavailable message
+briefing: HTTP 200, 11.687 s, 99 event links, no unavailable message
+desktop HTTPS homepage: HTTP 200, 10.514 s, no unavailable message
+```
+
+These initial dashboard timings still use the old uncached API. Scheduled
+processing has continued without a manual model call or backfill. The cron
+wrappers discover the API dynamically using the `name=episignal-api` filter.
+Browser automation returned `net::ERR_BLOCKED_BY_CLIENT`; visual QA is
+unavailable, and terminal HTTPS/HTML checks do not claim visual verification.
+
+Final runtime acceptance used both images at `72cda55`:
+
+```text
+API and web Docker health: healthy
+API and web init: true
+API and web zombie processes: 0
+API /health/live: HTTP 200, 0.610 s
+web /health/live: HTTP 200, 0.296 s
+API loopback /health/ready: HTTP 200, 2.390 s
+API loopback dashboard cold read: HTTP 200, 8.210 s
+API loopback dashboard cached read: HTTP 200, 0.694 s
+public dashboard repeated reads: HTTP 200, 2.398 s then 1.096 s
+public dashboard payload: 1,141 items, identical SHA-256 on repeated reads
+newest report: 2026-10-08T06:12:14.415550Z
+newest summary: 2026-10-08T06:12:14.616193Z (13:12 Bangkok)
+public homepage from VPS: HTTP 200, 6.395 s
+public briefing from VPS: HTTP 200, 12.710 s, 101 event links
+final desktop homepage: HTTP 200, 11.693 s, no unavailable message
+final desktop briefing: HTTP 200, 8.315 s, no unavailable message
+cron selector matches: episignal-api-u7d7nvflnxupayccxg2qlalv-035154223772
+Netdata: exited
+```
+
+Initial final-runtime acceptance had two 30-second public dashboard timeouts
+and unavailable HTML; later checks also observed a homepage timeout before
+successful repeated public checks. These failures are retained as evidence,
+not represented as a clean uninterrupted acceptance window. Read-only database
+diagnostics connected in 1.396 seconds, and an API thread-stack snapshot showed
+two idle workers. Direct API reads and later public reads succeeded without a
+restart or configuration change. Worker exhaustion and a proxy configuration
+fault were not established; no speculative change was applied for either.
+
+The bounded application acceptance conditions passed after recovery. This is
+not a load-test result or a guarantee of stable provider capacity. A fresh VPS
+sample still showed 81% CPU steal and a large runnable queue. Coolify and Honcho
+were the largest consumers in a container sample; no limits or restarts were
+applied to those separate applications. Substantial variable latency and
+transient timeouts remain an operational risk under host CPU contention.
 
 Netdata remains stopped as previously authorized. VPS provider capacity and
 Supabase's actual I/O budget remain external operational constraints; this patch

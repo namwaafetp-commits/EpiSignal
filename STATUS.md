@@ -11,8 +11,8 @@ position and evidence ledger.
 | Field | Value |
 | --- | --- |
 | Band | 4 — Operations |
-| Item | Production dashboard availability and database load |
-| Status | `building` |
+| Item | OPS1 — Production dashboard availability and database load |
+| Status | `verified` |
 | Briefing | [HANDOFF.md](HANDOFF.md) |
 | Spec | User-approved bounded production reliability fix, 2026-10-08 |
 | Plan | Acceptance and rollback procedure in [HANDOFF.md](HANDOFF.md) |
@@ -173,9 +173,9 @@ reopened.
 
 ## Next action
 
-Complete the independent fixed-source repository gate and the authorized
-Coolify rollout, then record production health, dashboard content, latency,
-scheduler discovery, and rollback evidence in the operational report.
+OPS1 is complete for its bounded application scope. Provider CPU capacity and
+the actual Supabase I/O budget remain operational follow-ups. Preserve the
+user's separate UI changes; broader performance item `N` remains not-started.
 
 ## Blockers
 
@@ -422,14 +422,17 @@ patch. Baseline: `cb616c5`; no schema migration.
 - [x] Final independent full gate at `1a49590`: 190 web tests; 1,580 Python
   passed, 2 skipped; format, lint, types, contracts, and build passed. A prior
   repeat had four UI timeouts; limiting test workers resolved contention.
-- [ ] Protected rollback copy and deployment through Coolify.
-- [ ] Production health, cached response latency, content, and scheduler checks.
-- [ ] Completion report and final repository synchronization.
+- [x] Protected rollback compose, environment, and image identities; Coolify
+  deployment `c3eec9583ca26efea1f7438a` finished with runtime `72cda55`.
+- [x] Both services healthy with init enabled and zero zombies; dashboard,
+  public pages, cached latency, fresh evidence, and scheduler discovery checked.
+- [x] Completion report committed and repository synchronized.
 
-Status remains `building` until verification evidence is recorded. OpenRouter
-funding and VPS provider capacity are external constraints, not application
-changes completed by this patch.
+The bounded application fix is verified. OpenRouter funding and VPS provider
+capacity are external constraints, not application changes completed by this
+patch. Initial acceptance had transient timeouts; later public checks passed,
+and variable latency under approximately 80% CPU steal remains a recorded risk.
 
 Verified source baseline: `1a495906db32fcc0833d79a1e6ae7ff8aa8547ae`.
-Production runtime commit: `72cda55` (rollout acceptance pending).
+Production runtime commit: `72cda55` (rollout and bounded acceptance passed).
 Evidence: [production availability report](docs/reports/2026-10-08-production-dashboard-availability-report.md).
