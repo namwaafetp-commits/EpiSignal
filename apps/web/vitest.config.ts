@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react(), tsconfigPaths({ projects: ["./tsconfig.json"] })],
   test: {
+    pool: "threads",
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],

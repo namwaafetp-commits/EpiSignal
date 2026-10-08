@@ -124,7 +124,7 @@ def get_event_page(
         )
 
 
-def get_dashboard_events_page(
+async def get_dashboard_events_page(
     request: Request,
     host_sector: Annotated[str | None, Query()] = None,
     disease_group: Annotated[str | None, Query()] = None,
@@ -144,7 +144,7 @@ def get_dashboard_events_page(
                 now=datetime.now(UTC),
             )
 
-    return cache.get((host_sector, disease_group, settings.briefing_ranking_enabled), load)
+    return await cache.get((host_sector, disease_group, settings.briefing_ranking_enabled), load)
 
 
 def get_pipeline_runs_page(
