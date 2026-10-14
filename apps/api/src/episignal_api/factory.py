@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from episignal_api import API_NAME, API_VERSION
+from episignal_api.dashboard_cache import DashboardCache
 from episignal_api.middleware import REQUEST_ID_HEADER, RequestIDMiddleware
 from episignal_api.routes import admin, events, health, radar, reviews, signals, version
 
@@ -41,6 +42,7 @@ async def handle_unexpected_error(request: Request, exception: Exception) -> JSO
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title=API_NAME, version=API_VERSION)
     app.state.settings = settings
+    app.state.dashboard_cache = DashboardCache()
 
     app.add_middleware(
         CORSMiddleware,

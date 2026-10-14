@@ -1,11 +1,29 @@
 import { HomeShell } from "@/components/home-shell";
 import { getApiStatus } from "@/lib/api-health";
 import { getDashboardEvents } from "@/lib/api-dashboard";
+import { currentTimestamp } from "@/lib/event-filters";
 
-export default async function Home() {
-  const [apiStatus, eventFeed] = await Promise.all([
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [apiStatus, eventFeed, params] = await Promise.all([
     getApiStatus(),
     getDashboardEvents(),
+    searchParams,
   ]);
-  return <HomeShell apiStatus={apiStatus} eventFeed={eventFeed} />;
+  const query = new URLSearchParams(
+    Object.entries(params).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  ).toString();
+  return (
+    <HomeShell
+      apiStatus={apiStatus}
+      eventFeed={eventFeed}
+      initialQuery={query}
+      now={currentTimestamp()}
+    />
+  );
 }

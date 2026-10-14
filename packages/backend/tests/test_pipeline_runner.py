@@ -31,6 +31,7 @@ def test_failed_stage_outcomes_cross_the_repository_seam() -> None:
     from unittest.mock import MagicMock, patch
     from uuid import uuid4
 
+    from episignal_backend.config import Settings
     from episignal_backend.db.types import PipelineRunStatus
     from episignal_backend.schedule.documents import ChainOutcome, StageName, StageOutcome
 
@@ -49,19 +50,110 @@ def test_failed_stage_outcomes_cross_the_repository_seam() -> None:
     chain_outcome = ChainOutcome(outcomes=(failed_outcome,))
 
     with (
-        patch("episignal_backend.pipeline_runner.session_scope"),
+        patch("episignal_backend.pipeline_runner.session_scope") as session_scope,
+        patch(
+            "episignal_backend.pipeline_runner.get_settings",
+            return_value=Settings(
+                database_url="postgresql://test:test@localhost/test", _env_file=None
+            ),
+        ),
         patch(
             "episignal_backend.pipeline_runner.SqlAlchemyPipelineRunRepository",
             return_value=fake_repo,
         ),
         patch("episignal_backend.pipeline_runner.run_chain", return_value=chain_outcome),
+        patch("episignal_backend.pipeline_runner._persist_health_best_effort"),
     ):
         from episignal_backend.pipeline_runner import main
 
         exit_code = main(["--only", "extract"])
         assert exit_code == 1
 
+    session_scope.return_value.__enter__.return_value.commit.assert_called_once()
     fake_repo.finish_run.assert_called_once()
     _, kwargs = fake_repo.finish_run.call_args
     assert kwargs["status"] == PipelineRunStatus.FAILED
     assert kwargs["failed_stages"] == [failed_outcome]
+
+
+def test_monitoring_persistence_failure_does_not_fail_core_pipeline() -> None:
+    from unittest.mock import MagicMock, patch
+    from uuid import uuid4
+
+    from episignal_backend.config import Settings
+    from episignal_backend.schedule.documents import ChainOutcome
+
+    fake_repo = MagicMock()
+    fake_repo.try_lock.return_value = True
+    fake_repo.last_window_end.return_value = None
+    fake_repo.start_run.return_value = uuid4()
+    fake_repo.backlog_depth.return_value = {}
+
+    with (
+        patch("episignal_backend.pipeline_runner.session_scope"),
+        patch(
+            "episignal_backend.pipeline_runner.get_settings",
+            return_value=Settings(
+                database_url="postgresql://test:test@localhost/test", _env_file=None
+            ),
+        ),
+        patch(
+            "episignal_backend.pipeline_runner.SqlAlchemyPipelineRunRepository",
+            return_value=fake_repo,
+        ),
+        patch(
+            "episignal_backend.pipeline_runner.run_chain",
+            return_value=ChainOutcome(outcomes=()),
+        ),
+        patch(
+            "episignal_backend.pipeline_runner.persist_pipeline_health_best_effort",
+            side_effect=RuntimeError("monitoring unavailable"),
+        ),
+    ):
+        from episignal_backend.pipeline_runner import main
+
+        assert main([]) == 0
+
+    fake_repo.finish_run.assert_called_once()
+
+
+def test_fatal_pipeline_exception_remains_visible_in_health_telemetry() -> None:
+    from unittest.mock import MagicMock, patch
+    from uuid import uuid4
+
+    from episignal_backend.config import Settings
+    from episignal_backend.db.types import PipelineRunStatus
+
+    fake_repo = MagicMock()
+    fake_repo.try_lock.return_value = True
+    fake_repo.last_window_end.return_value = None
+    fake_repo.start_run.return_value = uuid4()
+    fake_repo.backlog_depth.return_value = {}
+
+    with (
+        patch("episignal_backend.pipeline_runner.session_scope") as session_scope,
+        patch(
+            "episignal_backend.pipeline_runner.get_settings",
+            return_value=Settings(
+                database_url="postgresql://test:test@localhost/test", _env_file=None
+            ),
+        ),
+        patch(
+            "episignal_backend.pipeline_runner.SqlAlchemyPipelineRunRepository",
+            return_value=fake_repo,
+        ),
+        patch(
+            "episignal_backend.pipeline_runner.run_chain",
+            side_effect=RuntimeError("stage infrastructure failed"),
+        ),
+        patch("episignal_backend.pipeline_runner.persist_pipeline_health_best_effort") as persist,
+    ):
+        from episignal_backend.pipeline_runner import main
+
+        assert main([]) == 1
+
+    session_scope.return_value.__enter__.return_value.commit.assert_called_once()
+    persist.assert_called_once()
+    health_record = persist.call_args.args[0]
+    assert health_record.status is PipelineRunStatus.FAILED
+    assert health_record.fatal_error_count == 1

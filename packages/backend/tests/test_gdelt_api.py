@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -24,7 +25,24 @@ def client_returning(*responses: httpx.Response) -> GdeltDocClient:
         return response
 
     transport = httpx.MockTransport(handler)
-    return GdeltDocClient(client=httpx.Client(transport=transport), sleep=lambda _: None)
+    return GdeltDocClient(
+        client=httpx.Client(transport=transport), sleep=lambda _: None, request_delay_seconds=0
+    )
+
+
+def client_repeating(
+    response_factory: Callable[[httpx.Request], httpx.Response],
+) -> GdeltDocClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response_factory(request)
+
+    transport = httpx.MockTransport(handler)
+    return GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+        request_delay_seconds=0,
+    )
 
 
 def artlist_response() -> httpx.Response:
@@ -88,7 +106,7 @@ def test_a_body_that_is_not_json_is_treated_as_empty() -> None:
 
 
 def test_search_retries_a_retryable_status_then_succeeds() -> None:
-    client = client_returning(httpx.Response(429), artlist_response())
+    client = client_returning(httpx.Response(503), artlist_response())
     assert len(client.search(RULE, WINDOW)) == 3
 
 
@@ -102,11 +120,58 @@ def test_search_raises_when_the_transport_refuses() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused", request=request)
 
+    transport = httpx.MockTransport(handler)
     client = GdeltDocClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda _: None
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
     )
     with pytest.raises(GdeltUnavailable):
         client.search(RULE, WINDOW)
+
+
+def test_search_retries_https_timeout_once_over_http() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.scheme == "https":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return artlist_response()
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+
+    assert len(client.search(RULE, WINDOW)) == 3
+    assert [request.url.scheme for request in requests] == ["https", "http"]
+    assert requests[0].url.params == requests[1].url.params
+    assert "authorization" not in requests[1].headers
+
+
+def test_search_uses_http_directly_after_https_timeout() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.scheme == "https":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return artlist_response()
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+
+    client.search(RULE, WINDOW)
+    client.search(RULE, WINDOW)
+
+    assert [request.url.scheme for request in requests] == ["https", "http", "http"]
 
 
 def test_search_skips_an_entry_with_no_url() -> None:
@@ -133,12 +198,164 @@ def test_search_skips_an_entry_with_no_url() -> None:
     assert articles[0].url == "https://a.test/1"
 
 
-def test_search_waits_between_requests_when_asked() -> None:
-    slept: list[float] = []
-    client = client_returning(httpx.Response(429), artlist_response())
-    client._sleep = slept.append  # type: ignore[method-assign]
+def test_rate_limit_is_not_retried_and_opens_the_circuit() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(429, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+        request_delay_seconds=0,
+    )
+
+    with pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+
+    assert len(requests) == 1
+    assert client.circuit_open
+    assert client.finish_run(4).circuit_open_reason == "rate_limited"
+    assert client.search(RULE, WINDOW) == ()
+    assert client.finish_run(4).rules_skipped_circuit == 1
+
+
+def test_rate_limit_circuit_resets_for_a_new_run() -> None:
+    client = client_returning(httpx.Response(429), httpx.Response(200, json={"articles": []}))
+
+    with pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+    assert client.circuit_open
+
+    client.begin_run()
+
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(1)
+    assert summary.circuit_open is False
+    assert summary.circuit_open_reason is None
+
+
+def test_rate_limit_from_https_fallback_is_not_retried() -> None:
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.scheme)
+        if request.url.scheme == "https":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return httpx.Response(429, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+        request_delay_seconds=0,
+    )
+
+    with pytest.raises(GdeltUnavailable) as raised:
+        client.search(RULE, WINDOW)
+
+    assert requests == ["https", "http"]
+    assert raised.value.failure is not None
+    assert raised.value.failure.category == "http_429"
+    assert client.circuit_open
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(2)
+    assert summary.circuit_open_reason == "rate_limited"
+    assert summary.rules_skipped_circuit == 1
+
+
+def test_request_pacing_uses_request_start_times_without_extra_sleep_after_slow_request() -> None:
+    clock = {"value": 0.0}
+    starts: list[float] = []
+    sleeps: list[float] = []
+    calls = 0
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock["value"] += seconds
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        starts.append(clock["value"])
+        calls += 1
+        if calls == 1:
+            clock["value"] += 20.0
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+        request_delay_seconds=5.0,
+    )
+
     client.search(RULE, WINDOW)
-    assert slept == [1.0]
+    client.search(RULE, WINDOW)
+
+    assert starts == [0.0, 20.0]
+    assert sleeps == []
+
+
+def test_request_pacing_honors_the_configured_minimum_delay() -> None:
+    clock = {"value": 0.0}
+    starts: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        starts.append(clock["value"])
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+        request_delay_seconds=5.0,
+    )
+
+    client.search(RULE, WINDOW)
+    client.search(RULE, WINDOW)
+
+    assert starts == [0.0, 5.0]
+
+
+def test_begin_run_resets_the_first_request_pacing_slot() -> None:
+    clock = {"value": 0.0}
+    starts: list[float] = []
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock["value"] += seconds
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        starts.append(clock["value"])
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+        request_delay_seconds=5.0,
+    )
+
+    client.search(RULE, WINDOW)
+    clock["value"] = 1.0
+    client.begin_run()
+    client.search(RULE, WINDOW)
+    assert sleeps == []
+
+    client.search(RULE, WINDOW)
+    assert starts == [0.0, 1.0, 6.0]
+    assert sleeps == [5.0]
 
 
 def test_window_longer_than_a_day_is_accepted() -> None:
@@ -221,3 +438,384 @@ def test_a_rule_with_a_language_keeps_matching_entries() -> None:
 def test_an_any_language_rule_keeps_mismatched_entries() -> None:
     articles = client_returning(artlist_response()).search(RULE, WINDOW)
     assert len(articles) == 3
+
+
+def test_successful_run_summary_records_attempt_and_success() -> None:
+    client = client_returning(httpx.Response(200, json={"articles": []}))
+
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(1)
+
+    assert (summary.rules_total, summary.rules_attempted, summary.rules_succeeded) == (1, 1, 1)
+    assert summary.rules_failed == 0
+    assert summary.rules_skipped_circuit == 0
+    assert summary.circuit_open is False
+    assert all(value == 0 for value in summary.failure_counts.values())
+
+
+def test_zero_results_reset_the_failure_streak() -> None:
+    mode = {"failing": True}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if mode["failing"]:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+    with pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+    mode["failing"] = False
+
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(2)
+    assert summary.rules_failed == 1
+    assert summary.rules_succeeded == 1
+    assert summary.circuit_open is False
+    assert summary.failure_streak_elapsed_sec == 0
+
+
+def test_tls_failure_falls_back_to_http_without_failing_the_rule() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.scheme == "https":
+            raise httpx.ConnectError("TLS handshake failed", request=request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(1)
+
+    assert [request.url.scheme for request in requests] == ["https", "http"]
+    assert summary.rules_failed == 0
+    assert summary.rules_succeeded == 1
+    assert summary.https_attempts == 1
+    assert summary.http_attempts == 1
+    assert summary.failure_counts["tls_error"] == 0
+    assert summary.failure_streak_elapsed_sec == 0
+
+
+@pytest.mark.parametrize(
+    ("failure_factory", "category"),
+    [
+        (lambda request: httpx.ConnectTimeout("connect", request=request), "connect_timeout"),
+        (lambda request: httpx.ReadTimeout("read", request=request), "read_timeout"),
+        (lambda request: httpx.ConnectError("TLS handshake", request=request), "tls_error"),
+        (lambda request: httpx.ConnectError("refused", request=request), "other"),
+    ],
+)
+def test_transport_failures_are_classified(
+    failure_factory: Callable[[httpx.Request], Exception], category: str
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise failure_factory(request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(GdeltUnavailable) as raised:
+        client.search(RULE, WINDOW)
+
+    assert raised.value.failure is not None
+    assert raised.value.failure.category == category
+
+
+@pytest.mark.parametrize(
+    ("response_factory", "category"),
+    [
+        (lambda request: httpx.Response(429, request=request), "http_429"),
+        (lambda request: httpx.Response(503, request=request), "http_5xx"),
+        (
+            lambda request: httpx.Response(200, json={"wrong": []}, request=request),
+            "invalid_response",
+        ),
+        (lambda request: httpx.Response(200, text="not JSON", request=request), "parse_error"),
+    ],
+)
+def test_response_failures_are_classified(
+    response_factory: Callable[[httpx.Request], httpx.Response], category: str
+) -> None:
+    client = client_repeating(response_factory)
+
+    with pytest.raises(GdeltUnavailable) as raised:
+        client.search(RULE, WINDOW)
+
+    assert raised.value.failure is not None
+    assert raised.value.failure.category == category
+
+
+def test_failed_rule_logs_structured_safe_diagnostics(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = client_returning(httpx.Response(503), httpx.Response(503), httpx.Response(503))
+
+    with caplog.at_level("WARNING"), pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+
+    message = caplog.records[-1].message
+    assert "rule=Measles" in message
+    assert "transport=https" in message
+    assert "error=http_5xx" in message
+    assert "status_code=503" in message
+    assert "elapsed_ms=" in message
+
+
+def test_invalid_schema_logs_safe_response_metadata_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = client_repeating(
+        lambda request: httpx.Response(
+            200,
+            json={"message": "secret response body", "status": "bad"},
+            headers={"content-type": "application/json; charset=utf-8"},
+            request=request,
+        )
+    )
+
+    with caplog.at_level("WARNING"), pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+
+    message = " ".join(record.message for record in caplog.records)
+    assert "gdelt_invalid_schema" in message
+    assert "content_type=application/json" in message
+    assert "payload_type=dict" in message
+    assert "keys=message,status" in message
+    assert "articles_type=NoneType" in message
+    assert "secret response body" not in message
+    assert "measles" not in message
+
+
+def test_circuit_opens_at_eight_failed_rules_and_skips_the_rest() -> None:
+    client = client_returning(*[httpx.Response(503) for _ in range(3 * 8)])
+    rules = [
+        QueryRule(rule_group="known_disease", query=f"disease-{index}", label=f"Rule {index}")
+        for index in range(10)
+    ]
+
+    for rule in rules:
+        if client.circuit_open:
+            assert client.search(rule, WINDOW) == ()
+        else:
+            with pytest.raises(GdeltUnavailable):
+                client.search(rule, WINDOW)
+
+    summary = client.finish_run(len(rules))
+    assert summary.rules_attempted == 8
+    assert summary.rules_failed == 8
+    assert summary.rules_skipped_circuit == 2
+    assert summary.circuit_open is True
+    assert summary.circuit_open_reason == "consecutive_failures"
+    assert summary.failure_streak_elapsed_sec < 180
+
+
+def test_seven_quick_failures_do_not_open_the_circuit() -> None:
+    client = client_returning(*[httpx.Response(503) for _ in range(3 * 7)])
+
+    for index in range(7):
+        with pytest.raises(GdeltUnavailable):
+            client.search(
+                QueryRule(rule_group="known_disease", query=str(index), label=str(index)), WINDOW
+            )
+
+    summary = client.finish_run(7)
+    assert summary.circuit_open is False
+    assert summary.circuit_open_reason is None
+    assert summary.failure_streak_elapsed_sec < 180
+
+
+def test_slow_failures_open_the_circuit_on_the_elapsed_budget() -> None:
+    clock = {"value": 0.0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        clock["value"] += 60.0
+        return httpx.Response(503, request=request)
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+    )
+
+    with pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+
+    summary = client.finish_run(1)
+    assert summary.circuit_open is True
+    assert summary.circuit_open_reason == "failure_time_budget"
+    assert summary.failure_streak_elapsed_sec == 183.0
+
+
+def test_time_budget_circuit_skips_remaining_rules() -> None:
+    clock = {"value": 0.0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        clock["value"] += 60.0
+        return httpx.Response(503, request=request)
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+    )
+    rules = [
+        QueryRule(rule_group="known_disease", query=str(index), label=str(index))
+        for index in range(3)
+    ]
+
+    for rule in rules:
+        if client.circuit_open:
+            assert client.search(rule, WINDOW) == ()
+        else:
+            with pytest.raises(GdeltUnavailable):
+                client.search(rule, WINDOW)
+
+    summary = client.finish_run(len(rules))
+    assert summary.rules_attempted == 1
+    assert summary.rules_failed == 1
+    assert summary.rules_skipped_circuit == 2
+    assert summary.circuit_open_reason == "failure_time_budget"
+
+
+def test_success_resets_failure_count_and_elapsed_budget() -> None:
+    mode = {"failing": True}
+    clock = {"value": 0.0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if mode["failing"]:
+            clock["value"] += 50.0
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+        monotonic=lambda: clock["value"],
+    )
+    with pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+    mode["failing"] = False
+
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(2)
+    assert summary.circuit_open is False
+    assert summary.circuit_open_reason is None
+    assert summary.failure_streak_elapsed_sec == 0
+
+
+def test_programming_errors_propagate_instead_of_becoming_unavailable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise TypeError("programming defect")
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(TypeError, match="programming defect"):
+        client.search(RULE, WINDOW)
+
+
+def test_circuit_state_is_fresh_for_the_next_run() -> None:
+    mode = {"failing": True}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if mode["failing"]:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+    for index in range(8):
+        with pytest.raises(GdeltUnavailable):
+            client.search(
+                QueryRule(rule_group="known_disease", query=str(index), label=str(index)), WINDOW
+            )
+    assert client.circuit_open is True
+
+    mode["failing"] = False
+    client.begin_run()
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(1)
+    assert summary.circuit_open is False
+    assert summary.rules_skipped_circuit == 0
+
+
+def test_time_budget_state_is_fresh_for_the_next_run() -> None:
+    mode = {"failing": True}
+    clock = {"value": 0.0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if mode["failing"]:
+            clock["value"] += 60.0
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, json={"articles": []}, request=request)
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=sleep,
+        monotonic=lambda: clock["value"],
+    )
+    with pytest.raises(GdeltUnavailable):
+        client.search(RULE, WINDOW)
+    assert client.circuit_open is True
+
+    mode["failing"] = False
+    client.begin_run()
+    assert client.search(RULE, WINDOW) == ()
+    summary = client.finish_run(1)
+    assert summary.circuit_open is False
+    assert summary.failure_streak_elapsed_sec == 0
+
+
+def test_run_summary_logs_circuit_open_once(caplog: pytest.LogCaptureFixture) -> None:
+    client = client_returning(*[httpx.Response(503) for _ in range(3 * 8)])
+    for index in range(8):
+        with pytest.raises(GdeltUnavailable):
+            client.search(
+                QueryRule(rule_group="known_disease", query=str(index), label=str(index)), WINDOW
+            )
+
+    with caplog.at_level("WARNING"):
+        client.finish_run(9)
+
+    assert sum("gdelt_circuit_open" in record.message for record in caplog.records) == 1
+    assert "remaining_rules=1" in caplog.records[-1].message

@@ -1,0 +1,10 @@
+# Optional deployment proposal. Not included by docker-compose.yaml.
+# Review and prepare the host directory for UID/GID 10001 before applying.
+services:
+  episignal-api:
+    environment:
+      EPISIGNAL_TELEGRAM_BOT_TOKEN: ${EPISIGNAL_TELEGRAM_BOT_TOKEN:-}
+      EPISIGNAL_TELEGRAM_CHAT_ID: ${EPISIGNAL_TELEGRAM_CHAT_ID:-}
+      EPISIGNAL_TELEGRAM_STATE_PATH: /var/lib/episignal-notifications/state.sqlite3
+    volumes:
+      - /var/lib/episignal-notifications:/var/lib/episignal-notifications

@@ -368,18 +368,9 @@ class FakeSignalRow:
             ai_extraction
             if ai_extraction is not None
             else {
-                "extraction_schema_version": 2,
-                "signal_type": "outbreak_report",
-                "title_english": "Cholera in Luanda",
-                "source_language": "en",
-                "confidence": 0.95,
-                "brief": [
-                    {"slot": "what_where", "text": "Cholera in Luanda.", "reported": True},
-                    {"slot": "counts", "text": "50 cases.", "reported": True},
-                    {"slot": "timing", "text": "No dates.", "reported": False},
-                    {"slot": "spread", "text": "No spread.", "reported": False},
-                    {"slot": "reporting", "text": "Reported by MoH.", "reported": True},
-                ],
+                "extraction_schema_version": 5,
+                "disease": "cholera",
+                "locations": [{"town": "Luanda", "country": "Angola"}],
             }
         )
         self.source_name = source_name
@@ -446,7 +437,7 @@ def test_query_radar_assembly_unmatched_signal() -> None:
     item = page.items[0]
     assert item.id == sig_id
     assert item.title_english == "Cholera in Luanda"
-    assert len(item.brief) == 5
+    assert item.brief == ()
     assert item.event_context_status == EventContextStatus.NONE
     assert item.event is None
     assert item.location is None
@@ -511,9 +502,9 @@ def test_query_radar_assembly_malformed_extraction_is_omitted() -> None:
     sig1 = FakeSignalRow(
         id=uuid4(),
         ai_extraction={
-            "extraction_schema_version": 2,
-            "title_english": "",  # Blank title: malformed!
-            "brief": [],
+            "extraction_schema_version": 5,
+            "disease": "cholera",
+            "locations": [{"town": 123, "country": "AO"}],
         },
     )
     sig2 = FakeSignalRow(id=uuid4())
@@ -738,7 +729,11 @@ def test_query_radar_pagination_skips_malformed_without_consuming_limit() -> Non
     now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
     sig1 = FakeSignalRow(
         id=uuid4(),
-        ai_extraction={"extraction_schema_version": 2, "title_english": "", "brief": []},
+        ai_extraction={
+            "extraction_schema_version": 5,
+            "disease": "cholera",
+            "locations": [{"town": 123, "country": "AO"}],
+        },
     )
     sig2 = FakeSignalRow(id=uuid4())
     sig3 = FakeSignalRow(id=uuid4())

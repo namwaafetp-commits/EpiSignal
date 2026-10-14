@@ -206,6 +206,7 @@ Artifacts: `E`
 | `L` | Scheduler | Discovery, ingestion, dedupe, extraction, geocoding, and clustering run on schedule without manual invocation. Phase 1 spec §42. | `D2a` | `verified` |
 | `M` | Manual review queue | Signals in `needs_review` reach a human queue and can be resolved back into the pipeline. Phase 1 spec §43–§44. | `E` | `verified` |
 | `N` | SEO, performance, accessibility | The public pages meet the stated performance budget and accessibility requirements and are indexable. Phase 1 spec §48–§50. | `H`, `I` | `not-started` |
+| `OPS1` | Production dashboard availability | Bounded dashboard caching and independent web liveness pass the full gate; the authorized deployment passes health, content, latency, and scheduler acceptance. [Briefing](HANDOFF.md) · [Report](docs/reports/2026-10-08-production-dashboard-availability-report.md). | `L`, `I` | `verified` |
 
 Artifacts:
 `L` [spec](docs/superpowers/specs/2026-08-28-scheduler-design.md) ·
@@ -248,3 +249,9 @@ event identifiers, a public open API, and machine-assisted source reconciliation
 forecasting, risk recommendations to the public, patient-level data, accounts and
 permissions, native mobile applications, push and messaging alerts, genomic data.
 Do not build these, and do not let a roadmap item quietly grow into one.
+
+## UI v2 — user-directed product surface
+
+| Item | Scope | Status |
+| --- | --- | --- |
+| UI v2 | Shared editorial Map/Briefing/event UI, themes, URL filters, accessible previews; no backend changes. [Spec](docs/superpowers/specs/2026-09-13-ui-v2-design.md) · [Plan](docs/superpowers/plans/2026-09-13-ui-v2.md) | `building` |

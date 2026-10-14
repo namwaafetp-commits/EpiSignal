@@ -108,9 +108,22 @@ def test_dashboard_endpoint_returns_summarized_event_map_fields() -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
+    assert data["ranking_enabled"] is False
     assert data["items"][0]["admin1"] == "Chiang Mai"
     assert data["items"][0]["map_level"] == "admin1"
     assert data["items"][0]["latitude"] == 18.7883
+
+
+def test_dashboard_endpoint_exposes_only_the_ranking_mode_indicator() -> None:
+    page = DashboardEventPage(items=(), total=0, ranking_enabled=True)
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_dashboard_events_page] = lambda: page
+
+    response = TestClient(app).get("/api/v1/events/dashboard")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0, "ranking_enabled": True}
+    assert "UMAMI" not in response.text
 
 
 def test_accepted_summary_status_is_visible_on_list_and_detail_endpoints() -> None:
@@ -132,6 +145,7 @@ def test_accepted_summary_status_is_visible_on_list_and_detail_endpoints() -> No
         last_summarized_at=None,
         early_signal_score=None,
         evidence_score=None,
+        locations=(),
         sources=(),
         observations=(),
         summaries=(),
@@ -182,6 +196,7 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
         last_summarized_at=NOW,
         early_signal_score=0.8,
         evidence_score=0.7,
+        locations=(),
         sources=(
             EventSourceItem(
                 signal_id=uuid4(),
@@ -198,18 +213,11 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
         ),
         observations=(
             EventObservationItem(
+                signal_id=uuid4(),
                 observation_date=date(2026, 8, 25),
                 reported_at=NOW,
-                suspected_cases=None,
-                probable_cases=None,
-                confirmed_cases=42,
-                total_cases=42,
-                new_cases=None,
-                deaths=2,
-                new_deaths=None,
-                hospitalizations=None,
                 notes=None,
-                extraction_confidence=0.9,
+                material_facts={"confirmed_cases": 42, "deaths": 2},
             ),
         ),
         summaries=(
@@ -217,9 +225,11 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
                 version=1,
                 headline="Dengue outbreak in Chiang Mai",
                 summary="Ongoing dengue outbreak in Chiang Mai.",
-                status=EventStatus.ONGOING.value,
-                latest_development="Case count rose to 68.",
-                uncertainties=["Reporting may lag."],
+                trajectory="Increasing",
+                snapshot=("42 confirmed cases", "2 deaths", "Chiang Mai"),
+                key_driver="Ongoing local transmission.",
+                response="Case investigation is underway.",
+                risk="Risk remains regional.",
                 model_id="deepseek/deepseek-v4-flash-0731",
                 created_at=NOW,
             ),
@@ -248,10 +258,14 @@ def test_event_detail_endpoint_returns_sources_observations_and_summaries() -> N
     assert data["sources"][0]["source_name"] == "Chiang Mai Provincial Health Office"
     assert data["sources"][0]["url"] == "https://health.example.org/report/1"
     assert len(data["observations"]) == 1
-    assert data["observations"][0]["confirmed_cases"] == 42
-    assert data["observations"][0]["deaths"] == 2
+    assert data["observations"][0]["material_facts"] == {"confirmed_cases": 42, "deaths": 2}
     assert len(data["summaries"]) == 1
-    assert data["summaries"][0]["latest_development"] == "Case count rose to 68."
+    assert data["summaries"][0]["trajectory"] == "Increasing"
+    assert data["summaries"][0]["snapshot"] == [
+        "42 confirmed cases",
+        "2 deaths",
+        "Chiang Mai",
+    ]
     # Publication datetime is always visible on sources.
     assert data["sources"][0]["published_at"] is not None
 
@@ -305,32 +319,27 @@ def test_event_observations_endpoint_returns_observation_history() -> None:
     original = events_route.query_event_observations
     events_route.query_event_observations = lambda session, public_id: (  # type: ignore[assignment]
         EventObservationItem(
+            signal_id=uuid4(),
             observation_date=date(2026, 8, 25),
             reported_at=NOW,
-            suspected_cases=None,
-            probable_cases=None,
-            confirmed_cases=42,
-            total_cases=42,
-            new_cases=None,
-            deaths=2,
-            new_deaths=None,
-            hospitalizations=None,
             notes=None,
-            extraction_confidence=0.9,
+            material_facts={"confirmed_cases": 42},
         ),
         EventObservationItem(
+            signal_id=uuid4(),
             observation_date=date(2026, 8, 27),
             reported_at=NOW,
-            suspected_cases=None,
-            probable_cases=None,
-            confirmed_cases=68,
-            total_cases=68,
-            new_cases=None,
-            deaths=3,
-            new_deaths=1,
-            hospitalizations=None,
             notes=None,
-            extraction_confidence=0.9,
+            material_facts={"confirmed_cases": 68},
+        ),
+        # Historical rows have only the deprecated scalar columns; the public
+        # shape remains readable with no forced data migration.
+        EventObservationItem(
+            signal_id=uuid4(),
+            observation_date=date(2026, 8, 28),
+            reported_at=NOW,
+            notes="legacy observation",
+            material_facts=None,
         ),
     )
     try:
@@ -340,8 +349,9 @@ def test_event_observations_endpoint_returns_observation_history() -> None:
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert data[0]["confirmed_cases"] == 42
-    assert data[1]["confirmed_cases"] == 68
+    assert len(data) == 3
+    assert data[0]["material_facts"]["confirmed_cases"] == 42
+    assert data[1]["material_facts"]["confirmed_cases"] == 68
+    assert data[2]["material_facts"] is None
     # History is preserved: the older value is never overwritten.
-    assert [obs["confirmed_cases"] for obs in data] == [42, 68]
+    assert [obs["material_facts"]["confirmed_cases"] for obs in data[:2]] == [42, 68]

@@ -10,8 +10,9 @@ publisher connection is opened, and what remains is capped.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from episignal_backend.ingestion.documents import DiscoveredArticle, Rejection, TimeWindow
 from episignal_backend.ingestion.filtering import compile_rules, evaluate
@@ -32,7 +33,10 @@ logger = logging.getLogger("episignal_backend.ingestion.discovery")
 @dataclass(frozen=True)
 class DiscoveryResult:
     rules_run: int = 0
+    rules_attempted: int = 0
+    rules_succeeded: int = 0
     rules_failed: int = 0
+    rules_skipped_circuit: int = 0
     rules_invalid: int = 0
     discovered: int = 0
     duplicate: int = 0
@@ -41,6 +45,9 @@ class DiscoveryResult:
     stored: int = 0
     needs_review: int = 0
     failed: int = 0
+    provider_status: str = "healthy"
+    ngram_metrics: dict[str, int | str | None] = field(default_factory=dict)
+    signal_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,7 +70,13 @@ def run_discovery(
     moment = now or datetime.now(UTC)
     window = TimeWindow(start=moment - timedelta(minutes=window_minutes), end=moment)
 
-    rules = repository.active_rules()
+    rules = tuple(repository.active_rules())
+    if rules:
+        # A stable hourly slot rotates the first rule without introducing a
+        # persistent cursor or random ordering. This keeps a repeatedly-opened
+        # circuit from starving the tail of the active rule set.
+        offset = int(moment.timestamp() // 3600) % len(rules)
+        rules = rules[offset:] + rules[:offset]
     filters = compile_rules(repository.filter_rules())
     if not filters.titles and not filters.domains:
         # A valid configuration, not an error. Said out loud because the
@@ -71,25 +84,69 @@ def run_discovery(
         # counts alone.
         logger.info("No active filter rules; discovery is running unfiltered")
     rules_failed = 0
+    rules_attempted = 0
+    rules_succeeded = 0
+    rules_skipped_circuit = 0
     failed = 0
     discovered: dict[str, DiscoveredArticle] = {}
+    provider_status = "healthy"
+    ngram_metrics: dict[str, int | str | None] = {}
+    ngram_cursor_after: datetime | None = None
+    batch_discovery = (
+        getattr(connector, "discover_rules", None)
+        if rules and getattr(connector, "supports_batch_discovery", False)
+        else None
+    )
 
-    for rule in rules:
+    begin_run = getattr(connector, "begin_discovery_run", None)
+    if callable(begin_run):
+        begin_run()
+
+    if callable(batch_discovery):
+        rules_attempted = len(rules)
         try:
-            found = connector.discover(rule, window)
+            batch_result = batch_discovery(rules, window)
         except Exception as error:
-            # One rate-limited rule must not discard the other forty-nine.
-            rules_failed += 1
-            logger.warning(
-                "Discovery rule %s failed (%s)",
-                rule.label,
-                type(error).__name__,
-            )
-            continue
-        for article in found:
-            # Within a run the same story arrives under several rules; the first
-            # sighting keeps the rule that found it.
-            discovered.setdefault(article.canonical_url, article)
+            provider_status = "unavailable"
+            rules_failed = len(rules)
+            logger.warning("Discovery provider failed (%s)", type(error).__name__)
+        else:
+            provider_status = str(getattr(batch_result, "status", "healthy"))
+            rules_succeeded = len(rules) if provider_status != "unavailable" else 0
+            rules_failed = 1 if provider_status == "partial_degradation" else 0
+            ngram_cursor_after = getattr(batch_result, "cursor_after", None)
+            metrics = getattr(batch_result, "metrics", None)
+            if metrics is not None and callable(getattr(metrics, "as_dict", None)):
+                ngram_metrics = metrics.as_dict()
+            for article in getattr(batch_result, "candidates", ()):
+                discovered.setdefault(article.canonical_url, article)
+    else:
+        for rule in rules:
+            rules_attempted += 1
+            try:
+                found = connector.discover(rule, window)
+            except Exception as error:
+                # One rate-limited rule must not discard the other forty-nine.
+                rules_failed += 1
+                logger.warning(
+                    "Discovery rule %s failed (%s)",
+                    rule.label,
+                    type(error).__name__,
+                )
+                continue
+            rules_succeeded += 1
+            for article in found:
+                # Within a run the same story arrives under several rules; the first
+                # sighting keeps the rule that found it.
+                discovered.setdefault(article.canonical_url, article)
+
+    finish_run = getattr(connector, "finish_discovery_run", None)
+    if callable(finish_run) and not callable(batch_discovery):
+        summary = finish_run(len(rules))
+        rules_attempted = int(getattr(summary, "rules_attempted", rules_attempted))
+        rules_succeeded = int(getattr(summary, "rules_succeeded", rules_succeeded))
+        rules_failed = int(getattr(summary, "rules_failed", rules_failed))
+        rules_skipped_circuit = int(getattr(summary, "rules_skipped_circuit", 0))
 
     already_stored = repository.seen_urls(tuple(discovered))
     surviving = [
@@ -140,6 +197,7 @@ def run_discovery(
     selected = candidates[:max_articles]
 
     stored = 0
+    signal_ids: list[UUID] = []
     for article in selected:
         first_seen = repository.first_seen_at(article.canonical_url) or moment
         # Retrieval moved behind the keyword gate: a body is downloaded in the
@@ -148,7 +206,11 @@ def run_discovery(
 
         try:
             source_id = repository.publisher_source_id(signal.publisher)
-            repository.add(signal, source_id)
+            stored_id = repository.add(signal, source_id)
+            # Older lightweight repository fakes may return None; production
+            # repositories return the flushed UUID used for cohort scoping.
+            if stored_id is not None:
+                signal_ids.append(stored_id)
             repository.commit()
         except Exception as error:
             repository.rollback()
@@ -162,9 +224,19 @@ def run_discovery(
 
         stored += 1
 
+    complete_discovery = getattr(connector, "complete_discovery", None)
+    if callable(complete_discovery):
+        complete_discovery(
+            ngram_cursor_after,
+            success=(failed == 0 and len(candidates) <= max_articles),
+        )
+
     return DiscoveryResult(
         rules_run=len(rules),
+        rules_attempted=rules_attempted,
+        rules_succeeded=rules_succeeded,
         rules_failed=rules_failed,
+        rules_skipped_circuit=rules_skipped_circuit,
         rules_invalid=filters.invalid,
         discovered=len(discovered),
         duplicate=len(already_stored),
@@ -173,6 +245,9 @@ def run_discovery(
         stored=stored,
         needs_review=0,
         failed=failed,
+        provider_status=provider_status,
+        ngram_metrics=ngram_metrics,
+        signal_ids=tuple(signal_ids),
     )
 
 

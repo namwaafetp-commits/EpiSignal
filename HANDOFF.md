@@ -1,57 +1,63 @@
-# Handoff — Next MVP priority: real-data end-to-end surveillance validation
+# Handoff — production dashboard availability
 
-**Date:** 2026-08-30
-**State:** next implementation item after F Lite; do not start in the F Lite
-task.
+Date: 2026-10-08. State: verified for the bounded application scope. Baseline: `cb616c5` on
+`codex/next-iteration`.
 
-## Objective
+The user authorized fixing production availability after SSH diagnostics and a
+Supabase disk I/O warning. This supersedes the old UI-only restriction on
+production access; the previous handoff is archived at
+`docs/handoffs/2026-10-08-before-production-reliability.md`. Preserve the user's
+uncommitted footer, CSS, image, and critique changes.
 
-Run the complete EpiSignal surveillance pipeline on real incoming data and
-evaluate the real signals, events, observations, and summaries it produces.
+## Bounded implementation
 
-## Why this is next
+1. Cache successful public dashboard reads within each API process for 60
+   seconds. Preserve response shape, filters, ranking mode, and stored evidence
+   timestamps. Bound the cache to 32 entries and coalesce concurrent misses.
+2. Add web `GET /health/live` with no API or database dependency. Point the
+   Docker health check at it with a bounded network timeout.
+3. Enable Docker init for both EpiSignal services to reap orphaned child
+   processes. Allow the frontend 15 seconds for cold dashboard refreshes;
+   observed direct API requests exceeded the old five-second timeout.
+4. Run focused regressions, independent review, and the full repository gate.
+   Record actual outcomes; do not mark the roadmap verified without a passing
+   `corepack pnpm verify` run.
+5. Deploy only the reviewed commit through the existing Coolify application.
+   Preserve old images and a protected copy of the current compose definition.
+   Verify both health checks, dashboard contents, repeated request latency,
+   public web rendering, and continued scheduler container discovery.
 
-The Lean MVP and F Lite are verified in code, but synthetic fixtures cannot
-show whether retrieval, deduplication, matching, observation history, and
-summaries behave correctly on live reporting. Real-data validation is the
-highest-value next evidence before adding more product or benchmarking
-infrastructure.
+The runtime commit is `72cda55`; independent full verification passed at
+`1a49590`, which adds only a web test-worker bound. Coolify deployment
+`c3eec9583ca26efea1f7438a` finished. During its slow build, the reviewed web image
+was restored first with a protected web-only compose override; the normal
+deployment subsequently replaced both services. Final health, cached dashboard,
+content, and dynamic scheduler discovery checks passed. See the
+[completion report](docs/reports/2026-10-08-production-dashboard-availability-report.md)
+for transient timeout evidence and remaining provider-capacity limits.
 
-## Dependencies already satisfied
+The user explicitly approved testing through the existing public dashboard API
+and the dedicated public web liveness endpoint. Test database/time boundaries
+without touching production data. No schema migration or model change is part
+of this fix.
 
-- The Lean MVP pipeline stages, conservative event matching, observation
-  history, summaries, API/UI, and scheduler are on `main`.
-- F Lite has committed triage/extraction fixtures and deterministic scoring, but
-  it does not justify an automatic roster change.
-- Provider keys, database access, and the scheduler's explicit run boundaries
-  are the operational prerequisites to confirm before execution.
+## Remaining external constraints
 
-## Scope boundary
+- OpenRouter's account credits were exhausted, then funding was restored. A
+  read-only check found $19.8243 remaining, and scheduled processing produced a
+  stored summary on October 8 at 10:28 Bangkok. Do not change models, buy credits,
+  or trigger a paid backfill.
+- The two-vCPU VPS showed substantial CPU steal. Application changes cannot
+  guarantee recovery of provider CPU capacity.
+- Supabase's warning reports a depleting I/O budget, not confirmed present
+  exhaustion. Historical statistics are not current utilization measurements.
+- Netdata was stopped with user authorization during diagnosis. Leave it
+  stopped pending a separate decision.
 
-In scope is a bounded run of the existing pipeline against real incoming
-reporting, inspection of produced signals/events/observations/summaries, and a
-provenance-preserving evaluation report.
+## Rollback
 
-Out of scope is changing the production roster or routing, enabling embeddings
-or BGE-M3, changing event thresholds, adding benchmark infrastructure, changing
-GDELT retrieval, automatic model selection, or building new public surfaces.
-
-## Relevant records
-
-- [Roadmap](ROADMAP.md)
-- [F Lite report](docs/reports/2026-08-30-f-lite-model-check-report.md)
-- [Lean MVP architecture](docs/lean-mvp-architecture.md)
-- [Post-merge reconciliation report](docs/reports/2026-08-30-post-merge-reconciliation.md)
-
-## Start condition
-
-Planner defines one bounded real-data validation run, its date window and
-stop/rollback behavior, then creates a fresh task branch/worktree from the
-latest `main`. Do not begin execution in this handoff task.
-
-## Completion condition
-
-The bounded run produces a report covering what real signals and events were
-created, whether observation and summary provenance is intact, the failure
-cases found, and the next corrective item; no production configuration changes
-are made without separate review.
+Keep the previous image tags and compose definition before deployment. If the
+new services fail acceptance, restore the prior compose definition and recreate
+only EpiSignal API/web from the retained images. No data restore or migration
+rollback is needed. Existing cron wrappers discover the running API container
+by its `episignal-api` name filter and must continue doing so.

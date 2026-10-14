@@ -48,7 +48,7 @@ def parse_arguments(argv: Sequence[str]) -> Arguments:
 def _run(arguments: Arguments) -> RetrievalResult:
     settings = get_settings()
     connector = GdeltConnector(
-        search=GdeltDocClient(),
+        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
         fetcher=ArticleFetcher(
             delay_seconds=settings.gdelt_article_delay_seconds,
             user_agent=settings.gdelt_user_agent,

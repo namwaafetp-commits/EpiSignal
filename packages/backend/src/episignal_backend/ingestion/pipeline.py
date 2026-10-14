@@ -8,6 +8,7 @@ with in-memory fakes and no credentials.
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from episignal_backend.ingestion.protocol import (
     SignalRepository,
@@ -30,6 +31,7 @@ class IngestionResult:
     skipped: int
     failed: int
     rejected: int = 0
+    signal_ids: tuple[UUID, ...] = ()
 
 
 def run_ingestion(
@@ -51,6 +53,7 @@ def run_ingestion(
     skipped = 0
     failed = 0
     rejected = 0
+    signal_ids: list[UUID] = []
 
     for document in connector.fetch(window_start, inclusive=since is not None):
         try:
@@ -58,7 +61,9 @@ def run_ingestion(
             if repository.exists(signal.url, signal.content_hash):
                 skipped += 1
                 continue
-            repository.add(signal, source_id)
+            stored_id = repository.add(signal, source_id)
+            if stored_id is not None:
+                signal_ids.append(stored_id)
             repository.commit()
             inserted += 1
         except UnsupportedDocument as reason:
@@ -84,4 +89,10 @@ def run_ingestion(
     repository.activate(source_id)
     repository.commit()
 
-    return IngestionResult(inserted=inserted, skipped=skipped, failed=failed, rejected=rejected)
+    return IngestionResult(
+        inserted=inserted,
+        skipped=skipped,
+        failed=failed,
+        rejected=rejected,
+        signal_ids=tuple(signal_ids),
+    )

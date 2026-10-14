@@ -96,6 +96,29 @@ def test_settings_parse_comma_separated_cors_origins_from_the_environment(monkey
     )
 
 
+def test_api_bind_host_prefers_new_name_and_accepts_legacy_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:secret@host/db")
+    monkeypatch.setenv("EPISIGNAL_API_HOST", "legacy.example.com")
+
+    legacy_settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert legacy_settings.api_host == "legacy.example.com"
+
+    monkeypatch.setenv("EPISIGNAL_API_BIND_HOST", "0.0.0.0")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.api_host == "0.0.0.0"
+
+    programmatic_settings = Settings(
+        api_host="10.0.0.1",
+        database_url="postgresql+psycopg://user:secret@host/db",
+        _env_file=None,
+    )
+    assert programmatic_settings.api_host == "10.0.0.1"
+
+
 def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "EPISIGNAL_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/database"
@@ -106,6 +129,10 @@ def test_gdelt_settings_have_working_defaults(monkeypatch: pytest.MonkeyPatch) -
     assert settings.gdelt_max_articles_per_run == 200
     assert settings.gdelt_request_delay_seconds == 5.0
     assert settings.gdelt_article_delay_seconds == 1.0
+    assert settings.gdelt_ngram_timeout_seconds == 30.0
+    assert settings.gdelt_ngram_max_catchup_minutes == 360
+    assert settings.gdelt_ngram_max_batches == 64
+    assert settings.gdelt_ngram_max_download_bytes == 1_500_000_000
     assert settings.gdelt_max_retrieval_attempts == 3
     assert settings.gdelt_retry_batch_size == 50
 
@@ -190,6 +217,35 @@ def test_the_openrouter_key_is_not_printed_by_repr() -> None:
     assert "sk-secret-value" not in repr(settings)
 
 
+def test_briefing_ranking_defaults_to_shadow_mode_and_keeps_umami_server_side() -> None:
+    settings = build_settings()
+
+    assert settings.briefing_ranking_enabled is False
+    assert settings.umami_base_url == ""
+    assert settings.umami_website_id == ""
+    assert settings.umami_api_token.get_secret_value() == ""
+    assert settings.umami_timeout_seconds == 15.0
+
+
+def test_briefing_ranking_accepts_unprefixed_operational_environment_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BRIEFING_RANKING_ENABLED", "true")
+    monkeypatch.setenv("UMAMI_BASE_URL", "https://analytics.example")
+    monkeypatch.setenv("UMAMI_WEBSITE_ID", "website-id")
+    monkeypatch.setenv("UMAMI_API_TOKEN", "server-secret")
+
+    settings = Settings(
+        database_url=DATABASE_URL,
+        _env_file=None,
+    )
+
+    assert settings.briefing_ranking_enabled is True
+    assert settings.umami_base_url == "https://analytics.example"
+    assert settings.umami_website_id == "website-id"
+    assert "server-secret" not in repr(settings)
+
+
 def test_a_batch_larger_than_the_run_limit_is_rejected() -> None:
     with pytest.raises(ValidationError):
         build_settings(EPISIGNAL_AI_BATCH_SIZE="500", EPISIGNAL_AI_SIGNAL_BATCH_LIMIT="100")
@@ -249,7 +305,7 @@ def test_event_matching_defaults_are_set() -> None:
     settings = build_settings()
     assert settings.event_cluster_window_days == 7
     assert settings.event_cluster_distance_km == 50.0
-    assert settings.event_match_threshold == 0.75
+    assert settings.event_match_threshold == 0.60
     assert settings.event_match_recency_days == 90.0
     assert settings.event_match_distance_km == 50.0
     assert settings.event_match_batch_size == 100

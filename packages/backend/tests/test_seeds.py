@@ -8,13 +8,28 @@ from episignal_backend.seeds import load_diseases, load_sources
 
 def test_disease_seed_natural_keys_are_unique() -> None:
     diseases = load_diseases()
-    assert len(diseases) == 29
+    assert len(diseases) == 30
     assert len({item.slug for item in diseases}) == len(diseases)
     assert {item.canonical_name for item in diseases} >= {
         "Cholera",
         "Dengue",
+        "Rabies",
         "Unknown disease",
     }
+
+
+def test_disease_seed_adds_only_requested_conservative_aliases() -> None:
+    diseases = {item.slug: item for item in load_diseases()}
+
+    assert diseases["rabies"].model_dump() == {
+        "canonical_name": "Rabies",
+        "slug": "rabies",
+        "icd10": "A82",
+        "synonyms": ["rabies virus infection"],
+        "category": "zoonotic",
+    }
+    assert "West Nile virus" in diseases["west-nile-virus-disease"].synonyms
+    assert "H5 bird flu" in diseases["avian-influenza"].synonyms
 
 
 def test_source_seeds_are_official_and_unique() -> None:
@@ -140,12 +155,25 @@ def test_the_seed_carries_a_triage_and_a_summary_model() -> None:
     assert models["deepseek/deepseek-v4-flash-0731"].completion_price_per_million == Decimal("0.10")
 
 
-def test_every_existing_rung_stays_purposeless() -> None:
+def test_every_non_retired_existing_rung_stays_purposeless() -> None:
     from episignal_backend.seeds import load_ai_models
 
     for seed in load_ai_models():
-        if seed.model_id.startswith(("google/", "mistralai/", "anthropic/")):
+        if seed.model_id.startswith(("google/", "anthropic/")):
             assert seed.purpose is None
+
+
+def test_the_retired_summary_rung_is_explicitly_inactive() -> None:
+    from episignal_backend.db.types import AiPurpose
+    from episignal_backend.seeds import load_ai_models
+
+    retired = next(
+        seed
+        for seed in load_ai_models()
+        if seed.model_id == "mistralai/mistral-small-3.2-24b-instruct"
+    )
+    assert retired.purpose is AiPurpose.EVENT_SUMMARY
+    assert retired.active is False
 
 
 def test_the_active_general_roster_is_gemini_with_one_openrouter_fallback() -> None:

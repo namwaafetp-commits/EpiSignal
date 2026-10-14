@@ -107,7 +107,7 @@ def test_the_repository_satisfies_the_dedupe_protocol() -> None:
     assert isinstance(SqlAlchemyDedupeRepository(FakeSession()), DedupeRepository)
 
 
-def test_pending_selects_only_fetched_rows_with_a_body() -> None:
+def test_pending_selects_fetched_rows_before_retrieval() -> None:
     session = FakeSession([FakeResult([])])
     repository = SqlAlchemyDedupeRepository(session)
 
@@ -115,4 +115,4 @@ def test_pending_selects_only_fetched_rows_with_a_body() -> None:
 
     rendered = str(session.executed[0])
     assert "processing_status" in rendered
-    assert "raw_text IS NOT NULL" in rendered
+    assert "raw_text IS NOT NULL" not in rendered
