@@ -1,0 +1,13 @@
+.git/
+.tmp/
+.venv/
+__pycache__/
+*.pyc
+.agents/
+.impeccable/
+benchmarks/
+docs/
+database/
+apps/api/
+packages/backend/
+*.png
