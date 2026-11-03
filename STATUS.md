@@ -4,7 +4,17 @@ The long roadmap is in [ROADMAP.md](ROADMAP.md). The planner/worker contract is
 in [docs/agents/workflow.md](docs/agents/workflow.md). This file is the current
 position and evidence ledger.
 
-**Last updated:** 2026-10-08
+**Last updated:** 2026-11-03
+
+## Event summary quality and spend
+
+- [x] Shorten the summary prompt and expose validator error codes without model output.
+- [x] Defer identical rejected requests for six hours while permitting changed evidence.
+- [x] Pass the full repository gate and deploy `31125f9` with migration `20261103_0027`.
+- [x] Verify API and web health and run a read-only production summary smoke check.
+- [ ] Compare summary acceptance and cost after a complete production window.
+
+See the [summary spend report](docs/reports/2026-11-03-summary-spend.md).
 
 ## Position
 
