@@ -248,7 +248,8 @@ def _stage_observability(
         }
 
     mistral_counts = _known_counts(
-        mistral, ("examined", "summarized", "skipped", "failed", "unavailable")
+        mistral,
+        ("examined", "summarized", "skipped", "skipped_recent_rejection", "failed", "unavailable"),
     )
     if mistral_counts:
         result["mistral"] = mistral_counts

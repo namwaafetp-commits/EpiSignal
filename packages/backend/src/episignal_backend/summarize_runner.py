@@ -24,13 +24,17 @@ from episignal_backend.events.summarize import (
     configure_summary,
     has_usable_summary_source,
     legacy_summary_fields,
+    recently_rejected_summary,
     render_event_flash_brief,
     run_summary,
     should_resummarize,
     summary_payload,
+    summary_request,
+    summary_request_fingerprint,
     summary_title,
     unique_summary_candidates,
 )
+from episignal_backend.schedule.repository import SqlAlchemyPipelineRunRepository
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,7 @@ def _run(arguments: Arguments) -> dict[str, int]:
         skipped_no_change = 0
         skipped_no_model = 0
         skipped_no_sources = 0
+        skipped_recent_rejection = 0
         summarized = 0
         failed = 0
         unavailable = 0
@@ -108,11 +113,19 @@ def _run(arguments: Arguments) -> dict[str, int]:
 
             # The contract requires consolidated evidence from every linked
             # source; representative-source caps belong to the old summary.
+            request = summary_request(wiring.spec, event=event, sources=sources)
+            fingerprint = summary_request_fingerprint(request, wiring.spec)
+            if recently_rejected_summary(event, fingerprint, now=now):
+                skipped += 1
+                skipped_recent_rejection += 1
+                continue
+
             result = run_summary(
                 wiring.model,
                 wiring.spec,
                 event=event,
                 sources=sources,
+                request=request,
             )
             if result.attempt is not None:
                 repository.record_ai_request(
@@ -148,6 +161,8 @@ def _run(arguments: Arguments) -> dict[str, int]:
                 unavailable += 1
             else:
                 failed += 1
+                if result.outcome is SummaryOutcome.REJECTED and result.attempt is not None:
+                    repository.record_summary_rejection(event.event_id, fingerprint, at=now)
 
         repository.commit()
 
@@ -157,6 +172,7 @@ def _run(arguments: Arguments) -> dict[str, int]:
         "skipped_no_change": skipped_no_change,
         "skipped_no_model": skipped_no_model,
         "skipped_no_sources": skipped_no_sources,
+        "skipped_recent_rejection": skipped_recent_rejection,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,
@@ -167,7 +183,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
 
     try:
-        counts = _run(arguments)
+        with session_scope() as session:
+            lock = SqlAlchemyPipelineRunRepository(session)
+            if not lock.try_lock():
+                print("A pipeline run is already in progress; nothing to do.")
+                return 0
+            try:
+                counts = _run(arguments)
+            finally:
+                lock.unlock()
     except Exception as error:
         print(
             f"Event summarization failed before completing ({type(error).__name__}). "
@@ -181,6 +205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"skipped_no_change={counts['skipped_no_change']} "
         f"skipped_no_model={counts['skipped_no_model']} "
         f"skipped_no_sources={counts['skipped_no_sources']} "
+        f"skipped_recent_rejection={counts['skipped_recent_rejection']} "
         f"summarized={counts['summarized']} failed={counts['failed']} "
         f"unavailable={counts['unavailable']}"
     )

@@ -26,7 +26,7 @@ def test_migrations_have_one_linear_head() -> None:
     root = Path(__file__).parents[3]
     config = Config(root / "database" / "alembic.ini")
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20260917_0026"]
+    assert scripts.get_heads() == ["20261103_0027"]
 
 
 def render_offline(*arguments: str) -> str:
@@ -47,6 +47,12 @@ def render_offline(*arguments: str) -> str:
         text=True,
     )
     return result.stdout.lower()
+
+
+def test_summary_rejection_revision_adds_nullable_state() -> None:
+    sql = render_offline("upgrade", "20260917_0026:20261103_0027")
+    assert "alter table events add column summary_rejected_at timestamp with time zone;" in sql
+    assert "alter table events add column summary_rejected_fingerprint varchar(64);" in sql
 
 
 def test_offline_upgrade_declares_every_core_invariant() -> None:

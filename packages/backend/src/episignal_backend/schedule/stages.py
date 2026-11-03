@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from episignal_backend.ai.classify import run_classification
+from episignal_backend.ai.documents import ChatRequest
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards, cost_row
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
@@ -33,10 +34,13 @@ from episignal_backend.events.summarize import (
     configure_summary,
     has_usable_summary_source,
     legacy_summary_fields,
+    recently_rejected_summary,
     render_event_flash_brief,
     run_summary,
     should_resummarize,
     summary_payload,
+    summary_request,
+    summary_request_fingerprint,
     summary_title,
     unique_summary_candidates,
 )
@@ -367,12 +371,13 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
         skipped_no_change = 0
         skipped_no_model = 0
         skipped_no_sources = 0
+        skipped_recent_rejection = 0
         summarized = 0
         failed = 0
         unavailable = 0
         recent_failures: list[dict[str, object]] = []
 
-        pending: list[tuple[EventForSummary, tuple[SummarySource, ...]]] = []
+        pending: list[tuple[EventForSummary, tuple[SummarySource, ...], ChatRequest, str]] = []
         for event in unique_summary_candidates(awaiting):
             examined += 1
             if not should_resummarize(
@@ -399,17 +404,23 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
                 skipped_no_model += 1
                 continue
 
-            pending.append((event, sources))
+            request = summary_request(wiring.spec, event=event, sources=sources)
+            fingerprint = summary_request_fingerprint(request, wiring.spec)
+            if recently_rejected_summary(event, fingerprint, now=now):
+                skipped += 1
+                skipped_recent_rejection += 1
+                continue
+            pending.append((event, sources, request, fingerprint))
 
         if pending and wiring.model is not None and wiring.spec is not None:
             model = wiring.model
             spec = wiring.spec
 
             def summarize_one(
-                item: tuple[EventForSummary, tuple[SummarySource, ...]],
+                item: tuple[EventForSummary, tuple[SummarySource, ...], ChatRequest, str],
             ) -> SummaryResult:
-                event, sources = item
-                return run_summary(model, spec, event=event, sources=sources)
+                event, sources, request, _ = item
+                return run_summary(model, spec, event=event, sources=sources, request=request)
 
             # Model calls are independent. The four-worker cap bounds provider
             # pressure; each completed future is written and committed before
@@ -417,7 +428,7 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
             with ThreadPoolExecutor(max_workers=SUMMARY_MAX_WORKERS) as pool:
                 futures = {pool.submit(summarize_one, item): item for item in pending}
                 for future in as_completed(futures):
-                    event, sources = futures[future]
+                    event, sources, _, fingerprint = futures[future]
                     result = future.result()
                     if result.attempt is not None:
                         event_repository.record_ai_request(
@@ -453,6 +464,10 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
                         unavailable += 1
                     else:
                         failed += 1
+                        if result.outcome is SummaryOutcome.REJECTED and result.attempt is not None:
+                            event_repository.record_summary_rejection(
+                                event.event_id, fingerprint, at=now
+                            )
                     diagnostic = build_summary_failure_diagnostic(event, result, at=now)
                     if diagnostic is not None:
                         recent_failures.append(diagnostic)
@@ -467,6 +482,7 @@ def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
         "skipped_no_change": skipped_no_change,
         "skipped_no_model": skipped_no_model,
         "skipped_no_sources": skipped_no_sources,
+        "skipped_recent_rejection": skipped_recent_rejection,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,

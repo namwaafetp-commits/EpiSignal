@@ -627,7 +627,7 @@ class SqlAlchemyEventRepository:
                 select(Signal.ai_extraction)
                 .join(EventSignal, EventSignal.signal_id == Signal.id)
                 .where(EventSignal.event_id == event_id)
-                .order_by(EventSignal.is_primary.desc(), Signal.first_seen_at.desc())
+                .order_by(EventSignal.is_primary.desc(), Signal.first_seen_at.desc(), Signal.id)
                 .limit(1)
             ).scalar_one_or_none()
             fallback_extraction = read_stored_extraction(fallback_payload)
@@ -654,6 +654,7 @@ class SqlAlchemyEventRepository:
             .order_by(
                 func.coalesce(EventObservation.reported_at, EventObservation.created_at).desc(),
                 EventObservation.created_at.desc(),
+                EventObservation.id.desc(),
             )
             .limit(1)
         ).scalar_one_or_none()
@@ -672,6 +673,7 @@ class SqlAlchemyEventRepository:
             .order_by(
                 func.coalesce(EventObservation.reported_at, EventObservation.created_at),
                 EventObservation.created_at,
+                EventObservation.id,
             )
         ).all()
         observations = tuple(
@@ -705,7 +707,7 @@ class SqlAlchemyEventRepository:
             .join(Signal, Signal.id == EventSignal.signal_id)
             .join(Source, Source.id == Signal.source_id)
             .where(EventSignal.event_id == event_id)
-            .order_by(Signal.first_seen_at.desc())
+            .order_by(Signal.first_seen_at.desc(), Signal.id)
         ).all()
 
         unsummarized = 0
@@ -752,7 +754,24 @@ class SqlAlchemyEventRepository:
             observations=observations,
             unsummarized_articles=unsummarized,
             last_summarized_at=event.last_summarized_at,
+            summary_rejected_at=event.summary_rejected_at,
+            summary_rejected_fingerprint=event.summary_rejected_fingerprint,
             sources=tuple(sources),
+        )
+
+    def record_summary_rejection(self, event_id: UUID, fingerprint: str, *, at: datetime) -> None:
+        self._session.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                or_(Event.summary_rejected_at.is_(None), Event.summary_rejected_at <= at),
+                or_(Event.last_summarized_at.is_(None), Event.last_summarized_at < at),
+            )
+            .values(
+                summary_rejected_at=at,
+                summary_rejected_fingerprint=fingerprint,
+                updated_at=Event.updated_at,
+            )
         )
 
     def store_summary(

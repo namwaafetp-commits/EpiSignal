@@ -425,3 +425,24 @@ def test_new_summary_contract_uses_existing_event_headline_as_title() -> None:
     assert result.outcome is SummaryOutcome.ACCEPTED
     assert isinstance(result.verdict, FlexibleEventSummary)
     assert result.verdict.title == "Canonical event title"
+
+
+def test_summary_prompt_uses_current_evidence_without_resending_prior_narrative() -> None:
+    current = event().model_copy(
+        update={"headline": "Canonical title", "summary": "Previously generated narrative."}
+    )
+    model = Model()
+    run_summary(model, spec(), event=current, sources=(source("Current report"),))
+
+    assert "Previously generated narrative." not in model.request.user
+    assert json.loads(model.request.user)["event"]["previous_headline"] == "Canonical title"
+    assert "30 to 100 words total" in model.request.system
+
+
+def test_summary_word_budget_rejection_reports_only_safe_diagnostics() -> None:
+    model = Model(json.dumps({"title": "Sensitive title", "bullets": ["One", "Two", "Three"]}))
+    result = run_summary(model, spec(), event=event(), sources=(source("Current report"),))
+
+    assert result.outcome is SummaryOutcome.REJECTED
+    assert result.failure_reason == "shape: bullet_word_budget"
+    assert result.attempt.reason == "shape"

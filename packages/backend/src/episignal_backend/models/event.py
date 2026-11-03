@@ -101,6 +101,8 @@ class Event(IdentityMixin, TimestampMixin, Base):
         Integer, nullable=False, default=0, server_default="0"
     )
     last_summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary_rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary_rejected_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
 class EventSignal(Base):

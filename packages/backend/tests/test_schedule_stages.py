@@ -1,9 +1,9 @@
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
-from episignal_backend.ai.documents import ModelSpec
+from episignal_backend.ai.documents import ChatResponse, ModelSpec
 from episignal_backend.db.types import AiProvider, AiPurpose
 from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.summarize import SummaryWiring
@@ -120,11 +120,11 @@ def test_summary_stage_reports_why_due_events_were_skipped(monkeypatch) -> None:
     assert counts["skipped_no_sources"] == 1
 
 
-def test_summary_stage_sends_new_article_without_structured_observation_to_model(
+def test_summary_stage_backs_off_rejected_requests_until_evidence_changes_or_cooldown_ends(
     monkeypatch,
 ) -> None:
     event = _summary_event()
-    requests: list[EventForSummary] = []
+    requests: list[str] = []
     summary_spec = ModelSpec(
         id=uuid4(),
         tier=1,
@@ -146,6 +146,16 @@ def test_summary_stage_sends_new_article_without_structured_observation_to_model
         def record_ai_request(self, record) -> None:
             pass
 
+        def record_summary_rejection(self, event_id, fingerprint, *, at) -> None:
+            nonlocal event
+            assert event_id == event.event_id
+            event = event.model_copy(
+                update={
+                    "summary_rejected_fingerprint": fingerprint,
+                    "summary_rejected_at": at,
+                }
+            )
+
         def store_summary(self, **kwargs) -> None:
             self.stored += 1
 
@@ -163,12 +173,10 @@ def test_summary_stage_sends_new_article_without_structured_observation_to_model
     def fake_session_scope():
         yield object()
 
-    def fake_summary(model, spec, *, event, sources):
-        requests.append(event)
-        return stages.SummaryResult(
-            outcome=stages.SummaryOutcome.REJECTED,
-            attempt=None,
-        )
+    class RejectingModel:
+        def complete(self, request):
+            requests.append(request.user)
+            return ChatResponse(content="{}", latency_ms=1)
 
     monkeypatch.setattr(
         stages,
@@ -187,14 +195,30 @@ def test_summary_stage_sends_new_article_without_structured_observation_to_model
     monkeypatch.setattr(stages, "SqlAlchemyEventRepository", FakeEventRepository)
     monkeypatch.setattr(stages, "SqlAlchemyAiRepository", FakeAiRepository)
     monkeypatch.setattr(
-        stages, "configure_summary", lambda settings, specs: SummaryWiring(object(), summary_spec)
+        stages,
+        "configure_summary",
+        lambda settings, specs: SummaryWiring(RejectingModel(), summary_spec),
     )
-    monkeypatch.setattr(stages, "run_summary", fake_summary)
 
     counts = stages._summarize(type("Cohort", (), {"touched_event_ids": ()})())
 
-    assert requests == [event]
+    assert len(requests) == 1
     assert event.latest_observation is None
     assert event.previous_counts is None
     assert counts["summarized"] == 0
     assert counts["failed"] == 1
+
+    repeated = stages._summarize(type("Cohort", (), {"touched_event_ids": ()})())
+    assert repeated["skipped_recent_rejection"] == 1
+    assert len(requests) == 1
+
+    source = event.sources[0].model_copy(update={"article_text": "Updated report."})
+    event = event.model_copy(update={"sources": (source,)})
+    updated = stages._summarize(type("Cohort", (), {"touched_event_ids": ()})())
+    assert updated["failed"] == 1
+    assert len(requests) == 2
+
+    event = event.model_copy(update={"summary_rejected_at": datetime.now(UTC) - timedelta(hours=6)})
+    expired = stages._summarize(type("Cohort", (), {"touched_event_ids": ()})())
+    assert expired["failed"] == 1
+    assert len(requests) == 3

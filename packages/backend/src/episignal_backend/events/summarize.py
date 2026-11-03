@@ -15,9 +15,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from hashlib import sha256
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic_core import PydanticCustomError
 
 from episignal_backend.ai.documents import ChatRequest, ModelSpec, TokenUsage
 from episignal_backend.ai.ladder import Attempt, cost_usd
@@ -48,7 +50,8 @@ SUMMARY_SYSTEM = (
     "distinctions exactly.\n"
     "- Every number, disease, location, response, and risk claim must be supported "
     "by supplied article evidence. Never invent or silently resolve conflicting evidence.\n"
-    "- Return 3 to 5 bullets, with approximately 30 to 100 words across all bullets.\n"
+    "- Return 3 to 5 bullet strings with 30 to 100 words total across the bullets. "
+    "Count the words before returning. Aim for 40 to 80 when the evidence supports it.\n"
     "- Prioritize concrete facts needed to understand the event quickly. Use WHAT, WHO, "
     "WHERE, WHEN, WHY, and HOW only when supported.\n"
     "- Do not force case counts, death counts, dates, causes, locations, transmission "
@@ -136,7 +139,9 @@ class FlexibleEventSummary(BaseModel):
     def enforce_bullet_word_budget(self) -> "FlexibleEventSummary":
         words = sum(len(bullet.split()) for bullet in self.bullets)
         if not 30 <= words <= 100:
-            raise ValueError("summary bullets must contain approximately 30 to 100 words")
+            raise PydanticCustomError(
+                "bullet_word_budget", "summary bullets must contain 30 to 100 words total"
+            )
         return self
 
 
@@ -187,7 +192,10 @@ def _accept(content: str, *, event: EventForSummary) -> EventSummaryVerdict | Fl
     try:
         flexible = FlexibleEventSummary.model_validate(payload)
     except ValidationError as error:
-        raise Rejected(RejectionReason.SHAPE) from error
+        # Pydantic's error message and field path can contain provider output.
+        # Keep diagnostics to validator-defined codes.
+        error_type = error.errors(include_input=False, include_context=False)[0]["type"]
+        raise Rejected(RejectionReason.SHAPE, error_type) from error
 
     return flexible.model_copy(update={"title": event.headline or flexible.title})
 
@@ -255,19 +263,10 @@ class SummaryWiring:
     spec: ModelSpec | None
 
 
-def run_summary(
-    model: ChatModel,
-    spec: ModelSpec,
-    *,
-    event: EventForSummary,
-    sources: tuple[SummarySource, ...],
-) -> SummaryResult:
-    """One request, one answer, one cost row's worth of evidence.
-
-    The caller owns writing the cost row; this function only reports what a
-    row would need, so the ledger rules stay in one place.
-    """
-    request = ChatRequest(
+def summary_request(
+    spec: ModelSpec, *, event: EventForSummary, sources: tuple[SummarySource, ...]
+) -> ChatRequest:
+    return ChatRequest(
         model_id=spec.model_id,
         system=SUMMARY_SYSTEM + json.dumps(flexible_summary_json_schema(), sort_keys=True),
         user=json.dumps(
@@ -277,7 +276,6 @@ def run_summary(
                     "disease": event.disease,
                     "location": event.location,
                     "previous_headline": event.headline,
-                    "previous_summary": event.summary,
                 },
                 "latest_observation": event.latest_observation,
                 "observations": list(event.observations),
@@ -295,11 +293,46 @@ def run_summary(
                 ],
             },
             ensure_ascii=False,
+            sort_keys=True,
         ),
         response_schema=flexible_summary_json_schema(),
         schema_name=SUMMARY_SCHEMA_NAME,
         temperature=SUMMARY_TEMPERATURE,
     )
+
+
+def summary_request_fingerprint(request: ChatRequest, spec: ModelSpec) -> str:
+    payload = json.dumps(
+        [spec.provider.value, request.model_id, request.system, request.user, request.temperature]
+    )
+    return sha256(payload.encode()).hexdigest()
+
+
+def recently_rejected_summary(event: EventForSummary, fingerprint: str, *, now: datetime) -> bool:
+    rejected_at = event.summary_rejected_at
+    return (
+        rejected_at is not None
+        and (event.last_summarized_at is None or rejected_at > event.last_summarized_at)
+        and rejected_at > now - timedelta(hours=6)
+        and fingerprint == event.summary_rejected_fingerprint
+    )
+
+
+def run_summary(
+    model: ChatModel,
+    spec: ModelSpec,
+    *,
+    event: EventForSummary,
+    sources: tuple[SummarySource, ...],
+    request: ChatRequest | None = None,
+) -> SummaryResult:
+    """One request, one answer, one cost row's worth of evidence.
+
+    The caller owns writing the cost row; this function only reports what a
+    row would need, so the ledger rules stay in one place.
+    """
+    if request is None:
+        request = summary_request(spec, event=event, sources=sources)
 
     try:
         response = model.complete(request)
@@ -334,7 +367,7 @@ def run_summary(
                 reason=rejection.reason.value,
                 cost=cost_usd(response.usage, spec),
             ),
-            failure_reason=rejection.reason.value,
+            failure_reason=str(rejection),
             failure_exception_class=type(rejection).__name__,
         )
 

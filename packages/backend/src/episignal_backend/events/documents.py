@@ -280,4 +280,6 @@ class EventForSummary(BaseModel):
     observations: tuple[dict[str, object], ...] = ()
     unsummarized_articles: int = 0
     last_summarized_at: datetime | None = None
+    summary_rejected_at: datetime | None = None
+    summary_rejected_fingerprint: str | None = None
     sources: tuple[SummarySource, ...] = ()
