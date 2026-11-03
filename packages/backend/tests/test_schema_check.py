@@ -45,6 +45,7 @@ def test_missing_tables_are_reported_in_declaration_order() -> None:
         "gazetteer_places",
         "signal_locations",
         "pipeline_runs",
+        "pipeline_health_runs",
         "signal_review_cases",
         "signal_review_candidates",
         "geocode_cache",
@@ -86,6 +87,12 @@ def test_the_schema_check_expects_the_pipeline_runs_table() -> None:
     from episignal_backend.schema_check import EXPECTED_TABLES
 
     assert "pipeline_runs" in EXPECTED_TABLES
+
+
+def test_the_schema_check_expects_the_pipeline_health_table() -> None:
+    from episignal_backend.schema_check import EXPECTED_TABLES
+
+    assert "pipeline_health_runs" in EXPECTED_TABLES
 
 
 def test_a_database_without_pipeline_runs_is_reported_as_missing_it() -> None:

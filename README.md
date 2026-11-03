@@ -1,5 +1,9 @@
 # EpiSignal
 
+Deterministic Telegram daily health reports and abnormal/recovery alerts:
+[configuration, commands, and proposed scheduling](docs/telegram-monitoring.md).
+Deployment is a separate review step.
+
 Open global outbreak intelligence. EpiSignal turns public health reporting into
 traceable events: every claim keeps the source that made it, the time it was
 made, and the observation history that followed.
@@ -69,7 +73,7 @@ point fails immediately when configuration is missing or invalid.
 | Variable                        | Where           | Purpose                                        |
 | ------------------------------- | --------------- | ---------------------------------------------- |
 | `EPISIGNAL_DATABASE_URL`        | `apps/api/.env` | Private PostgreSQL URL. Server side only.       |
-| `EPISIGNAL_API_HOST` / `_PORT`  | `apps/api/.env` | Local bind address for the development server.  |
+| `EPISIGNAL_API_BIND_HOST` / `_PORT` | `apps/api/.env` | Local bind address for the development server. Legacy `EPISIGNAL_API_HOST` is accepted only as a compatibility alias. |
 | `EPISIGNAL_CORS_ORIGINS`        | `apps/api/.env` | Comma-separated HTTP(S) origins.                |
 | `NEXT_PUBLIC_EPISIGNAL_API_URL` | `apps/web/.env.local` | Public base URL the shell reads readiness from. |
 
@@ -138,4 +142,3 @@ Nothing is overwritten in place: new reporting arrives as new observations.
 
 Place names are resolved against a GeoNames extract. See
 `database/seeds/gazetteer/ATTRIBUTION.md` for the CC BY 4.0 attribution.
-

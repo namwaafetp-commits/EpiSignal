@@ -22,11 +22,19 @@ from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     configure_summary,
-    pick_representative_sources,
+    has_usable_summary_source,
+    legacy_summary_fields,
+    recently_rejected_summary,
+    render_event_flash_brief,
     run_summary,
     should_resummarize,
+    summary_payload,
+    summary_request,
+    summary_request_fingerprint,
+    summary_title,
     unique_summary_candidates,
 )
+from episignal_backend.schedule.repository import SqlAlchemyPipelineRunRepository
 
 
 @dataclass(frozen=True)
@@ -67,6 +75,10 @@ def _run(arguments: Arguments) -> dict[str, int]:
 
         examined = 0
         skipped = 0
+        skipped_no_change = 0
+        skipped_no_model = 0
+        skipped_no_sources = 0
+        skipped_recent_rejection = 0
         summarized = 0
         failed = 0
         unavailable = 0
@@ -83,23 +95,37 @@ def _run(arguments: Arguments) -> dict[str, int]:
                 new_article_count=settings.resummary_new_article_count,
             ):
                 skipped += 1
+                skipped_no_change += 1
+                continue
+
+            sources = event.sources
+            if not has_usable_summary_source(sources):
+                skipped += 1
+                skipped_no_sources += 1
                 continue
 
             if wiring.model is None or wiring.spec is None:
                 # No summarizer configured: the event keeps its current
                 # narrative. Counted as skipped rather than failed.
                 skipped += 1
+                skipped_no_model += 1
                 continue
 
-            sources = pick_representative_sources(
-                event.sources,
-                max_sources=settings.summary_max_sources,
-            )
+            # The contract requires consolidated evidence from every linked
+            # source; representative-source caps belong to the old summary.
+            request = summary_request(wiring.spec, event=event, sources=sources)
+            fingerprint = summary_request_fingerprint(request, wiring.spec)
+            if recently_rejected_summary(event, fingerprint, now=now):
+                skipped += 1
+                skipped_recent_rejection += 1
+                continue
+
             result = run_summary(
                 wiring.model,
                 wiring.spec,
                 event=event,
                 sources=sources,
+                request=request,
             )
             if result.attempt is not None:
                 repository.record_ai_request(
@@ -112,29 +138,41 @@ def _run(arguments: Arguments) -> dict[str, int]:
                     )
                 )
             if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
+                trajectory, snapshot, key_driver, response, risk = legacy_summary_fields(
+                    result.verdict
+                )
                 repository.store_summary(
                     event_id=event.event_id,
-                    headline=result.verdict.headline,
-                    summary=result.verdict.summary,
-                    status=result.verdict.status.value,
-                    latest_development=result.verdict.latest_development,
-                    uncertainties=list(result.verdict.uncertainties),
+                    headline=summary_title(result.verdict),
+                    summary=render_event_flash_brief(result.verdict),
+                    trajectory=trajectory,
+                    snapshot=snapshot,
+                    key_driver=key_driver,
+                    response=response,
+                    risk=risk,
                     model_id=wiring.spec.model_id,
                     source_signal_ids=[source.signal_id for source in sources],
                     counts=event.latest_observation,
                     now=now,
+                    summary_payload=summary_payload(result.verdict),
                 )
                 summarized += 1
             elif result.outcome is SummaryOutcome.UNAVAILABLE:
                 unavailable += 1
             else:
                 failed += 1
+                if result.outcome is SummaryOutcome.REJECTED and result.attempt is not None:
+                    repository.record_summary_rejection(event.event_id, fingerprint, at=now)
 
         repository.commit()
 
     return {
         "examined": examined,
         "skipped": skipped,
+        "skipped_no_change": skipped_no_change,
+        "skipped_no_model": skipped_no_model,
+        "skipped_no_sources": skipped_no_sources,
+        "skipped_recent_rejection": skipped_recent_rejection,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,
@@ -145,7 +183,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
 
     try:
-        counts = _run(arguments)
+        with session_scope() as session:
+            lock = SqlAlchemyPipelineRunRepository(session)
+            if not lock.try_lock():
+                print("A pipeline run is already in progress; nothing to do.")
+                return 0
+            try:
+                counts = _run(arguments)
+            finally:
+                lock.unlock()
     except Exception as error:
         print(
             f"Event summarization failed before completing ({type(error).__name__}). "
@@ -156,6 +202,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"examined={counts['examined']} skipped={counts['skipped']} "
+        f"skipped_no_change={counts['skipped_no_change']} "
+        f"skipped_no_model={counts['skipped_no_model']} "
+        f"skipped_no_sources={counts['skipped_no_sources']} "
+        f"skipped_recent_rejection={counts['skipped_recent_rejection']} "
         f"summarized={counts['summarized']} failed={counts['failed']} "
         f"unavailable={counts['unavailable']}"
     )

@@ -127,6 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"review={classified.reviewed + extracted.reviewed} "
         f"unavailable={classified.unavailable + extracted.unavailable} "
         f"requests={classified.requests + extracted.requests} "
+        f"expanded_retries={extracted.expanded_retries} "
         f"stopped_early={classified.stopped_early or extracted.stopped_early}"
     )
     return 0

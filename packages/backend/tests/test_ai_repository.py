@@ -25,6 +25,7 @@ from episignal_backend.db.types import (
 from episignal_backend.ingestion.fingerprint import content_hash as compute_hash
 from episignal_backend.models.signal import Signal
 from sqlalchemy import Update
+from sqlalchemy.dialects import postgresql
 
 NOW = datetime(2026, 8, 27, 9, 0, tzinfo=UTC)
 
@@ -86,23 +87,7 @@ class FakeSession:
 
 def extraction() -> Extraction:
     return Extraction.model_validate(
-        {
-            "signal_type": "outbreak_report",
-            "source_language": "en",
-            "title_english": "Cholera outbreak reported in Luanda",
-            "brief": [
-                {"slot": "what_where", "text": "Cholera in Luanda, Angola.", "reported": True},
-                {"slot": "counts", "text": "No case count reported.", "reported": False},
-                {"slot": "timing", "text": "No date reported.", "reported": False},
-                {"slot": "spread", "text": "No transmission detail reported.", "reported": False},
-                {
-                    "slot": "reporting",
-                    "text": "Reported by Angola's health ministry.",
-                    "reported": True,
-                },
-            ],
-            "confidence": 0.9,
-        }
+        {"disease": "Cholera", "locations": [{"town": "Luanda", "country": "Angola"}]}
     )
 
 
@@ -154,7 +139,7 @@ def test_awaiting_triage_returns_source_metadata_and_uses_the_blocking_filters()
     rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
     assert ProcessingStatus.NORMALIZED.value in rendered
     assert TriageStatus.PENDING.value in rendered
-    assert "story_group_members" in rendered
+    assert "signals.raw_text IS NOT NULL" in rendered
 
 
 def test_recording_irrelevant_triage_filters_without_deleting_the_signal() -> None:
@@ -204,20 +189,17 @@ def test_awaiting_embeddings_requires_relevant_completed_triage_and_no_vector() 
     assert "embedding IS NULL" in rendered
 
 
-def test_the_classification_query_stays_honest_though_no_stage_calls_it() -> None:
-    # The keyword gate replaced this pass, but the method must still describe
-    # what it would select. A method stubbed to return () lies to its caller
-    # and makes restoring the pass more than the one line it should be.
+def test_the_classification_query_selects_unclassified_metadata() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_classification(limit=10)
 
     rendered = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
     assert ProcessingStatus.NORMALIZED.value in rendered
-    assert "story_group_members" in rendered.split("WHERE")[1]
+    assert "public_health_relevant IS NULL" in rendered
 
 
-def test_normalized_and_legacy_classified_signals_are_both_extractable() -> None:
+def test_only_relevant_classified_signals_are_extractable() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -225,13 +207,12 @@ def test_normalized_and_legacy_classified_signals_are_both_extractable() -> None
     where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
         "WHERE"
     )[1]
-    # Both, or the rows the retired relevance pass decided are stranded outside
-    # the funnel with nothing left to move them.
     assert ProcessingStatus.NORMALIZED.value in where_part
-    assert ProcessingStatus.CLASSIFIED.value in where_part
+    assert ProcessingStatus.FETCHED.value in where_part
+    assert "public_health_relevant IS true" in where_part
 
 
-def test_a_signal_a_model_called_irrelevant_is_not_extractable() -> None:
+def test_an_irrelevant_triaged_signal_is_not_extractable() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -239,10 +220,10 @@ def test_a_signal_a_model_called_irrelevant_is_not_extractable() -> None:
     where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
         "WHERE"
     )[1]
-    assert "public_health_relevant IS NOT false" in where_part
+    assert "public_health_relevant IS true" in where_part
 
 
-def test_a_deferred_member_of_an_open_group_is_not_extracted_alone() -> None:
+def test_an_extracted_signal_does_not_require_story_group_membership() -> None:
     session = FakeSession([FakeResult([])])
 
     SqlAlchemyAiRepository(session).awaiting_extraction(limit=10)
@@ -250,7 +231,7 @@ def test_a_deferred_member_of_an_open_group_is_not_extracted_alone() -> None:
     where_part = str(session.executed[0].compile(compile_kwargs={"literal_binds": True})).split(
         "WHERE"
     )[1]
-    assert "story_group_members" in where_part
+    assert ProcessingStatus.NORMALIZED.value in where_part
 
 
 def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:
@@ -259,9 +240,9 @@ def test_a_verdict_writes_the_relevance_and_the_classified_status() -> None:
     SqlAlchemyAiRepository(session).record_classification(
         uuid4(),
         Verdict(
-            is_public_health_relevant=False,
+            is_public_health_relevant=True,
             signal_type=SignalType.UNKNOWN,
-            relevance=0.04,
+            relevance=0.94,
             model_id="vendor/model:free",
             decided_at=NOW,
         ),
@@ -329,7 +310,24 @@ def test_a_disease_is_resolved_case_insensitively_or_not_at_all() -> None:
     assert repository.resolve_disease("a disease nobody seeded") is None
 
 
-def test_an_accepted_extraction_stores_the_brief_as_the_signal_summary() -> None:
+def test_disease_resolution_uses_postgresql_exact_normalized_array_elements() -> None:
+    session = FakeSession([FakeResult(None)])
+
+    assert SqlAlchemyAiRepository(session).resolve_disease("West   Nile virus infection") is None
+
+    rendered = str(
+        session.executed[0].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+
+    assert "unnest(diseases.synonyms)" in rendered
+    assert "regexp_replace" in rendered
+    assert "lower" in rendered
+    assert "ANY (diseases.synonyms)" not in rendered
+
+
+def test_an_accepted_extraction_does_not_write_a_legacy_signal_summary() -> None:
     session = FakeSession()
 
     SqlAlchemyAiRepository(session).record_extraction(
@@ -343,14 +341,7 @@ def test_an_accepted_extraction_stores_the_brief_as_the_signal_summary() -> None
     )
 
     params = session.executed[0].compile().params
-    summary = next(value for value in params.values() if isinstance(value, str) and "\n" in value)
-    assert summary.splitlines() == [
-        "Cholera in Luanda, Angola.",
-        "No case count reported.",
-        "No date reported.",
-        "No transmission detail reported.",
-        "Reported by Angola's health ministry.",
-    ]
+    assert not any(isinstance(value, str) and "No case count" in value for value in params.values())
 
 
 def test_an_accepted_extraction_stamps_the_schema_version() -> None:
@@ -369,7 +360,8 @@ def test_an_accepted_extraction_stamps_the_schema_version() -> None:
     params = session.executed[0].compile().params
     stored = next(value for value in params.values() if isinstance(value, dict))
     assert stored[EXTRACTION_VERSION_KEY] == EXTRACTION_SCHEMA_VERSION
-    assert stored["brief"][0]["slot"] == "what_where"
+    assert stored["disease_text"] == "Cholera"
+    assert stored["locations"] == [{"town": "Luanda", "country": "Angola"}]
 
 
 def test_the_backfill_selects_only_extractions_below_the_current_version() -> None:
@@ -609,7 +601,7 @@ def test_storing_a_cluster_marks_members_duplicate_of_the_representative() -> No
     assert isinstance(stmt1, Update)
     params1 = stmt1.compile().params
     assert params1["processing_status"] == ProcessingStatus.EXTRACTED
-    assert params1["ai_extraction"]["extraction_schema_version"] == 3
+    assert params1["ai_extraction"]["extraction_schema_version"] == EXTRACTION_SCHEMA_VERSION
 
     stmt2 = session.executed[1]
     assert isinstance(stmt2, Update)

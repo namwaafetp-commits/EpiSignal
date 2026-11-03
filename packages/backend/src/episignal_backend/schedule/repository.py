@@ -8,6 +8,7 @@ the lock to a second process mid-chain.
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select, text, update
@@ -82,7 +83,7 @@ class SqlAlchemyPipelineRunRepository:
         *,
         status: PipelineRunStatus,
         finished_at: datetime,
-        stage_counts: dict[str, dict[str, int]],
+        stage_counts: dict[str, dict[str, Any]],
         backlog: dict[str, int],
         failed_stages: Sequence[StageOutcome],
     ) -> None:
@@ -98,7 +99,16 @@ class SqlAlchemyPipelineRunRepository:
                 stage_counts=stage_counts,
                 backlog=backlog,
                 failed_stages=[
-                    {"stage": str(item.stage), "error": item.error} for item in failed_stages
+                    {
+                        "stage": str(item.stage),
+                        "error": item.error,
+                        **(
+                            {"error_category": item.error_category}
+                            if item.error_category is not None
+                            else {}
+                        ),
+                    }
+                    for item in failed_stages
                 ],
             )
         )

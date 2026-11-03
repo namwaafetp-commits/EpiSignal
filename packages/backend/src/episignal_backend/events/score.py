@@ -142,28 +142,9 @@ def _extract_counts_chronological(
     signals: Sequence[SignalForMatching],
     observations: Sequence[Any],
 ) -> list[int]:
-    """Extract reported total case counts in chronological order."""
-    entries: list[tuple[datetime, int]] = []
-
-    if observations:
-        for obs in observations:
-            total = getattr(obs, "total_cases", None) or (
-                obs.get("total_cases") if isinstance(obs, dict) else None
-            )
-            rep_at = getattr(obs, "reported_at", None) or (
-                obs.get("reported_at") if isinstance(obs, dict) else None
-            )
-            if total is not None and rep_at is not None:
-                entries.append((rep_at, int(total)))
-    else:
-        for s in signals:
-            if s.extraction and s.extraction.epidemiology:
-                tc = s.extraction.epidemiology.total_cases
-                if tc is not None:
-                    entries.append((_signal_timestamp(s), tc.value))
-
-    entries.sort(key=lambda item: item[0])
-    return [count for _, count in entries]
+    """Historical count helper; active extraction has no numeric claims."""
+    del signals, observations
+    return []
 
 
 def _compute_consistency(
@@ -211,31 +192,14 @@ def evidence_score(
     cred_val = max(CREDIBILITY_SCORES.get(s.credibility_tier, 0.2) for s in signals)
 
     # 3. Observation count
-    obs_count = (
-        len(observations)
-        if observations
-        else len(
-            [
-                s
-                for s in signals
-                if s.extraction
-                and (
-                    s.extraction.epidemiology.total_cases is not None
-                    or s.extraction.epidemiology.confirmed_cases is not None
-                    or s.extraction.epidemiology.suspected_cases is not None
-                    or s.extraction.epidemiology.deaths is not None
-                )
-            ]
-        )
-    )
+    obs_count = len(observations) if observations else len(signals)
     obs_val = 1.0 - math.exp(-obs_count / 3.0)
 
     # 4. Consistency
     consist_val = _compute_consistency(signals, observations)
 
     # 5. Extraction confidence
-    confidences = [s.extraction.confidence for s in signals if s.extraction is not None]
-    conf_val = sum(confidences) / len(confidences) if confidences else 0.5
+    conf_val = 0.5
 
     assert 0.0 <= official_val <= 1.0
     assert 0.0 <= cred_val <= 1.0

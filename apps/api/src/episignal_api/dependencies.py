@@ -15,6 +15,8 @@ from episignal_backend.review.documents import (
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from episignal_api.dashboard_cache import DashboardCache
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -100,6 +102,8 @@ def get_event_page(
     verification_status: Annotated[str | None, Query()] = None,
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,
+    host_sector: Annotated[str | None, Query()] = None,
+    disease_group: Annotated[str | None, Query()] = None,
 ) -> Any:
     from episignal_backend.events.read import query_event_list
 
@@ -115,14 +119,32 @@ def get_event_page(
             verification_status=verification_status,
             start_date=start_date,
             end_date=end_date,
+            host_sector=host_sector,
+            disease_group=disease_group,
         )
 
 
-def get_dashboard_events_page() -> Any:
+async def get_dashboard_events_page(
+    request: Request,
+    host_sector: Annotated[str | None, Query()] = None,
+    disease_group: Annotated[str | None, Query()] = None,
+) -> Any:
     from episignal_backend.events.read import query_dashboard_events
 
-    with session_scope() as session:
-        return query_dashboard_events(session)
+    settings = request.app.state.settings
+    cache: DashboardCache = request.app.state.dashboard_cache
+
+    def load() -> Any:
+        with session_scope() as session:
+            return query_dashboard_events(
+                session,
+                host_sector=host_sector,
+                disease_group=disease_group,
+                ranking_enabled=settings.briefing_ranking_enabled,
+                now=datetime.now(UTC),
+            )
+
+    return await cache.get((host_sector, disease_group, settings.briefing_ranking_enabled), load)
 
 
 def get_pipeline_runs_page(

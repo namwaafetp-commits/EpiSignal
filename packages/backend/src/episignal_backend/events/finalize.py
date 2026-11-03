@@ -10,10 +10,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from episignal_backend.ai.documents import ModelSpec
-from episignal_backend.ai.ladder import cost_row
 from episignal_backend.ai.protocol import ChatModel
-from episignal_backend.db.types import AiPurpose, RelationshipType
-from episignal_backend.events.delta import DeltaOutcome, delta_payload, run_delta
+from episignal_backend.db.types import RelationshipType
 from episignal_backend.events.documents import (
     CandidateEvent,
     SignalForMatching,
@@ -73,28 +71,9 @@ def finalize_event_link(
     repo.apply_scores(event_id, early.total, evid.total, v_status)
 
     deltas_applied = 0
-    if (
-        delta_model is not None
-        and delta_spec is not None
-        and previous_brief is not None
-        and signal.extraction is not None
-        and signal.extraction.brief
-    ):
-        target_brief = signal.extraction.brief
-        result = run_delta(delta_model, delta_spec, previous=previous_brief, new=target_brief)
-        if result.attempt is not None:
-            repo.record_ai_request(
-                cost_row(
-                    result.attempt,
-                    purpose=AiPurpose.FOLLOW_UP,
-                    signal_id=signal.signal_id,
-                    batch_size=1,
-                    at=moment,
-                )
-            )
-        if result.outcome is DeltaOutcome.ACCEPTED and result.delta is not None:
-            repo.apply_delta(event_id, signal.signal_id, delta_payload(result.delta))
-            deltas_applied = 1
+    # Follow-up brief extraction is retired from active production. Summary
+    # regeneration reads linked clean article text at event level.
+    del delta_model, delta_spec, followup_window_days, previous_brief
 
     return deltas_applied
 

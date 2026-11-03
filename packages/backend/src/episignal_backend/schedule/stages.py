@@ -12,7 +12,10 @@ on a different connection for the whole run.
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
+from typing import Any
 
+from episignal_backend.ai.classify import run_classification
+from episignal_backend.ai.documents import ChatRequest
 from episignal_backend.ai.extract import run_extraction
 from episignal_backend.ai.ladder import Guards, cost_row
 from episignal_backend.ai.repository import SqlAlchemyAiRepository
@@ -22,16 +25,23 @@ from episignal_backend.config import get_settings
 from episignal_backend.db.session import session_scope
 from episignal_backend.db.types import AiPurpose
 from episignal_backend.events.assemble import run_event_assembly
-from episignal_backend.events.delta import configure_delta
 from episignal_backend.events.documents import EventForSummary, SummarySource
 from episignal_backend.events.repository import SqlAlchemyEventRepository
 from episignal_backend.events.summarize import (
     SummaryOutcome,
     SummaryResult,
+    build_summary_failure_diagnostic,
     configure_summary,
-    pick_representative_sources,
+    has_usable_summary_source,
+    legacy_summary_fields,
+    recently_rejected_summary,
+    render_event_flash_brief,
     run_summary,
     should_resummarize,
+    summary_payload,
+    summary_request,
+    summary_request_fingerprint,
+    summary_title,
     unique_summary_candidates,
 )
 from episignal_backend.ingestion.dedupe import DedupeThresholds, run_dedupe
@@ -39,6 +49,7 @@ from episignal_backend.ingestion.discovery import run_discovery
 from episignal_backend.ingestion.gdelt.api import GdeltDocClient
 from episignal_backend.ingestion.gdelt.article import ArticleFetcher
 from episignal_backend.ingestion.gdelt.connector import GdeltConnector
+from episignal_backend.ingestion.gdelt.ngram import GdeltNgramClient, GdeltNgramDiscovery
 from episignal_backend.ingestion.pipeline import run_ingestion
 from episignal_backend.ingestion.protocol import SourceConnector
 from episignal_backend.ingestion.repository import (
@@ -47,16 +58,22 @@ from episignal_backend.ingestion.repository import (
     SqlAlchemySignalRepository,
 )
 from episignal_backend.ingestion.retrieval import run_retrieval
+from episignal_backend.ingestion.story import story_group_ids
 from episignal_backend.ingestion.who_don import WhoDonConnector
-from episignal_backend.schedule.documents import DiscoveryWindow, StageName
+from episignal_backend.schedule.documents import DiscoveryWindow, PipelineCohort, StageName
 from episignal_backend.schedule.run import StageRunner
 
 SUMMARY_MAX_WORKERS = 4
 
 
-def _ingest(connector: SourceConnector) -> Mapping[str, int]:
+def _ingest(
+    connector: SourceConnector, window: DiscoveryWindow, cohort: PipelineCohort
+) -> Mapping[str, int]:
     with session_scope() as session:
-        result = run_ingestion(SqlAlchemySignalRepository(session), connector, since=None)
+        result = run_ingestion(
+            SqlAlchemySignalRepository(session), connector, since=window.start, now=window.end
+        )
+    cohort.signal_ids = tuple(dict.fromkeys((*cohort.signal_ids, *result.signal_ids)))
     return {
         "inserted": result.inserted,
         "skipped": result.skipped,
@@ -65,18 +82,28 @@ def _ingest(connector: SourceConnector) -> Mapping[str, int]:
     }
 
 
-def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
+def _discover(window: DiscoveryWindow, cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
-    connector = GdeltConnector(
-        search=GdeltDocClient(),
-        fetcher=ArticleFetcher(
-            delay_seconds=settings.gdelt_article_delay_seconds,
-            user_agent=settings.gdelt_user_agent,
-            timeout_seconds=settings.gdelt_article_timeout_seconds,
-        ),
-    )
     with session_scope() as session:
         repository = SqlAlchemyDiscoveryRepository(session)
+        connector = GdeltConnector(
+            ngram=GdeltNgramDiscovery(
+                GdeltNgramClient(
+                    timeout_seconds=settings.gdelt_ngram_timeout_seconds,
+                    max_download_bytes=settings.gdelt_ngram_max_download_bytes,
+                    user_agent=settings.gdelt_user_agent,
+                ),
+                cursor_store=repository,
+                max_catchup_minutes=settings.gdelt_ngram_max_catchup_minutes,
+                max_batches=settings.gdelt_ngram_max_batches,
+                max_download_bytes=settings.gdelt_ngram_max_download_bytes,
+            ),
+            fetcher=ArticleFetcher(
+                delay_seconds=settings.gdelt_article_delay_seconds,
+                user_agent=settings.gdelt_user_agent,
+                timeout_seconds=settings.gdelt_article_timeout_seconds,
+            ),
+        )
         discovered = run_discovery(
             repository,
             connector,
@@ -84,22 +111,45 @@ def _discover(window: DiscoveryWindow) -> Mapping[str, int]:
             window_minutes=window.minutes,
             max_articles=settings.gdelt_max_articles_per_run,
         )
+    cohort.signal_ids = tuple(dict.fromkeys((*cohort.signal_ids, *discovered.signal_ids)))
+    provider_unavailable = discovered.provider_status == "unavailable"
+    provider_partial = discovered.provider_status == "partial_degradation"
+    legacy_discovery_unavailable = (
+        discovered.rules_attempted > 0
+        and discovered.rules_succeeded == 0
+        and discovered.rules_failed == discovered.rules_attempted
+    )
+    discovery_unavailable = provider_unavailable or legacy_discovery_unavailable
     return {
         "window_minutes": window.minutes,
         "rules": discovered.rules_run,
+        "rules_attempted": discovered.rules_attempted,
+        "rules_succeeded": discovered.rules_succeeded,
         "rules_failed": discovered.rules_failed,
+        "rules_skipped_circuit": discovered.rules_skipped_circuit,
         "discovered": discovered.discovered,
         "duplicate": discovered.duplicate,
         "rejected": discovered.rejected,
         "stored": discovered.stored,
         "failed": discovered.failed,
+        "provider_status": discovered.provider_status,
+        **discovered.ngram_metrics,
+        "existing_duplicates": discovered.duplicate,
+        "new_signals": discovered.stored,
+        "cohort_size": len(discovered.signal_ids),
+        "__stage_ok": not discovery_unavailable and not provider_partial,
+        "__stage_error": (
+            "DiscoveryUnavailable"
+            if discovery_unavailable
+            else ("DiscoveryPartialDegradation" if provider_partial else None)
+        ),
     }
 
 
-def _retrieve() -> Mapping[str, int]:
+def _retrieve(cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
     connector = GdeltConnector(
-        search=GdeltDocClient(),
+        search=GdeltDocClient(request_delay_seconds=settings.gdelt_request_delay_seconds),
         fetcher=ArticleFetcher(
             delay_seconds=settings.gdelt_article_delay_seconds,
             user_agent=settings.gdelt_user_agent,
@@ -113,19 +163,56 @@ def _retrieve() -> Mapping[str, int]:
             max_attempts=settings.gdelt_max_retrieval_attempts,
             batch_size=settings.gdelt_retry_batch_size,
             window_hours=settings.stage0_candidate_window_hours,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": result.examined,
+        "unclassified": result.unclassified,
         "filtered": result.filtered,
         "retrieved": result.retrieved,
         "duplicates": result.duplicates,
         "redundant": result.redundant,
         "still_failing": result.still_failing,
         "failed": result.failed,
+        "recent_failures": list(result.recent_failures),
+        **{f"failure_domain:{key}": value for key, value in result.failure_domains.items()},
+        **{f"failure_{key}": value for key, value in result.failure_categories.items()},
     }
 
 
-def _dedupe() -> Mapping[str, int]:
+def _classify(cohort: PipelineCohort) -> Mapping[str, int]:
+    settings = get_settings()
+    guards = Guards(
+        max_requests=settings.ai_max_requests_per_run,
+        max_cost_usd=settings.ai_max_cost_usd_per_run,
+    )
+
+    with session_scope() as session:
+        repository = SqlAlchemyAiRepository(session)
+        try:
+            model = routed_from_settings(settings, list(repository.models()))
+        except NoProviderKey as error:
+            raise RuntimeError(str(error)) from error
+        result = run_classification(
+            repository,
+            model,
+            guards=guards,
+            limit=settings.ai_triage_batch_limit,
+            max_tier=settings.ai_max_tier,
+            signal_ids=cohort.signal_ids,
+        )
+    return {
+        "examined": result.examined,
+        "relevant": result.relevant,
+        "irrelevant": result.irrelevant,
+        "reviewed": result.reviewed,
+        "unavailable": result.unavailable,
+        "requests": result.requests,
+        **{f"failure_{key}": value for key, value in result.failure_categories.items()},
+    }
+
+
+def _dedupe(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
         result = run_dedupe(
@@ -139,6 +226,8 @@ def _dedupe() -> Mapping[str, int]:
             ),
             window_hours=settings.stage0_candidate_window_hours,
             batch_size=settings.stage0_batch_size,
+            metadata_only=True,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": result.examined,
@@ -179,7 +268,7 @@ def _triage() -> Mapping[str, int]:
     }
 
 
-def _extract() -> Mapping[str, int]:
+def _extract(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     guards = Guards(
         max_requests=settings.ai_max_requests_per_run,
@@ -192,9 +281,6 @@ def _extract() -> Mapping[str, int]:
             model = routed_from_settings(settings, list(repository.models()))
         except NoProviderKey as error:
             raise RuntimeError(str(error)) from error
-        # The relevance pass is gone from the chain: the keyword gate decides
-        # relevance in the retrieve stage, for zero model requests. The pass
-        # itself is kept in `ai/classify.py` so a rollback is one line here.
         extracted = run_extraction(
             repository,
             model,
@@ -204,6 +290,7 @@ def _extract() -> Mapping[str, int]:
             max_input_characters=settings.ai_max_input_characters,
             min_confidence=settings.ai_min_confidence,
             workers=settings.ai_extraction_workers,
+            signal_ids=cohort.signal_ids,
         )
     return {
         "examined": extracted.examined,
@@ -211,17 +298,32 @@ def _extract() -> Mapping[str, int]:
         "rejected": extracted.reviewed,
         "unavailable": extracted.unavailable,
         "requests": extracted.requests,
+        "expanded_retries": extracted.expanded_retries,
     }
 
 
-def _match() -> Mapping[str, int]:
+def _story_group(cohort: PipelineCohort) -> Mapping[str, int]:
+    """Group retrieved relevant articles before Gemini extraction."""
+    settings = get_settings()
+    with session_scope() as session:
+        repository = SqlAlchemyAiRepository(session)
+        candidates = repository.awaiting_extraction(
+            limit=settings.event_match_batch_size,
+            signal_ids=cohort.signal_ids,
+        )
+    groups = story_group_ids(candidates)
+    cohort.story_groups = groups
+    return {
+        "examined": len(candidates),
+        "story_groups": len(groups),
+        "grouped_articles": sum(len(group) for group in groups),
+    }
+
+
+def _match(cohort: PipelineCohort) -> Mapping[str, int]:
     settings = get_settings()
     with session_scope() as session:
         event_repository = SqlAlchemyEventRepository(session)
-        specs = list(SqlAlchemyAiRepository(session).models())
-        # The delta pass is enrichment: without a provider key the assembly
-        # still runs, it simply never records what changed.
-        wiring = configure_delta(settings, specs)
         summary = run_event_assembly(
             event_repository,
             limit=settings.event_match_batch_size,
@@ -234,14 +336,16 @@ def _match() -> Mapping[str, int]:
             match_distance_km=settings.event_match_distance_km,
             candidate_lookback_days=settings.event_lookback_days,
             candidate_limit=settings.event_candidate_limit,
-            delta_model=wiring.model,
-            delta_spec=wiring.spec,
-            followup_window_days=wiring.window_days,
+            signal_ids=cohort.signal_ids,
+            story_group_ids=cohort.story_groups,
         )
+        cohort.touched_event_ids = summary.touched_event_ids
     return {
         "seen": summary.signals_seen,
         "clusters": summary.clusters_built,
+        "story_groups": summary.story_groups_built,
         "created": summary.events_created,
+        "updated": max(0, len(summary.touched_event_ids) - summary.events_created),
         "attached": summary.signals_attached,
         "refused": summary.signals_refused,
         "unclusterable": summary.unclusterable,
@@ -249,7 +353,7 @@ def _match() -> Mapping[str, int]:
     }
 
 
-def _summarize() -> Mapping[str, int]:
+def _summarize(cohort: PipelineCohort) -> Mapping[str, Any]:
     settings = get_settings()
     now = datetime.now(UTC)
     with session_scope() as session:
@@ -259,15 +363,21 @@ def _summarize() -> Mapping[str, int]:
         awaiting = event_repository.events_awaiting_summary(
             limit=settings.event_match_batch_size,
             max_age_hours=settings.resummary_max_age_hours,
+            event_ids=cohort.touched_event_ids,
         )
 
         examined = 0
         skipped = 0
+        skipped_no_change = 0
+        skipped_no_model = 0
+        skipped_no_sources = 0
+        skipped_recent_rejection = 0
         summarized = 0
         failed = 0
         unavailable = 0
+        recent_failures: list[dict[str, object]] = []
 
-        pending: list[tuple[EventForSummary, tuple[SummarySource, ...]]] = []
+        pending: list[tuple[EventForSummary, tuple[SummarySource, ...], ChatRequest, str]] = []
         for event in unique_summary_candidates(awaiting):
             examined += 1
             if not should_resummarize(
@@ -280,27 +390,37 @@ def _summarize() -> Mapping[str, int]:
                 new_article_count=settings.resummary_new_article_count,
             ):
                 skipped += 1
+                skipped_no_change += 1
+                continue
+
+            sources = event.sources
+            if not has_usable_summary_source(sources):
+                skipped += 1
+                skipped_no_sources += 1
                 continue
 
             if wiring.model is None or wiring.spec is None:
                 skipped += 1
+                skipped_no_model += 1
                 continue
 
-            sources = pick_representative_sources(
-                event.sources,
-                max_sources=settings.summary_max_sources,
-            )
-            pending.append((event, sources))
+            request = summary_request(wiring.spec, event=event, sources=sources)
+            fingerprint = summary_request_fingerprint(request, wiring.spec)
+            if recently_rejected_summary(event, fingerprint, now=now):
+                skipped += 1
+                skipped_recent_rejection += 1
+                continue
+            pending.append((event, sources, request, fingerprint))
 
         if pending and wiring.model is not None and wiring.spec is not None:
             model = wiring.model
             spec = wiring.spec
 
             def summarize_one(
-                item: tuple[EventForSummary, tuple[SummarySource, ...]]
+                item: tuple[EventForSummary, tuple[SummarySource, ...], ChatRequest, str],
             ) -> SummaryResult:
-                event, sources = item
-                return run_summary(model, spec, event=event, sources=sources)
+                event, sources, request, _ = item
+                return run_summary(model, spec, event=event, sources=sources, request=request)
 
             # Model calls are independent. The four-worker cap bounds provider
             # pressure; each completed future is written and committed before
@@ -308,7 +428,7 @@ def _summarize() -> Mapping[str, int]:
             with ThreadPoolExecutor(max_workers=SUMMARY_MAX_WORKERS) as pool:
                 futures = {pool.submit(summarize_one, item): item for item in pending}
                 for future in as_completed(futures):
-                    event, sources = futures[future]
+                    event, sources, _, fingerprint = futures[future]
                     result = future.result()
                     if result.attempt is not None:
                         event_repository.record_ai_request(
@@ -321,23 +441,37 @@ def _summarize() -> Mapping[str, int]:
                             )
                         )
                     if result.outcome is SummaryOutcome.ACCEPTED and result.verdict is not None:
+                        trajectory, snapshot, key_driver, response, risk = legacy_summary_fields(
+                            result.verdict
+                        )
                         event_repository.store_summary(
                             event_id=event.event_id,
-                            headline=result.verdict.headline,
-                            summary=result.verdict.summary,
-                            status=result.verdict.status.value,
-                            latest_development=result.verdict.latest_development,
-                            uncertainties=list(result.verdict.uncertainties),
+                            headline=summary_title(result.verdict),
+                            summary=render_event_flash_brief(result.verdict),
+                            trajectory=trajectory,
+                            snapshot=snapshot,
+                            key_driver=key_driver,
+                            response=response,
+                            risk=risk,
                             model_id=spec.model_id,
                             source_signal_ids=[source.signal_id for source in sources],
                             counts=event.latest_observation,
                             now=now,
+                            summary_payload=summary_payload(result.verdict),
                         )
                         summarized += 1
                     elif result.outcome is SummaryOutcome.UNAVAILABLE:
                         unavailable += 1
                     else:
                         failed += 1
+                        if result.outcome is SummaryOutcome.REJECTED and result.attempt is not None:
+                            event_repository.record_summary_rejection(
+                                event.event_id, fingerprint, at=now
+                            )
+                    diagnostic = build_summary_failure_diagnostic(event, result, at=now)
+                    if diagnostic is not None:
+                        recent_failures.append(diagnostic)
+                        del recent_failures[:-10]
                     event_repository.commit()
 
         event_repository.commit()
@@ -345,21 +479,30 @@ def _summarize() -> Mapping[str, int]:
     return {
         "examined": examined,
         "skipped": skipped,
+        "skipped_no_change": skipped_no_change,
+        "skipped_no_model": skipped_no_model,
+        "skipped_no_sources": skipped_no_sources,
+        "skipped_recent_rejection": skipped_recent_rejection,
         "summarized": summarized,
         "failed": failed,
         "unavailable": unavailable,
+        "recent_failures": recent_failures,
     }
 
 
-def build_stage_runners(*, window: DiscoveryWindow) -> dict[StageName, StageRunner]:
+def build_stage_runners(
+    *, window: DiscoveryWindow, cohort: PipelineCohort | None = None
+) -> dict[StageName, StageRunner]:
     """Map each stage to a callable. Nothing here runs until the chain calls it."""
+    run_cohort = cohort or PipelineCohort()
     return {
-        StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector()),
-        StageName.DISCOVER: lambda: _discover(window),
-        StageName.RETRIEVE: _retrieve,
-        StageName.DEDUPE: _dedupe,
-        StageName.TRIAGE: _triage,
-        StageName.EXTRACT: _extract,
-        StageName.MATCH: _match,
-        StageName.SUMMARIZE: _summarize,
+        StageName.INGEST_WHO: lambda: _ingest(WhoDonConnector(), window, run_cohort),
+        StageName.DISCOVER: lambda: _discover(window, run_cohort),
+        StageName.DEDUPE: lambda: _dedupe(run_cohort),
+        StageName.CLASSIFY: lambda: _classify(run_cohort),
+        StageName.RETRIEVE: lambda: _retrieve(run_cohort),
+        StageName.STORY_GROUP: lambda: _story_group(run_cohort),
+        StageName.EXTRACT: lambda: _extract(run_cohort),
+        StageName.MATCH: lambda: _match(run_cohort),
+        StageName.SUMMARIZE: lambda: _summarize(run_cohort),
     }

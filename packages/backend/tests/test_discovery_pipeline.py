@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import httpx
 from episignal_backend.db.types import FilterRuleGroup, ProcessingStatus
 from episignal_backend.ingestion.discovery import (
     DiscoveryResult,
@@ -16,8 +17,11 @@ from episignal_backend.ingestion.documents import (
     Rejection,
     TimeWindow,
 )
-from episignal_backend.ingestion.gdelt.api import GdeltUnavailable
+from episignal_backend.ingestion.gdelt.api import GdeltDocClient, GdeltUnavailable
+from episignal_backend.ingestion.gdelt.connector import GdeltConnector
 from episignal_backend.ingestion.protocol import RetrievalFailed
+from episignal_backend.schedule.documents import StageName
+from episignal_backend.schedule.run import run_chain
 
 NOW = datetime(2026, 8, 26, 8, 0, tzinfo=UTC)
 SEEN = datetime(2026, 8, 26, 7, 45, tzinfo=UTC)
@@ -215,6 +219,8 @@ def test_a_new_url_is_first_seen_now() -> None:
 def test_an_unavailable_rule_is_counted_not_raised() -> None:
     repository = FakeRepository()
     result = run(FakeConnector(unavailable=True), repository)
+    assert result.rules_attempted == 1
+    assert result.rules_succeeded == 0
     assert result.rules_failed == 1
     assert result.stored == 0
 
@@ -239,6 +245,36 @@ def test_the_window_ends_at_the_run_time() -> None:
     run(Recording(), FakeRepository(), window_minutes=20)
     assert captured[0].end == NOW
     assert captured[0].start == NOW - timedelta(minutes=20)
+
+
+def test_active_rules_rotate_deterministically_between_hourly_runs() -> None:
+    rules = tuple(
+        QueryRule(id=uuid4(), rule_group="syndromic", query=f"rule-{index}", label=f"Rule {index}")
+        for index in range(4)
+    )
+
+    class ManyRules(FakeRepository):
+        def active_rules(self) -> Sequence[QueryRule]:
+            return rules
+
+    class Recording(FakeConnector):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls: list[str] = []
+
+        def discover(self, rule: QueryRule, window: TimeWindow) -> Sequence[DiscoveredArticle]:
+            self.calls.append(rule.label)
+            return ()
+
+    starts: list[str] = []
+    for hour in range(len(rules)):
+        connector = Recording()
+        run_discovery(ManyRules(), connector, now=NOW + timedelta(hours=hour))
+        starts.append(connector.calls[0])
+
+    indices = [int(label.rsplit(" ", 1)[1]) for label in starts]
+    assert len(set(indices)) == len(rules)
+    assert all((indices[index] + 1) % len(rules) == indices[index + 1] for index in range(3))
 
 
 def test_a_storage_failure_rolls_back_and_continues() -> None:
@@ -369,3 +405,59 @@ def test_discovery_defers_every_retrieval() -> None:
     assert result.needs_review == 0
     assert repository.added[0][0].processing_status is ProcessingStatus.FETCHED
     assert repository.added[0][0].raw_text is None
+
+
+def test_gdelt_circuit_open_fails_discovery_but_later_pipeline_stages_run() -> None:
+    rules = tuple(
+        QueryRule(
+            id=uuid4(),
+            rule_group="syndromic",
+            query=f"rule-{index}",
+            label=f"Rule {index}",
+        )
+        for index in range(9)
+    )
+
+    class ManyRules(FakeRepository):
+        def active_rules(self) -> Sequence[QueryRule]:
+            return rules
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = GdeltDocClient(
+        client=httpx.Client(transport=transport),
+        fallback_client=httpx.Client(transport=transport),
+        sleep=lambda _: None,
+    )
+    discovery = GdeltConnector(search=client)  # type: ignore[arg-type]
+    result = run_discovery(ManyRules(), discovery, now=NOW)
+
+    called: list[str] = []
+    outcome = run_chain(
+        [StageName.DISCOVER, StageName.RETRIEVE],
+        {
+            StageName.DISCOVER: lambda: (
+                called.append("discover")
+                or {
+                    "rules": result.rules_run,
+                    "rules_attempted": result.rules_attempted,
+                    "rules_succeeded": result.rules_succeeded,
+                    "rules_failed": result.rules_failed,
+                    "rules_skipped_circuit": result.rules_skipped_circuit,
+                    "__stage_ok": result.rules_succeeded > 0,
+                    "__stage_error": "DiscoveryUnavailable",
+                }
+            ),
+            StageName.RETRIEVE: lambda: called.append("retrieve") or {"retrieved": 0},
+        },
+    )
+
+    assert result.rules_failed == 8
+    assert result.rules_attempted == 8
+    assert result.rules_succeeded == 0
+    assert result.rules_skipped_circuit == 1
+    assert outcome.ok is False
+    assert outcome.outcomes[0].ok is False
+    assert called == ["discover", "retrieve"]
