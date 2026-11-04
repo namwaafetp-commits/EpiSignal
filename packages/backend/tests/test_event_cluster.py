@@ -49,10 +49,10 @@ def test_country_only_and_local_place_do_not_automatically_merge() -> None:
     assert spatially_compatible(loc(None, "PH"), loc(None, "PH"))
 
 
-def test_multiple_locations_match_on_any_exact_overlap() -> None:
+def test_partial_location_overlap_does_not_establish_event_identity() -> None:
     left = signal("dengue", (loc("Cebu", "PH"), loc("Dhaka", "BD")))
     right = signal("dengue", (loc("Dhaka", "BD"),))
-    assert compatible(left, right)
+    assert not compatible(left, right)
 
 
 def test_different_disease_or_town_stays_separate() -> None:
@@ -68,3 +68,28 @@ def test_temporal_window_is_enforced_and_clusters_are_not_transitive_bridges() -
     assert not temporally_compatible(first, late)
     clusters, unclusterable = build_clusters((first, late))
     assert len(clusters) == 2 and not unclusterable
+
+
+def test_shared_reporting_city_cannot_join_distinct_primary_places() -> None:
+    first = signal("measles", (loc("Indiana", "US"),))
+    second = signal("measles", (loc("New York", "US"),))
+    reporting = loc("Washington", "US").model_copy(update={"location_role": LocationRole.REPORTING})
+    first = first.model_copy(update={"locations": (*first.locations, reporting)})
+    second = second.model_copy(update={"locations": (*second.locations, reporting)})
+    clusters, _ = build_clusters((first, second))
+    assert len(clusters) == 2
+
+
+def test_multi_location_bridge_cannot_join_conflicting_primary_sets() -> None:
+    first = signal("measles", (loc("Indiana", "US"),))
+    second = signal("measles", (loc("New York", "US"),))
+    bridge = signal("measles", (*first.locations, *second.locations))
+    clusters, _ = build_clusters((first, bridge, second))
+    assert len(clusters) == 3
+
+
+def test_identical_multi_location_reporting_keeps_one_event_identity() -> None:
+    places = (loc("Cebu", "PH"), loc("Dhaka", "BD"))
+    left = signal("dengue", places)
+    right = signal("dengue", tuple(reversed(places)))
+    assert compatible(left, right)

@@ -106,10 +106,11 @@ def story_match_score(left: StoryArticle, right: StoryArticle) -> float:
 
 
 def _same_story(left: StoryArticle, right: StoryArticle) -> bool:
-    overlap = len(
-        _distinctive_terms(f"{left.title} {left.raw_text}")
-        & _distinctive_terms(f"{right.title} {right.raw_text}")
-    )
+    if abs(_timestamp(left) - _timestamp(right)) > timedelta(hours=STORY_WINDOW_HOURS):
+        return False
+    left_terms = _distinctive_terms(f"{left.title} {left.raw_text}")
+    right_terms = _distinctive_terms(f"{right.title} {right.raw_text}")
+    overlap = len(left_terms & right_terms)
     title_score = fuzz.token_set_ratio(left.title, right.title) / 100.0
     body_score = (
         fuzz.token_set_ratio(left.raw_text, right.raw_text) / 100.0
@@ -119,7 +120,10 @@ def _same_story(left: StoryArticle, right: StoryArticle) -> bool:
 
     score = story_match_score(left, right)
     if score < STORY_MATCH_THRESHOLD and not (
-        overlap >= 4 and title_score >= 0.45 and body_score >= 0.45
+        overlap >= 4
+        and overlap * 3 >= min(len(left_terms), len(right_terms))
+        and title_score >= 0.45
+        and body_score >= 0.45
     ):
         return False
 

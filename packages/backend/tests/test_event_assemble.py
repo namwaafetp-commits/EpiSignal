@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import pytest
 from episignal_backend.ai.documents import AiRequestRecord
 from episignal_backend.db.types import (
     CredibilityTier,
@@ -332,8 +333,10 @@ def test_conflicting_story_locations_do_not_match_an_unrelated_event() -> None:
 
     assert summary.events_created == 1
     assert summary.signals_attached == 4
-    assert repo.created_events[0].locations == ()
-    assert all(event_id != singapore_event.event_id for event_id, *_ in repo.attached_signals)
+    assert repo.created_events[0].locations[0].country_code == "TH"
+    assigned = {signal_id: event_id for event_id, signal_id, *_ in repo.attached_signals}
+    assert all(assigned[signal.signal_id] != singapore_event.event_id for signal in signals[:3])
+    assert assigned[signals[3].signal_id] == singapore_event.event_id
 
 
 def test_one_resolved_story_location_represents_unresolved_peers() -> None:
@@ -396,7 +399,7 @@ def test_same_country_country_and_town_reconcile_to_country_or_more_specific() -
     assert location.place_name == "Dhaka"
 
 
-def test_same_country_conflicting_towns_coarsen_to_country() -> None:
+def test_same_country_conflicting_towns_remain_separate() -> None:
     now = datetime.now(UTC)
     disease_id = uuid4()
     dhaka = LocationForMatching(
@@ -418,11 +421,11 @@ def test_same_country_conflicting_towns_coarsen_to_country() -> None:
     repo = FakeAssemblyRepository(signals)
     _run_story_group(signals, repo)
 
-    location = repo.created_events[0].locations[0]
-    assert location.country_code == "BD"
-    assert location.admin1 is None
-    assert location.admin2 is None
-    assert location.place_name is None
+    assert len(repo.created_events) == 2
+    assert {event.locations[0].place_name for event in repo.created_events} == {
+        "Dhaka",
+        "Chattogram",
+    }
 
 
 def test_australia_country_agreement_survives_kangaroo_island_specificity() -> None:
@@ -445,7 +448,7 @@ def test_australia_country_agreement_survives_kangaroo_island_specificity() -> N
     assert repo.created_events[0].locations[0].country_code == "AU"
 
 
-def test_evenly_conflicting_story_locations_remain_unresolved() -> None:
+def test_evenly_conflicting_story_locations_remain_separate() -> None:
     now = datetime.now(UTC)
     disease_id = uuid4()
     bangkok = LocationForMatching(
@@ -467,9 +470,9 @@ def test_evenly_conflicting_story_locations_remain_unresolved() -> None:
 
     summary = _run_story_group(signals, repo)
 
-    assert summary.unclusterable == 1
-    assert summary.events_created == 1
-    assert repo.created_events[0].locations == ()
+    assert summary.unclusterable == 0
+    assert summary.events_created == 2
+    assert {event.locations[0].country_code for event in repo.created_events} == {"TH", "SG"}
 
 
 def test_disease_consensus_ignores_generic_or_unknown_member() -> None:
@@ -506,7 +509,7 @@ def test_disease_consensus_ignores_generic_or_unknown_member() -> None:
     assert repo.created_events[0].disease_id == disease_id
 
 
-def test_conflicting_story_diseases_remain_unresolved() -> None:
+def test_conflicting_story_diseases_remain_separate() -> None:
     now = datetime.now(UTC)
     chikungunya = uuid4()
     dengue = uuid4()
@@ -528,9 +531,9 @@ def test_conflicting_story_diseases_remain_unresolved() -> None:
 
     summary = _run_story_group(signals, repo)
 
-    assert summary.unclusterable == 1
-    assert summary.events_created == 1
-    assert repo.created_events[0].disease_id is None
+    assert summary.unclusterable == 0
+    assert summary.events_created == 2
+    assert {event.disease_id for event in repo.created_events} == {chikungunya, dengue}
 
 
 def test_overlapping_story_group_ids_attach_each_signal_once() -> None:
@@ -642,3 +645,87 @@ def test_refusal_creates_a_new_event_without_human_review() -> None:
     assert summary.signals_attached == 1
     assert repo.created_events
     assert repo.committed is True
+
+
+@pytest.mark.parametrize("conflict", ["disease", "country", "town"])
+def test_known_story_conflict_cannot_be_erased_by_a_majority(conflict: str) -> None:
+    now = datetime.now(UTC)
+    disease_id, other_disease = uuid4(), uuid4()
+    place = LocationForMatching(
+        location_role=LocationRole.PRIMARY,
+        precision=Precision.PLACE,
+        country_code="TH",
+        place_name="Bangkok",
+    )
+    other_place = place.model_copy(
+        update={
+            "country_code": "SG" if conflict == "country" else "TH",
+            "place_name": "Singapore" if conflict == "country" else "Chiang Mai",
+        }
+    )
+    signals = [
+        _make_signal(
+            disease_id=other_disease if index == 3 and conflict == "disease" else disease_id,
+            loc=other_place if index == 3 and conflict != "disease" else place,
+            published_at=now + timedelta(minutes=index),
+        )
+        for index in range(4)
+    ]
+    repo = FakeAssemblyRepository(signals)
+    result = _run_story_group(signals, repo)
+    assert result.events_created == 2
+    assert result.signals_attached == 4
+    assigned = {signal: event for event, signal, *_ in repo.attached_signals}
+    assert assigned[signals[0].signal_id] != assigned[signals[3].signal_id]
+    assert len(repo.recorded_observations) == 4
+
+
+def test_distinct_multi_location_story_units_cannot_coarsen_and_merge_again() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    signals = []
+    for names in (
+        ("Indiana", "New York"),
+        ("Indiana", "New York"),
+        ("Minnesota", "Kentucky"),
+        ("Minnesota", "Kentucky"),
+    ):
+        locations = tuple(
+            LocationForMatching(
+                location_role=LocationRole.PRIMARY,
+                precision=Precision.PLACE,
+                country_code="US",
+                place_name=name,
+            )
+            for name in names
+        )
+        signals.append(
+            _make_signal(disease_id=disease_id, published_at=now).model_copy(
+                update={"locations": locations},
+            )
+        )
+    repo = FakeAssemblyRepository(signals)
+    result = _run_story_group(signals, repo)
+    assert result.events_created == 2
+    assert result.signals_attached == 4
+
+
+def test_same_named_towns_with_conflicting_states_stay_separate() -> None:
+    now = datetime.now(UTC)
+    disease_id = uuid4()
+    signals = [
+        _make_signal(
+            disease_id=disease_id,
+            published_at=now,
+            loc=LocationForMatching(
+                location_role=LocationRole.PRIMARY,
+                precision=Precision.PLACE,
+                country_code="US",
+                admin1=state,
+                place_name="Springfield",
+            ),
+        )
+        for state in ("Illinois", "Massachusetts")
+    ]
+    repo = FakeAssemblyRepository(signals)
+    assert _run_story_group(signals, repo).events_created == 2

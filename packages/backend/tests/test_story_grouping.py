@@ -169,3 +169,43 @@ def test_different_update_three_days_later_is_new_story() -> None:
     )
 
     assert len(groups) == 2
+
+
+def test_shared_news_boilerplate_does_not_join_different_diseases_and_countries() -> None:
+    footer = " Further information is available. Contact the editorial newsroom for updates."
+    groups = group_stories(
+        [
+            article(
+                "Bluetongue Confirmed at Great Britain Premises in Record Season",
+                "Veterinary authorities confirmed bluetongue infections across British farms. "
+                "England Wales Scotland livestock sheep cattle surveillance movements vaccination "
+                "restrictions laboratory testing insect transmission agriculture holdings animal "
+                "breeding herds rural grazing seasonal midge populations containment strategy "
+                "biosecurity producers quarantine dairy losses trade spread monitoring affected "
+                "premises records confirmed extensive regional circulation. " + footer,
+            ),
+            article(
+                "Confirmed whooping cough case reported at Willard Central Elementary",
+                "School administrators notified parents about pertussis in Springfield Missouri. "
+                "Classrooms children students teachers attendance pediatric treatment antibiotics "
+                "respiratory symptoms coughing fever immunization nurses contacts household "
+                "exposure education district families prevention guidance medical evaluation "
+                "isolation contagious bacterial illness schedules campus learning and returning "
+                "pupils arrangements confirmed through local clinics. " + footer,
+            ),
+        ]
+    )
+    assert len(groups) == 2
+
+
+def test_identical_reporting_outside_story_window_stays_separate() -> None:
+    title = "Cebu dengue investigation traces infections to flooded housing"
+    body = "Cebu investigators traced dengue infections to flooded housing near the river."
+    groups = group_stories([article(title, body), article(title, body, days=3)])
+    assert len(groups) == 2
+
+
+def test_identical_reporting_at_exact_story_window_boundary_stays_together() -> None:
+    title = "Cebu dengue investigation traces infections to flooded housing"
+    body = "Cebu investigators traced dengue infections to flooded housing near the river."
+    assert len(group_stories([article(title, body), article(title, body, days=2)])) == 1

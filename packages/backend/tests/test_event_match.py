@@ -99,10 +99,10 @@ def test_different_towns_or_diseases_stay_separate() -> None:
     assert decide(cluster, (other_disease,), threshold=0.5).action is MatchAction.CREATE
 
 
-def test_multiple_locations_match_on_any_exact_overlap() -> None:
+def test_partial_location_overlap_does_not_establish_event_identity() -> None:
     left = signal("dengue", (loc("Cebu", "PH"), loc("Dhaka", "BD")))
     right = signal("dengue", (loc("Dhaka", "BD"),))
-    assert compatible(left, right)
+    assert not compatible(left, right)
 
 
 def test_time_window_and_ambiguous_candidates_are_conservative() -> None:
@@ -114,3 +114,28 @@ def test_time_window_and_ambiguous_candidates_are_conservative() -> None:
     first = candidate("dengue", (loc("Cebu", "PH"),))
     second = candidate("dengue", (loc("Cebu", "PH"),))
     assert decide(cluster, (first, second), threshold=0.5).action is MatchAction.REFUSE
+
+
+def test_contaminated_candidate_cannot_absorb_either_primary_place() -> None:
+    places = (loc("Indiana", "US"), loc("New York", "US"))
+    contaminated = candidate("measles", places)
+    for place in places:
+        cluster = StoryCluster(signals=(signal("measles", (place,)),))
+        assert match_score(cluster, contaminated) == 0
+        assert decide(cluster, (contaminated,), threshold=0.5).action is MatchAction.CREATE
+
+
+def test_identical_multi_location_reporting_keeps_one_event_identity() -> None:
+    places = (loc("Cebu", "PH"), loc("Dhaka", "BD"))
+    left = signal("dengue", places)
+    right = signal("dengue", tuple(reversed(places)))
+    assert compatible(left, right)
+
+
+def test_same_named_candidate_town_in_a_different_state_is_rejected() -> None:
+    illinois = loc("Springfield", "US").model_copy(update={"admin1": "Illinois"})
+    massachusetts = illinois.model_copy(update={"admin1": "Massachusetts"})
+    cluster = StoryCluster(signals=(signal("measles", (illinois,)),))
+    other = candidate("measles", (massachusetts,))
+    assert match_score(cluster, other) == 0
+    assert decide(cluster, (other,), threshold=0.5).action is MatchAction.CREATE

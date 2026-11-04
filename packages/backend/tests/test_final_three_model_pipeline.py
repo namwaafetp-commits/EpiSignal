@@ -266,7 +266,7 @@ def _signal(
         (
             (_location("Cebu", "PH"), _location("Dhaka", "BD")),
             (_location("Dhaka", "BD"),),
-            True,
+            False,
         ),
         (
             (_location("Cebu", "PH"), _location("Dhaka", "BD")),
@@ -275,7 +275,7 @@ def _signal(
         ),
     ],
 )
-def test_grouping_uses_exact_compatible_location_overlap(left, right, expected: bool) -> None:
+def test_grouping_requires_consistent_primary_location_sets(left, right, expected: bool) -> None:
     assert compatible(_signal("dengue", left), _signal(" dengue ", right)) is expected
 
 

@@ -10,6 +10,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from itertools import combinations
 
 from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.events.documents import (
@@ -57,6 +58,53 @@ def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
     return r * c
 
 
+def primary_locations_conflict(
+    left: Sequence[LocationForMatching], right: Sequence[LocationForMatching]
+) -> bool:
+    """Missing precision is not a contradiction; different known primary places are."""
+
+    def identities(
+        locations: Sequence[LocationForMatching],
+    ) -> dict[tuple[str, str], set[tuple[str, str]]]:
+        result: dict[tuple[str, str], set[tuple[str, str]]] = {}
+        for location in locations:
+            if (
+                location.location_role != LocationRole.PRIMARY
+                or location.precision == Precision.UNRESOLVED
+                or not location.country_code
+                or not location.country_code.strip()
+            ):
+                continue
+            key = (
+                location.country_code.strip().upper(),
+                normalized_form(location.place_name or location.admin2 or location.admin1 or ""),
+            )
+            result.setdefault(key, set()).add(
+                (
+                    normalized_form(location.admin1 or ""),
+                    normalized_form(location.admin2 or ""),
+                )
+            )
+        return result
+
+    a, b = identities(left), identities(right)
+    if not a or not b:
+        return False
+    if {country for country, _ in a} != {country for country, _ in b}:
+        return True
+    specific_a = {key for key in a if key[1]}
+    specific_b = {key for key in b if key[1]}
+    if specific_a and specific_b and specific_a != specific_b:
+        return True
+    for key in specific_a & specific_b:
+        for field in (0, 1):
+            parents_a = {value[field] for value in a[key] if value[field]}
+            parents_b = {value[field] for value in b[key] if value[field]}
+            if parents_a and parents_b and parents_a != parents_b:
+                return True
+    return False
+
+
 def spatially_compatible(
     a: LocationForMatching,
     b: LocationForMatching,
@@ -69,6 +117,10 @@ def spatially_compatible(
     cannot match a country-only report merely because countries agree.
     """
     del distance_km
+    if a.location_role != LocationRole.PRIMARY or b.location_role != LocationRole.PRIMARY:
+        return False
+    if primary_locations_conflict((a,), (b,)):
+        return False
     if not a.country_code or not b.country_code:
         return False
     country_a = a.country_code.strip().upper()
@@ -130,6 +182,8 @@ def compatible(
     if a.disease_identity is None or a.disease_identity != b.disease_identity:
         return False
 
+    if primary_locations_conflict(a.locations, b.locations):
+        return False
     if not temporally_compatible(a, b, window_days=window_days):
         return False
 
@@ -216,7 +270,10 @@ def build_clusters(
                         if uf.find(index) in {root_i, root_j}
                     ]
                     times = [_signal_timestamp(signal) for signal in members]
-                    if max(times) - min(times) <= timedelta(days=window_days):
+                    if max(times) - min(times) <= timedelta(days=window_days) and not any(
+                        primary_locations_conflict(left.locations, right.locations)
+                        for left, right in combinations(members, 2)
+                    ):
                         uf.union(i, j)
 
         groups: dict[int, list[SignalForMatching]] = defaultdict(list)

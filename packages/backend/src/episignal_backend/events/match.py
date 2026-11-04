@@ -12,6 +12,7 @@ from uuid import UUID
 from episignal_backend.db.types import LocationRole, Precision
 from episignal_backend.events.cluster import (
     precision_weight,
+    primary_locations_conflict,
     spatially_compatible,
 )
 from episignal_backend.events.documents import (
@@ -87,6 +88,9 @@ def match_score(
     disease_score = 1.0
 
     # 2. Spatial component
+    cluster_locations = tuple(loc for signal in cluster.signals for loc in signal.locations)
+    if primary_locations_conflict(cluster_locations, candidate.locations):
+        return 0.0
     loc_c = cluster.representative_location
     loc_cand = _candidate_representative_location(candidate)
     if loc_c is None or loc_cand is None:
@@ -163,7 +167,11 @@ def _deterministic_rejection(
         return MatchRejection.OUTSIDE_TIME_WINDOW
 
     if (
-        cluster_location is None
+        primary_locations_conflict(
+            tuple(loc for signal in cluster.signals for loc in signal.locations),
+            candidate.locations,
+        )
+        or cluster_location is None
         or candidate_location is None
         or not any(
             spatially_compatible(left, right, distance_km=distance_km)
